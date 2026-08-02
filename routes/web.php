@@ -4,6 +4,7 @@ use App\Http\Controllers\ClothesCategoryController;
 use App\Http\Controllers\ClothingItemController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\LaundryPackageController;
+use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SubscriptionPackageController;
 use App\Http\Controllers\ThemeController;
@@ -12,7 +13,7 @@ use Illuminate\Support\Facades\Route;
 
 // Sidebar destinations with a real controller now -- excluded from the
 // placeholder-route loop below.
-$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages'];
+$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index'];
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
@@ -60,6 +61,7 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::put('/catalog/categories/{category}', [ClothesCategoryController::class, 'update'])->name('catalog.categories.update');
         Route::delete('/catalog/categories/{category}', [ClothesCategoryController::class, 'destroy'])->name('catalog.categories.destroy');
 
+        Route::post('/catalog/items', [ClothingItemController::class, 'storeStandalone'])->name('catalog.items.store');
         Route::post('/catalog/categories/{category}/items', [ClothingItemController::class, 'store'])->name('catalog.categories.items.store');
         Route::put('/catalog/categories/{category}/items/{item}', [ClothingItemController::class, 'update'])->name('catalog.categories.items.update');
         Route::delete('/catalog/categories/{category}/items/{item}', [ClothingItemController::class, 'destroy'])->name('catalog.categories.items.destroy');
@@ -71,6 +73,20 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::post('/catalog/packages/subscription', [SubscriptionPackageController::class, 'store'])->name('catalog.packages.subscription.store');
         Route::put('/catalog/packages/subscription/{subscriptionPackage}', [SubscriptionPackageController::class, 'update'])->name('catalog.packages.subscription.update');
         Route::delete('/catalog/packages/subscription/{subscriptionPackage}', [SubscriptionPackageController::class, 'destroy'])->name('catalog.packages.subscription.destroy');
+    });
+
+    Route::middleware('permission:orders.view')->group(function () {
+        Route::get('/orders', [OrderController::class, 'index'])->name('orders.index');
+    });
+
+    // Gated on terminal.use (not orders.manage): opening the Terminal to
+    // create an order is a distinct permission from managing existing ones.
+    Route::middleware('permission:terminal.use')->group(function () {
+        Route::get('/orders/create', [OrderController::class, 'create'])->name('orders.create');
+    });
+
+    Route::middleware('permission:orders.view')->group(function () {
+        Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     });
 
     // Placeholder routes for every remaining sidebar destination. Each is
