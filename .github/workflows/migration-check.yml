@@ -1,0 +1,96 @@
+name: Migration check
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+jobs:
+  migrate-seed-rollback-remigrate:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: laundry_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo_mysql, mysqli
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Configure environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: laundry_ci
+          DB_USERNAME: root
+          DB_PASSWORD: ""
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            mysqladmin ping -h127.0.0.1 -P3306 -uroot --silent && break
+            sleep 2
+          done
+
+      - name: Migrate
+        run: php artisan migrate --force
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: laundry_ci
+          DB_USERNAME: root
+          DB_PASSWORD: ""
+
+      - name: Seed
+        run: php artisan db:seed --force
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: laundry_ci
+          DB_USERNAME: root
+          DB_PASSWORD: ""
+
+      - name: Rollback
+        run: php artisan migrate:rollback --force
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: laundry_ci
+          DB_USERNAME: root
+          DB_PASSWORD: ""
+
+      - name: Re-migrate
+        run: php artisan migrate --force
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: laundry_ci
+          DB_USERNAME: root
+          DB_PASSWORD: ""
