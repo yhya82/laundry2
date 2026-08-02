@@ -3,7 +3,8 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class PermissionsAndRolesSeeder extends Seeder
 {
@@ -48,51 +49,25 @@ class PermissionsAndRolesSeeder extends Seeder
 
     public function run(): void
     {
-        $now = now();
-
         foreach ($this->permissionsByModule as $module => $names) {
             foreach ($names as $name) {
-                DB::table('permissions')->updateOrInsert(
-                    ['name' => $name],
-                    ['module' => $module, 'updated_at' => $now, 'created_at' => $now]
+                Permission::updateOrCreate(
+                    ['name' => $name, 'guard_name' => 'web'],
+                    ['module' => $module]
                 );
             }
         }
 
-        DB::table('roles')->updateOrInsert(
-            ['name' => 'Admin'],
-            ['description' => 'Full access across all modules', 'is_system' => true, 'updated_at' => $now, 'created_at' => $now]
+        $admin = Role::updateOrCreate(
+            ['name' => 'Admin', 'guard_name' => 'web'],
+            ['description' => 'Full access across all modules', 'is_system' => true]
         );
-        $adminRoleId = DB::table('roles')->where('name', 'Admin')->value('id');
+        $admin->syncPermissions(Permission::all());
 
-        DB::table('roles')->updateOrInsert(
-            ['name' => 'Laundry'],
-            ['description' => 'Queue, status updates, basic customer info, damage reporting', 'is_system' => true, 'updated_at' => $now, 'created_at' => $now]
+        $laundry = Role::updateOrCreate(
+            ['name' => 'Laundry', 'guard_name' => 'web'],
+            ['description' => 'Queue, status updates, basic customer info, damage reporting', 'is_system' => true]
         );
-        $laundryRoleId = DB::table('roles')->where('name', 'Laundry')->value('id');
-
-        $allPermissionIds = DB::table('permissions')->pluck('id')->all();
-        $this->syncRolePermissions($adminRoleId, $allPermissionIds);
-
-        $laundryPermissionIds = DB::table('permissions')
-            ->whereIn('name', $this->laundryPermissions)
-            ->pluck('id')
-            ->all();
-        $this->syncRolePermissions($laundryRoleId, $laundryPermissionIds);
-    }
-
-    /**
-     * @param  list<int>  $permissionIds
-     */
-    private function syncRolePermissions(int $roleId, array $permissionIds): void
-    {
-        $now = now();
-
-        foreach ($permissionIds as $permissionId) {
-            DB::table('role_permissions')->updateOrInsert(
-                ['role_id' => $roleId, 'permission_id' => $permissionId],
-                ['updated_at' => $now, 'created_at' => $now]
-            );
-        }
+        $laundry->syncPermissions($this->laundryPermissions);
     }
 }

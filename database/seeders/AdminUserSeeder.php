@@ -4,8 +4,8 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 
 class AdminUserSeeder extends Seeder
 {
@@ -23,18 +23,13 @@ class AdminUserSeeder extends Seeder
             ]
         );
 
-        $adminRoleId = DB::table('roles')->where('name', 'Admin')->value('id');
-
-        if ($adminRoleId === null) {
+        if (! Role::where('name', 'Admin')->where('guard_name', 'web')->exists()) {
             $this->command?->warn('Admin role not found — run PermissionsAndRolesSeeder first.');
 
             return;
         }
 
-        DB::table('user_roles')->updateOrInsert(
-            ['user_id' => $user->id, 'role_id' => $adminRoleId],
-            ['updated_at' => now(), 'created_at' => now()]
-        );
+        $user->syncRoles(['Admin']);
 
         $this->command?->info("Seeded admin user: {$email} / {$password} (change immediately outside local dev)");
     }

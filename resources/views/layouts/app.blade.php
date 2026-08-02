@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="{{ auth()->user()?->theme_preference === 'dark' ? 'dark' : '' }}">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="csrf-token" content="{{ csrf_token() }}">
+
+        <title>{{ ($header ?? null) ? $header . ' — ' : '' }}{{ \App\Models\Setting::get('branding.business_name', config('app.name')) }}</title>
+
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
+    </head>
+    <body class="font-sans antialiased bg-bg text-ink" x-data="{ sidebarOpen: false }">
+        <div class="min-h-screen flex flex-col">
+
+            <!-- Top nav -->
+            <header class="h-16 flex-none border-b border-line bg-surface flex items-center px-4 gap-4">
+                <button class="lg:hidden text-ink-muted" @click="sidebarOpen = !sidebarOpen" aria-label="Toggle navigation">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+
+                <a href="{{ route('dashboard') }}" class="flex items-center gap-2 font-bold text-ink">
+                    @if ($logoPath = \App\Models\Setting::get('branding.logo_path'))
+                        <img src="{{ Storage::url($logoPath) }}" alt="" class="w-7 h-7 rounded object-cover">
+                    @else
+                        <span class="w-7 h-7 rounded bg-accent-soft text-accent-ink flex items-center justify-center text-sm font-bold">
+                            {{ Str::substr(\App\Models\Setting::get('branding.business_name', config('app.name')), 0, 1) }}
+                        </span>
+                    @endif
+                    <span class="hidden sm:inline">{{ \App\Models\Setting::get('branding.business_name', config('app.name')) }}</span>
+                </a>
+
+                <div class="ml-auto flex items-center gap-3">
+                    @php $unread = auth()->user() ? \Illuminate\Support\Facades\DB::table('notifications')->where('user_id', auth()->id())->where('is_read', false)->count() : 0; @endphp
+                    <a href="#" class="relative w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center text-ink-muted hover:text-ink" aria-label="Notifications">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        @if ($unread > 0)
+                            <span class="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-critical text-white text-[10px] font-mono font-bold flex items-center justify-center border-2 border-surface">{{ min($unread, 9) }}</span>
+                        @endif
+                    </a>
+
+                    <form method="POST" action="{{ route('theme.update') }}">
+                        @csrf
+                        @method('PATCH')
+                        <button type="submit" class="w-9 h-9 rounded-full bg-surface-2 flex items-center justify-center text-ink-muted hover:text-ink" aria-label="Toggle theme">
+                            @if (auth()->user()?->theme_preference === 'dark')
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.4 6.4l-.7-.7M6.3 6.3l-.7-.7m12.8 0l-.7.7M6.3 17.7l-.7.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                            @else
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                            @endif
+                        </button>
+                    </form>
+
+                    <x-dropdown align="right" width="48">
+                        <x-slot name="trigger">
+                            <button class="flex items-center gap-2 text-sm text-ink-muted hover:text-ink">
+                                <span class="w-8 h-8 rounded-full bg-accent-soft text-accent-ink flex items-center justify-center text-xs font-bold">
+                                    {{ Str::substr(auth()->user()->name ?? '?', 0, 1) }}
+                                </span>
+                            </button>
+                        </x-slot>
+                        <x-slot name="content">
+                            <x-dropdown-link :href="route('profile.edit')">{{ __('Profile') }}</x-dropdown-link>
+                            <form method="POST" action="{{ route('logout') }}">
+                                @csrf
+                                <x-dropdown-link :href="route('logout')" onclick="event.preventDefault(); this.closest('form').submit();">
+                                    {{ __('Log Out') }}
+                                </x-dropdown-link>
+                            </form>
+                        </x-slot>
+                    </x-dropdown>
+                </div>
+            </header>
+
+            <div class="flex-1 flex min-h-0">
+
+                <!-- Sidebar -->
+                <aside
+                    class="w-64 flex-none bg-surface border-r border-line overflow-y-auto fixed lg:static inset-y-16 left-0 z-20 transition-transform lg:translate-x-0"
+                    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+                >
+                    <nav class="p-3 flex flex-col gap-1">
+                        @foreach (\App\Support\NavItems::all() as $item)
+                            @if ($item['permission'] === null || auth()->user()?->can($item['permission']))
+                                @if (isset($item['children']))
+                                    <div x-data="{ open: {{ request()->routeIs('catalog.*') ? 'true' : 'false' }} }">
+                                        <button @click="open = !open" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-ink-muted hover:bg-surface-2">
+                                            <span class="w-4 h-4 rounded bg-line-strong flex-none"></span>
+                                            {{ $item['label'] }}
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 ml-auto transition-transform" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                        </button>
+                                        <div x-show="open" class="pl-8 flex flex-col gap-1 mt-1">
+                                            @foreach ($item['children'] as $child)
+                                                @if (auth()->user()?->can($child['permission']))
+                                                    <a href="{{ route($child['route']) }}" class="px-3 py-1.5 rounded-lg text-sm {{ request()->routeIs($child['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
+                                                        {{ $child['label'] }}
+                                                    </a>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @else
+                                    <a href="{{ route($item['route']) }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
+                                        <span class="w-4 h-4 rounded {{ request()->routeIs($item['route']) ? 'bg-accent' : 'bg-line-strong' }} flex-none"></span>
+                                        {{ $item['label'] }}
+                                    </a>
+                                @endif
+                            @endif
+                        @endforeach
+
+                        @php $adminItems = collect(\App\Support\NavItems::adminOnly())->filter(fn ($i) => auth()->user()?->can($i['permission'])); @endphp
+                        @if ($adminItems->isNotEmpty())
+                            <div class="h-px bg-line my-3"></div>
+                            @foreach ($adminItems as $item)
+                                <a href="{{ route($item['route']) }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
+                                    <span class="w-4 h-4 rounded {{ request()->routeIs($item['route']) ? 'bg-accent' : 'bg-line-strong' }} flex-none"></span>
+                                    {{ $item['label'] }}
+                                </a>
+                            @endforeach
+                        @endif
+                    </nav>
+                </aside>
+
+                <div class="flex-1 min-w-0 flex flex-col">
+                    @isset($header)
+                        <div class="px-6 py-5 border-b border-line bg-surface">
+                            <h1 class="text-xl font-bold text-ink">{{ $header }}</h1>
+                        </div>
+                    @endisset
+
+                    <main class="flex-1 p-6">
+                        {{ $slot }}
+                    </main>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

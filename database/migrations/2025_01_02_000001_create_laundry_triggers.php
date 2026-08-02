@@ -47,16 +47,13 @@ return new class extends Migration
             'model' => 'App\\\\Models\\\\DamageResolution',
             'snapshot' => "JSON_OBJECT('resolution_type', NEW.resolution_type, 'amount', NEW.amount)",
         ],
-        'user_roles' => [
-            'model' => 'App\\\\Models\\\\UserRole',
-            'snapshot' => "JSON_OBJECT('user_id', NEW.user_id, 'role_id', NEW.role_id)",
-        ],
     ];
 
     public function up(): void
     {
         $this->createBusinessRuleTriggers();
         $this->createAuditTriggers();
+        $this->createRoleAssignmentAuditTrigger();
     }
 
     public function down(): void
@@ -83,6 +80,8 @@ return new class extends Migration
         foreach ($businessTriggers as $trigger) {
             DB::unprepared("DROP TRIGGER IF EXISTS {$trigger}");
         }
+
+        DB::unprepared('DROP TRIGGER IF EXISTS trg_model_has_roles_audit_insert');
     }
 
     private function createAuditTriggers(): void
@@ -282,6 +281,26 @@ return new class extends Migration
             FOR EACH ROW
             BEGIN
                 UPDATE customers SET store_credit_balance = NEW.balance_after WHERE id = NEW.customer_id;
+            END
+        ");
+    }
+
+    /**
+     * spatie/laravel-permission's model_has_roles is a pivot with a composite
+     * primary key (role_id, model_id, model_type) -- no surrogate id -- so it
+     * can't go through the generic loop above (which assumes NEW.id). Role
+     * removal goes through DELETE, which the app credential is allowed to do
+     * per ops_grants.sql, so only the grant side is audited here.
+     */
+    private function createRoleAssignmentAuditTrigger(): void
+    {
+        DB::unprepared("
+            CREATE TRIGGER trg_model_has_roles_audit_insert
+            AFTER INSERT ON model_has_roles
+            FOR EACH ROW
+            BEGIN
+                INSERT INTO activity_log (log_name, description, subject_type, subject_id, causer_type, causer_id, properties, created_at)
+                VALUES ('default', 'role granted', NEW.model_type, NEW.model_id, 'App\\\\Models\\\\User', @current_user_id, JSON_OBJECT('role_id', NEW.role_id), NOW());
             END
         ");
     }

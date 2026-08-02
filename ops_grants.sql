@@ -53,6 +53,8 @@ GRANT UPDATE, DELETE ON {{DB_NAME}}.failed_jobs TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.jobs TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.job_batches TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.laundry_packages TO 'laundry_app'@'%';
+GRANT UPDATE, DELETE ON {{DB_NAME}}.model_has_permissions TO 'laundry_app'@'%';
+GRANT UPDATE, DELETE ON {{DB_NAME}}.model_has_roles TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.notifications TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.orders TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.order_clothes_lines TO 'laundry_app'@'%';
@@ -64,13 +66,12 @@ GRANT UPDATE, DELETE ON {{DB_NAME}}.permissions TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.receipts TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.refunds TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.roles TO 'laundry_app'@'%';
-GRANT UPDATE, DELETE ON {{DB_NAME}}.role_permissions TO 'laundry_app'@'%';
+GRANT UPDATE, DELETE ON {{DB_NAME}}.role_has_permissions TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.sessions TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.settings TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.subscriptions TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.subscription_packages TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.users TO 'laundry_app'@'%';
-GRANT UPDATE, DELETE ON {{DB_NAME}}.user_roles TO 'laundry_app'@'%';
 
 -- ============================================================
 -- laundry_readonly -- optional, for a future reporting/BI connection
