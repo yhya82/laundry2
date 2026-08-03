@@ -7,6 +7,7 @@ use App\Models\LaundryPackage;
 use App\Models\Order;
 use App\Support\CollectionScheduler;
 use App\Support\Numbering;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -35,6 +36,8 @@ new class extends Component
     public string $discountReason = '';
 
     public float $extraCharge = 0;
+
+    public float $creditToApply = 0;
 
     public string $paymentMethod = 'cash';
 
@@ -146,6 +149,24 @@ new class extends Component
         }
 
         return max(0, $this->subtotal - $this->discount);
+    }
+
+    #[Computed]
+    public function availableCredit(): float
+    {
+        return (float) ($this->selectedCustomer->store_credit_balance ?? 0);
+    }
+
+    #[Computed]
+    public function maxApplicableCredit(): float
+    {
+        return round(min($this->availableCredit, $this->total), 2);
+    }
+
+    #[Computed]
+    public function remainingDue(): float
+    {
+        return max(0, round($this->total - $this->creditToApply, 2));
     }
 
     public function selectCustomer(int $id): void
@@ -278,10 +299,12 @@ new class extends Component
         $this->validate([
             'customerId' => ['required', 'exists:customers,id'],
             'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
-            'paymentMethod' => ['required', 'in:cash,card,mixed'],
+            'creditToApply' => ['numeric', 'min:0', 'max:'.$this->maxApplicableCredit],
+            'paymentMethod' => [$this->remainingDue > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
         ], [
             'customerId.required' => 'Select or add a customer first.',
             'discountReason.required' => 'A discount needs a reason.',
+            'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
         ]);
 
         if (empty($this->cart)) {
@@ -290,35 +313,35 @@ new class extends Component
             return;
         }
 
-        $order = DB::transaction(function () {
-            $order = Order::create([
-                'order_number' => Numbering::nextOrderNumber(),
-                'customer_id' => $this->customerId,
-                'user_id' => auth()->id(),
-                'order_source' => 'walk_in',
-                'subtotal' => $this->subtotal,
-                'discount' => $this->discount,
-                'discount_reason' => $this->discount > 0 ? $this->discountReason : null,
-                'extra_charge' => 0,
-            ]);
-            $order->refresh();
+        try {
+            $order = DB::transaction(function () {
+                $order = Order::create([
+                    'order_number' => Numbering::nextOrderNumber(),
+                    'customer_id' => $this->customerId,
+                    'user_id' => auth()->id(),
+                    'order_source' => 'walk_in',
+                    'subtotal' => $this->subtotal,
+                    'discount' => $this->discount,
+                    'discount_reason' => $this->discount > 0 ? $this->discountReason : null,
+                    'extra_charge' => 0,
+                ]);
+                $order->refresh();
 
-            $this->createLineItems($order);
+                $this->createLineItems($order);
+                $this->applyCreditAndPayment($order);
 
-            $order->payments()->create([
-                'amount' => $order->total_amount,
-                'credit_applied' => 0,
-                'method' => $this->paymentMethod,
-                'received_by' => auth()->id(),
-            ]);
+                $order->receipt()->create([
+                    'receipt_number' => Numbering::nextReceiptNumber(),
+                    'reprint_count' => 0,
+                ]);
 
-            $order->receipt()->create([
-                'receipt_number' => Numbering::nextReceiptNumber(),
-                'reprint_count' => 0,
-            ]);
+                return $order;
+            });
+        } catch (QueryException $e) {
+            $this->addError('cart', $this->friendlyDatabaseError($e));
 
-            return $order;
-        });
+            return;
+        }
 
         session()->flash('status', "Order {$order->order_number} created.");
 
@@ -337,9 +360,11 @@ new class extends Component
 
         $this->validate([
             'extraCharge' => [$this->overAllowanceCount > 0 ? 'required' : 'nullable', 'numeric', 'min:0.01'],
-            'paymentMethod' => [$this->total > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
+            'creditToApply' => ['numeric', 'min:0', 'max:'.$this->maxApplicableCredit],
+            'paymentMethod' => [$this->remainingDue > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
         ], [
             'extraCharge.required' => 'This collection is over the allowance -- enter the extra charge.',
+            'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
         ]);
 
         if (empty($this->cart)) {
@@ -348,40 +373,38 @@ new class extends Component
             return;
         }
 
-        $order = DB::transaction(function () use ($collection) {
-            $order = Order::create([
-                'order_number' => Numbering::nextOrderNumber(),
-                'customer_id' => $collection->subscription->customer_id,
-                'collection_id' => $collection->id,
-                'user_id' => auth()->id(),
-                'order_source' => 'subscription',
-                'subtotal' => 0,
-                'discount' => 0,
-                'extra_charge' => $this->overAllowanceCount > 0 ? $this->extraCharge : 0,
-            ]);
-            $order->refresh();
-
-            $this->createLineItems($order);
-
-            if ($order->total_amount > 0) {
-                $order->payments()->create([
-                    'amount' => $order->total_amount,
-                    'credit_applied' => 0,
-                    'method' => $this->paymentMethod,
-                    'received_by' => auth()->id(),
+        try {
+            $order = DB::transaction(function () use ($collection) {
+                $order = Order::create([
+                    'order_number' => Numbering::nextOrderNumber(),
+                    'customer_id' => $collection->subscription->customer_id,
+                    'collection_id' => $collection->id,
+                    'user_id' => auth()->id(),
+                    'order_source' => 'subscription',
+                    'subtotal' => 0,
+                    'discount' => 0,
+                    'extra_charge' => $this->overAllowanceCount > 0 ? $this->extraCharge : 0,
                 ]);
-            }
+                $order->refresh();
 
-            $order->receipt()->create([
-                'receipt_number' => Numbering::nextReceiptNumber(),
+                $this->createLineItems($order);
+                $this->applyCreditAndPayment($order);
+
+                $order->receipt()->create([
+                    'receipt_number' => Numbering::nextReceiptNumber(),
                 'reprint_count' => 0,
             ]);
 
-            $collection->update(['status' => 'collected', 'collected_at' => now()]);
-            CollectionScheduler::scheduleNext($collection->subscription, $collection->scheduled_date);
+                $collection->update(['status' => 'collected', 'collected_at' => now()]);
+                CollectionScheduler::scheduleNext($collection->subscription, $collection->scheduled_date);
 
-            return $order;
-        });
+                return $order;
+            });
+        } catch (QueryException $e) {
+            $this->addError('cart', $this->friendlyDatabaseError($e));
+
+            return;
+        }
 
         session()->flash('status', "Collection recorded as order {$order->order_number}.");
 
@@ -418,6 +441,55 @@ new class extends Component
                 ]);
             }
         }
+    }
+
+    /**
+     * Applies store credit (§2.5: "Apply credit_applied portion, collect the
+     * remaining cash/card amount") then records the payment. The
+     * credit_transactions insert is what actually enforces the balance check
+     * (trg_credit_transactions_overdraft_guard, row-locked) -- creditToApply
+     * being pre-validated against maxApplicableCredit is a UX nicety, not the
+     * real guarantee against double-spend.
+     */
+    protected function applyCreditAndPayment(Order $order): void
+    {
+        if ($order->total_amount <= 0) {
+            return;
+        }
+
+        $creditApplied = min($this->creditToApply, $order->total_amount);
+
+        if ($creditApplied > 0) {
+            $order->customer->creditTransactions()->create([
+                'type' => 'debit',
+                'amount' => $creditApplied,
+                'reference_type' => 'order',
+                'reference_id' => $order->id,
+                'created_by' => auth()->id(),
+            ]);
+        }
+
+        $order->payments()->create([
+            'amount' => $order->total_amount,
+            'credit_applied' => $creditApplied,
+            'method' => $creditApplied >= $order->total_amount ? 'store_credit' : $this->paymentMethod,
+            'received_by' => auth()->id(),
+        ]);
+    }
+
+    /**
+     * Translates a trigger's SIGNAL rejection into a message a staff member
+     * can act on, instead of a raw SQLSTATE error reaching the UI.
+     */
+    protected function friendlyDatabaseError(QueryException $e): string
+    {
+        $message = $e->getMessage();
+
+        return match (true) {
+            str_contains($message, 'Payment would exceed order total') => 'This payment would exceed the order total. Refresh and try again.',
+            str_contains($message, 'Insufficient store credit balance') => 'Insufficient store credit balance -- it may have just been redeemed elsewhere. Refresh and try again.',
+            default => 'Something went wrong saving this order. No charge was made.',
+        };
     }
 };
 ?>
@@ -571,17 +643,6 @@ new class extends Component
                 @else
                     <p class="text-sm text-success">Within allowance — no extra charge.</p>
                 @endif
-
-                @if ($this->total > 0)
-                    <div class="flex items-center gap-3">
-                        <label class="text-sm text-ink-muted w-28">Payment</label>
-                        <select wire:model="paymentMethod" class="flex-1 bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
-                            <option value="cash">Cash</option>
-                            <option value="card">Card</option>
-                            <option value="mixed">Mixed</option>
-                        </select>
-                    </div>
-                @endif
             @else
                 <div class="flex items-center justify-between text-sm">
                     <span class="text-ink-muted">Subtotal</span>
@@ -594,9 +655,20 @@ new class extends Component
                     <input type="text" wire:model="discountReason" placeholder="Reason (required if discount > 0)" class="flex-1 bg-surface border-line-strong rounded-lg shadow-sm text-sm">
                 </div>
                 @error('discountReason') <p class="text-critical text-xs">{{ $message }}</p> @enderror
+            @endif
 
+            @if ($this->total > 0 && $this->availableCredit > 0)
                 <div class="flex items-center gap-3">
-                    <label class="text-sm text-ink-muted w-20">Payment</label>
+                    <label class="text-sm text-ink-muted w-28">Store credit</label>
+                    <input type="number" step="0.01" min="0" max="{{ $this->maxApplicableCredit }}" wire:model.live="creditToApply" class="w-32 bg-surface border-line-strong rounded-lg shadow-sm text-sm font-mono">
+                    <span class="text-xs text-ink-faint">of GMD {{ number_format($this->availableCredit, 2) }} available</span>
+                </div>
+                @error('creditToApply') <p class="text-critical text-xs">{{ $message }}</p> @enderror
+            @endif
+
+            @if ($this->remainingDue > 0)
+                <div class="flex items-center gap-3">
+                    <label class="text-sm text-ink-muted w-28">Payment</label>
                     <select wire:model="paymentMethod" class="flex-1 bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
                         <option value="cash">Cash</option>
                         <option value="card">Card</option>
@@ -605,9 +677,16 @@ new class extends Component
                 </div>
             @endif
 
+            @if ($this->creditToApply > 0)
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-ink-muted">Store credit applied</span>
+                    <span class="font-mono tabular-nums text-accent-ink">− GMD {{ number_format(min($this->creditToApply, $this->total), 2) }}</span>
+                </div>
+            @endif
+
             <div class="flex items-center justify-between pt-2 border-t border-line">
-                <span class="font-semibold text-ink">Total</span>
-                <span class="font-mono text-lg font-bold tabular-nums text-accent-ink">GMD {{ number_format($this->total, 2) }}</span>
+                <span class="font-semibold text-ink">{{ $this->creditToApply > 0 ? 'Remaining due' : 'Total' }}</span>
+                <span class="font-mono text-lg font-bold tabular-nums text-accent-ink">GMD {{ number_format($this->creditToApply > 0 ? $this->remainingDue : $this->total, 2) }}</span>
             </div>
 
             <button type="button" wire:click="submitOrder" wire:loading.attr="disabled" class="w-full inline-flex items-center justify-center px-5 py-3 bg-accent rounded-lg text-white font-semibold text-sm disabled:opacity-60">

@@ -39,4 +39,9 @@ class Payment extends Model
     {
         return $this->hasMany(Refund::class);
     }
+
+    public function remainingRefundable(): float
+    {
+        return max(0, round($this->amount - $this->refunds()->sum('amount'), 2));
+    }
 }

@@ -6,6 +6,7 @@ use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\LaundryPackageController;
 use App\Http\Controllers\OrderController;
+use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SubscriptionPackageController;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Route;
 
 // Sidebar destinations with a real controller now -- excluded from the
 // placeholder-route loop below.
-$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index'];
+$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index'];
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
@@ -124,6 +125,14 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::middleware('permission:collections.manage')->group(function () {
         Route::post('/collections/{collection}/skip', [CollectionController::class, 'skip'])->name('collections.skip');
         Route::get('/collections/{collection}/collect', [CollectionController::class, 'collect'])->name('collections.collect');
+    });
+
+    Route::middleware('permission:payments.view')->group(function () {
+        Route::get('/payments', [PaymentController::class, 'index'])->name('payments.index');
+    });
+
+    Route::middleware('permission:payments.manage')->group(function () {
+        Route::post('/payments/{payment}/refund', [PaymentController::class, 'refund'])->name('payments.refund');
     });
 
     // Placeholder routes for every remaining sidebar destination. Each is
