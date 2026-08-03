@@ -5,10 +5,13 @@ use App\Http\Controllers\ClothingItemController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DamageRecordController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\LaundryPackageController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SubscriptionPackageController;
 use App\Http\Controllers\ThemeController;
@@ -17,23 +20,13 @@ use Illuminate\Support\Facades\Route;
 
 // Sidebar destinations with a real controller now -- excluded from the
 // placeholder-route loop below.
-$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index'];
+$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index', 'expenses.index', 'reports.index'];
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
 });
 
-Route::get('/dashboard', function () {
-    $queueCounts = auth()->user()->can('orders.view')
-        ? \App\Models\Order::query()
-            ->whereIn('status', array_keys(\App\Models\Order::STAGE_SEQUENCE))
-            ->selectRaw('status, count(*) as total')
-            ->groupBy('status')
-            ->pluck('total', 'status')
-        : collect();
-
-    return view('dashboard', compact('queueCounts'));
-})->middleware('auth')->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('auth')->name('dashboard');
 
 Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -149,6 +142,24 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::middleware('permission:damage.manage')->group(function () {
         Route::post('/damage/{damageRecord}/transition', [DamageRecordController::class, 'transition'])->name('damage.transition');
         Route::post('/damage/{damageRecord}/resolve', [DamageRecordController::class, 'resolve'])->name('damage.resolve');
+    });
+
+    Route::middleware('permission:expenses.view')->group(function () {
+        Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
+    });
+
+    Route::middleware('permission:expenses.manage')->group(function () {
+        Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
+        Route::put('/expenses/{expense}', [ExpenseController::class, 'update'])->name('expenses.update');
+        Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy'])->name('expenses.destroy');
+        Route::post('/expenses/categories', [ExpenseController::class, 'storeCategory'])->name('expenses.categories.store');
+    });
+
+    Route::middleware('permission:reports.view')->group(function () {
+        Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+        Route::get('/reports/export/revenue', [ReportController::class, 'exportRevenue'])->name('reports.export.revenue');
+        Route::get('/reports/export/damage', [ReportController::class, 'exportDamage'])->name('reports.export.damage');
+        Route::get('/reports/export/expenses', [ReportController::class, 'exportExpenses'])->name('reports.export.expenses');
     });
 
     // Placeholder routes for every remaining sidebar destination. Each is
