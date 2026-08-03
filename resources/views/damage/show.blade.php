@@ -1,13 +1,6 @@
 <x-app-layout>
     <x-slot name="header">Damage Report #{{ $damageRecord->id }} — {{ $damageRecord->order->order_number }}</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-    @if ($errors->any())
-        <div class="mb-4 text-sm text-critical bg-critical-soft border border-critical/30 rounded-lg px-4 py-2.5">{{ $errors->first() }}</div>
-    @endif
-
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <div class="lg:col-span-2 bg-surface border border-line rounded-2xl p-6">

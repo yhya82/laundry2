@@ -15,6 +15,8 @@
     <div
         x-data="{
             todayRevenue: @js($todayRevenue),
+            monthRevenue: @js($monthRevenue),
+            yearRevenue: @js($yearRevenue),
             pendingOrders: @js($pendingOrders),
             queueCounts: @js((object) $queueCounts),
             pendingStages: @js(array_keys(\App\Models\Order::STAGE_SEQUENCE)),
@@ -41,6 +43,12 @@
                     if (this.todayRevenue !== null && e.isToday) {
                         this.todayRevenue = parseFloat(this.todayRevenue) + parseFloat(e.amount);
                     }
+                    if (this.monthRevenue !== null) {
+                        this.monthRevenue = parseFloat(this.monthRevenue) + parseFloat(e.amount);
+                    }
+                    if (this.yearRevenue !== null) {
+                        this.yearRevenue = parseFloat(this.yearRevenue) + parseFloat(e.amount);
+                    }
                 });
             }
         }"
@@ -48,9 +56,16 @@
         @if ($todayRevenue !== null || $activeSubs !== null || $pendingOrders !== null || $monthExpenses !== null)
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
                 @if ($todayRevenue !== null)
-                    <div class="bg-surface border border-line rounded-2xl p-5">
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Today's Revenue</div>
-                        <div class="text-2xl font-bold text-accent-ink tabular-nums" x-text="'GMD ' + parseFloat(todayRevenue).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
+                    <div class="bg-surface border border-line rounded-2xl p-5" x-data="{ period: 'day' }">
+                        <div class="flex items-center justify-between mb-1 gap-2">
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint truncate" x-text="period === 'day' ? 'Today\'s Revenue' : period === 'month' ? 'Revenue (Month)' : 'Revenue (Year)'"></div>
+                            <div class="flex gap-0.5 bg-surface-2 rounded-full p-0.5 flex-none">
+                                <button type="button" @click="period = 'day'" class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase" :class="period === 'day' ? 'bg-accent text-white' : 'text-ink-faint hover:text-ink'">Day</button>
+                                <button type="button" @click="period = 'month'" class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase" :class="period === 'month' ? 'bg-accent text-white' : 'text-ink-faint hover:text-ink'">Mo</button>
+                                <button type="button" @click="period = 'year'" class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold uppercase" :class="period === 'year' ? 'bg-accent text-white' : 'text-ink-faint hover:text-ink'">Yr</button>
+                            </div>
+                        </div>
+                        <div class="text-2xl font-bold text-accent-ink tabular-nums" x-text="'GMD ' + parseFloat(period === 'day' ? todayRevenue : period === 'month' ? monthRevenue : yearRevenue).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
                     </div>
                 @endif
                 @if ($activeSubs !== null)

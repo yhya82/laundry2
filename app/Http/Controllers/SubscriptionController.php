@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreSubscriptionRequest;
 use App\Models\Customer;
+use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\SubscriptionPackage;
 use App\Support\CollectionScheduler;
@@ -29,6 +30,10 @@ class SubscriptionController extends Controller
 
     public function store(StoreSubscriptionRequest $request): RedirectResponse
     {
+        if (Setting::get('subscription.allow_new_signups', 'true') !== 'true') {
+            return back()->withErrors(['subscription' => 'New subscription sign-ups are currently disabled in Settings.']);
+        }
+
         $subscription = Subscription::create($request->validated());
 
         CollectionScheduler::scheduleFirst($subscription);

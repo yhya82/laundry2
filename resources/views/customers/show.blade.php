@@ -1,10 +1,6 @@
 <x-app-layout>
     <x-slot name="header">{{ $customer->full_name }}</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <div class="lg:col-span-1 space-y-5">

@@ -1,10 +1,6 @@
 <x-app-layout>
     <x-slot name="header">Orders</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-
     <div class="flex items-center justify-between mb-5 gap-4">
         <form method="GET" class="flex-1 max-w-sm flex gap-2">
             <input type="text" name="q" value="{{ request('q') }}" placeholder="Search order number…" class="w-full bg-surface border-line-strong text-ink placeholder:text-ink-faint focus:border-accent focus:ring-accent rounded-lg shadow-sm text-sm">
@@ -23,7 +19,7 @@
         @endcan
     </div>
 
-    <div class="bg-surface border border-line rounded-2xl overflow-hidden">
+    <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="bg-surface-2">
@@ -52,6 +48,24 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
+    <div class="md:hidden space-y-3">
+        @forelse ($orders as $order)
+            <a href="{{ route('orders.show', $order) }}" class="block bg-surface border border-line rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-mono font-medium text-ink">{{ $order->order_number }}</span>
+                    <x-status-pill :status="$order->status" />
+                </div>
+                <div class="flex items-center justify-between text-sm text-ink-muted">
+                    <span>{{ $order->customer->full_name }}</span>
+                    <span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->total_amount, 2) }}</span>
+                </div>
+                <div class="text-ink-faint font-mono text-xs mt-1">{{ $order->created_at->format('Y-m-d H:i') }}</div>
+            </a>
+        @empty
+            <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No orders yet.</div>
+        @endforelse
     </div>
 
     <div class="mt-4">{{ $orders->links() }}</div>

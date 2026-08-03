@@ -10,8 +10,9 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         @livewireStyles
     </head>
-    <body class="font-sans antialiased bg-bg text-ink" x-data="{ sidebarOpen: false }">
-        <div class="min-h-screen flex flex-col">
+    <body class="font-sans antialiased bg-bg text-ink h-screen overflow-hidden" x-data="{ sidebarOpen: false }">
+        <x-toast />
+        <div class="h-full flex flex-col">
 
             <!-- Top nav -->
             <header class="h-16 flex-none border-b border-line bg-surface flex items-center px-4 gap-4">
@@ -171,14 +172,14 @@
                     </nav>
                 </aside>
 
-                <div class="flex-1 min-w-0 flex flex-col">
+                <div class="flex-1 min-w-0 flex flex-col min-h-0">
                     @isset($header)
                         <div class="px-6 py-5 border-b border-line bg-surface">
                             <h1 class="text-xl font-bold text-ink">{{ $header }}</h1>
                         </div>
                     @endisset
 
-                    <main class="flex-1 p-6">
+                    <main class="flex-1 p-6 overflow-y-auto">
                         {{ $slot }}
                     </main>
                 </div>

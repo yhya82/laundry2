@@ -14,14 +14,16 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SubscriptionPackageController;
 use App\Http\Controllers\ThemeController;
+use App\Http\Controllers\UserController;
 use App\Support\NavItems;
 use Illuminate\Support\Facades\Route;
 
 // Sidebar destinations with a real controller now -- excluded from the
 // placeholder-route loop below.
-$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index', 'expenses.index', 'reports.index'];
+$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index', 'expenses.index', 'reports.index', 'users.index', 'settings.index'];
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
@@ -164,6 +166,18 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::get('/reports/export/revenue', [ReportController::class, 'exportRevenue'])->name('reports.export.revenue');
         Route::get('/reports/export/damage', [ReportController::class, 'exportDamage'])->name('reports.export.damage');
         Route::get('/reports/export/expenses', [ReportController::class, 'exportExpenses'])->name('reports.export.expenses');
+    });
+
+    Route::middleware('permission:users.manage')->group(function () {
+        Route::get('/users', [UserController::class, 'index'])->name('users.index');
+        Route::post('/users', [UserController::class, 'store'])->name('users.store');
+        Route::put('/users/{user}/roles', [UserController::class, 'updateRoles'])->name('users.roles.update');
+        Route::put('/roles/{role}/permissions', [UserController::class, 'updateRolePermissions'])->name('roles.permissions.update');
+    });
+
+    Route::middleware('permission:settings.manage')->group(function () {
+        Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
+        Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
     });
 
     // Placeholder routes for every remaining sidebar destination. Each is

@@ -12,4 +12,9 @@ class Setting extends Model
     {
         return static::where('key', $key)->value('value') ?? $default;
     }
+
+    public static function set(string $key, ?string $value, string $group, string $type = 'string'): void
+    {
+        static::updateOrCreate(['key' => $key], ['group' => $group, 'value' => $value, 'type' => $type]);
+    }
 }

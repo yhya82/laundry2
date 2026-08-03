@@ -1,14 +1,7 @@
 <x-app-layout>
     <x-slot name="header">Payments</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-    @if ($errors->any())
-        <div class="mb-4 text-sm text-critical bg-critical-soft border border-critical/30 rounded-lg px-4 py-2.5">{{ $errors->first() }}</div>
-    @endif
-
-    <div class="bg-surface border border-line rounded-2xl overflow-hidden">
+    <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <table class="w-full text-sm">
             <thead class="bg-surface-2">
                 <tr>
@@ -69,6 +62,43 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="md:hidden space-y-3">
+        @forelse ($payments as $payment)
+            <div class="bg-surface border border-line rounded-2xl p-4" x-data="{ refunding: false }">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-ink">{{ $payment->order?->customer?->full_name ?? $payment->subscription?->customer?->full_name ?? '—' }}</span>
+                    <x-status-pill :status="$payment->status" />
+                </div>
+                <div class="flex items-center justify-between text-sm text-ink-muted mb-1">
+                    <span>
+                        @if ($payment->order)
+                            <a href="{{ route('orders.show', $payment->order) }}" class="font-mono text-accent-ink hover:underline">{{ $payment->order->order_number }}</a>
+                        @else
+                            <span class="text-ink-faint">Subscription</span>
+                        @endif
+                        · {{ ucfirst(str_replace('_', ' ', $payment->method)) }}
+                    </span>
+                    <span class="font-mono tabular-nums text-ink">GMD {{ number_format($payment->amount, 2) }}</span>
+                </div>
+                <div class="text-ink-faint font-mono text-xs">{{ $payment->created_at->format('Y-m-d H:i') }}</div>
+                @can('payments.manage')
+                    @if ($payment->remainingRefundable() > 0)
+                        <button type="button" @click="refunding = !refunding" class="text-critical text-xs hover:underline mt-2">Refund</button>
+                        <form x-show="refunding" x-cloak method="POST" action="{{ route('payments.refund', $payment) }}" class="mt-2 space-y-2">
+                            @csrf
+                            <div class="text-xs text-ink-faint">Refundable: GMD {{ number_format($payment->remainingRefundable(), 2) }}</div>
+                            <input type="number" step="0.01" min="0.01" max="{{ $payment->remainingRefundable() }}" name="amount" placeholder="Amount" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm font-mono" required>
+                            <input type="text" name="reason" placeholder="Reason (optional)" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm">
+                            <button type="submit" class="w-full px-4 py-1.5 bg-critical-soft text-critical rounded-lg text-xs font-semibold">Confirm refund</button>
+                        </form>
+                    @endif
+                @endcan
+            </div>
+        @empty
+            <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No payments recorded yet.</div>
+        @endforelse
     </div>
 
     <div class="mt-4">{{ $payments->links() }}</div>

@@ -1,13 +1,6 @@
 <x-app-layout>
     <x-slot name="header">Collections Schedule</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-    @if ($errors->any())
-        <div class="mb-4 text-sm text-critical bg-critical-soft border border-critical/30 rounded-lg px-4 py-2.5">{{ $errors->first() }}</div>
-    @endif
-
     <form method="GET" class="mb-5 max-w-xs">
         <select name="status" onchange="this.form.submit()" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
             <option value="">All statuses</option>
@@ -17,7 +10,7 @@
         </select>
     </form>
 
-    <div class="bg-surface border border-line rounded-2xl overflow-hidden">
+    <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <table class="w-full text-sm">
             <thead class="bg-surface-2">
                 <tr>
@@ -56,6 +49,34 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="md:hidden space-y-3">
+        @forelse ($collections as $collection)
+            <div class="bg-surface border border-line rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <a href="{{ route('subscriptions.show', $collection->subscription) }}" class="text-ink hover:text-accent-ink font-medium">{{ $collection->subscription->customer->full_name }}</a>
+                    <x-status-pill :status="$collection->status" />
+                </div>
+                <div class="flex items-center justify-between text-sm text-ink-muted">
+                    <span>{{ $collection->subscription->subscriptionPackage->name }}</span>
+                    <span class="font-mono text-xs">{{ $collection->scheduled_date->format('Y-m-d') }}</span>
+                </div>
+                @if ($collection->status === 'scheduled')
+                    @can('collections.manage')
+                        <div class="flex gap-4 mt-2">
+                            <a href="{{ route('collections.collect', $collection) }}" class="text-accent-ink text-xs font-semibold hover:underline">Collect</a>
+                            <form method="POST" action="{{ route('collections.skip', $collection) }}" onsubmit="return confirm('Skip this collection? No order will be created.')">
+                                @csrf
+                                <button type="submit" class="text-critical text-xs hover:underline">Skip</button>
+                            </form>
+                        </div>
+                    @endcan
+                @endif
+            </div>
+        @empty
+            <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No collections scheduled.</div>
+        @endforelse
     </div>
 
     <div class="mt-4">{{ $collections->links() }}</div>

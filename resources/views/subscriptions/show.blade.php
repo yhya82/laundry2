@@ -1,10 +1,6 @@
 <x-app-layout>
     <x-slot name="header">{{ $subscription->customer->full_name }} — {{ $subscription->subscriptionPackage->name }}</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div class="bg-surface border border-line rounded-2xl p-6">
             <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-4">Subscription</div>

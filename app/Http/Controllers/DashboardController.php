@@ -27,6 +27,14 @@ class DashboardController extends Controller
             ? Payment::where('status', '!=', 'refunded')->whereDate('created_at', today())->sum('amount')
             : null;
 
+        $monthRevenue = $user->can('payments.view')
+            ? Payment::where('status', '!=', 'refunded')->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->sum('amount')
+            : null;
+
+        $yearRevenue = $user->can('payments.view')
+            ? Payment::where('status', '!=', 'refunded')->whereBetween('created_at', [now()->startOfYear(), now()->endOfYear()])->sum('amount')
+            : null;
+
         $activeSubs = $user->can('subscriptions.view')
             ? Subscription::where('status', 'active')->count()
             : null;
@@ -67,6 +75,8 @@ class DashboardController extends Controller
         return view('dashboard', compact(
             'queueCounts',
             'todayRevenue',
+            'monthRevenue',
+            'yearRevenue',
             'activeSubs',
             'pendingOrders',
             'monthExpenses',

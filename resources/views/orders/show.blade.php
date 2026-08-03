@@ -1,13 +1,6 @@
 <x-app-layout>
     <x-slot name="header">{{ $order->order_number }}</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-    @if ($errors->any())
-        <div class="mb-4 text-sm text-critical bg-critical-soft border border-critical/30 rounded-lg px-4 py-2.5">{{ $errors->first() }}</div>
-    @endif
-
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <div class="lg:col-span-1 space-y-5">
@@ -52,6 +45,12 @@
                         <dt class="text-ink-muted">Created</dt>
                         <dd class="text-ink font-mono text-xs">{{ $order->created_at->format('Y-m-d H:i') }}</dd>
                     </div>
+                    @if (! $order->isTerminal() && ($turnaroundHours = \App\Models\Setting::get('laundry.default_turnaround_hours')))
+                        <div class="flex justify-between">
+                            <dt class="text-ink-muted">Est. ready</dt>
+                            <dd class="text-ink font-mono text-xs">{{ $order->created_at->copy()->addHours((int) $turnaroundHours)->format('Y-m-d H:i') }}</dd>
+                        </div>
+                    @endif
                     @if ($order->receipt)
                         <div class="flex justify-between pt-2 border-t border-line">
                             <dt class="text-ink-muted">Receipt</dt>

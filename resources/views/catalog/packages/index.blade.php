@@ -1,18 +1,16 @@
 <x-app-layout>
     <x-slot name="header">Packages</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-    @if ($errors->any())
-        <div class="mb-4 text-sm text-critical bg-critical-soft border border-critical/30 rounded-lg px-4 py-2.5">{{ $errors->first() }}</div>
-    @endif
-
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
         <section>
-            <h2 class="font-semibold text-ink mb-3">Laundry Packages <span class="text-ink-faint font-normal text-sm">(walk-in orders)</span></h2>
-            <div class="bg-surface border border-line rounded-2xl overflow-hidden mb-4">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="font-semibold text-ink">Laundry Packages <span class="text-ink-faint font-normal text-sm">(walk-in orders)</span></h2>
+                @can('catalog.manage')
+                    <x-panel-trigger panel="laundry-package-create">+ New</x-panel-trigger>
+                @endcan
+            </div>
+            <div class="bg-surface border border-line rounded-2xl overflow-hidden mb-4 hidden md:block">
                 <table class="w-full text-sm">
                     <thead class="bg-surface-2">
                         <tr>
@@ -47,28 +45,39 @@
                     </tbody>
                 </table>
             </div>
-
-            @can('catalog.manage')
-                <div class="bg-surface border border-line rounded-2xl p-5">
-                    <form method="POST" action="{{ route('catalog.packages.laundry.store') }}" class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                        @csrf
-                        <div class="sm:col-span-1">
-                            <x-input-label for="lp_name" value="Name" />
-                            <x-text-input id="lp_name" name="name" type="text" class="block w-full" required />
+            <div class="md:hidden space-y-3 mb-4">
+                @forelse ($laundryPackages as $package)
+                    <div class="bg-surface border border-line rounded-2xl p-4">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-medium text-ink">{{ $package->name }}</span>
+                            <span class="font-mono text-xs font-semibold px-2.5 py-1 rounded-full {{ $package->is_active ? 'bg-success-soft text-success' : 'bg-pill-bg text-pill-ink' }}">
+                                {{ $package->is_active ? 'Active' : 'Inactive' }}
+                            </span>
                         </div>
-                        <div>
-                            <x-input-label for="lp_price" value="Price (GMD)" />
-                            <x-text-input id="lp_price" name="base_price" type="number" step="0.01" min="0" class="block w-full" required />
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->base_price, 2) }}</span>
+                            @can('catalog.manage')
+                                <form method="POST" action="{{ route('catalog.packages.laundry.destroy', $package) }}" onsubmit="return confirm('Delete this package?')">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="text-critical text-xs hover:underline">Delete</button>
+                                </form>
+                            @endcan
                         </div>
-                        <x-primary-button>Add</x-primary-button>
-                    </form>
-                </div>
-            @endcan
+                    </div>
+                @empty
+                    <div class="bg-surface border border-line rounded-2xl p-8 text-center text-ink-faint text-sm">No laundry packages yet.</div>
+                @endforelse
+            </div>
         </section>
 
         <section>
-            <h2 class="font-semibold text-ink mb-3">Subscription Packages <span class="text-ink-faint font-normal text-sm">(recurring plans)</span></h2>
-            <div class="bg-surface border border-line rounded-2xl overflow-hidden mb-4">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="font-semibold text-ink">Subscription Packages <span class="text-ink-faint font-normal text-sm">(recurring plans)</span></h2>
+                @can('catalog.manage')
+                    <x-panel-trigger panel="subscription-package-create">+ New</x-panel-trigger>
+                @endcan
+            </div>
+            <div class="bg-surface border border-line rounded-2xl overflow-hidden mb-4 hidden md:block">
                 <table class="w-full text-sm">
                     <thead class="bg-surface-2">
                         <tr>
@@ -99,30 +108,72 @@
                     </tbody>
                 </table>
             </div>
-
-            @can('catalog.manage')
-                <div class="bg-surface border border-line rounded-2xl p-5">
-                    <form method="POST" action="{{ route('catalog.packages.subscription.store') }}" class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                        @csrf
-                        <div>
-                            <x-input-label for="sp_name" value="Name" />
-                            <x-text-input id="sp_name" name="name" type="text" class="block w-full" required />
+            <div class="md:hidden space-y-3 mb-4">
+                @forelse ($subscriptionPackages as $package)
+                    <div class="bg-surface border border-line rounded-2xl p-4">
+                        <div class="font-medium text-ink mb-1">{{ $package->name }}</div>
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->monthly_price, 2) }} · {{ $package->clothes_allowance }} items</span>
+                            @can('catalog.manage')
+                                <form method="POST" action="{{ route('catalog.packages.subscription.destroy', $package) }}" onsubmit="return confirm('Delete this package?')">
+                                    @csrf @method('DELETE')
+                                    <button type="submit" class="text-critical text-xs hover:underline">Delete</button>
+                                </form>
+                            @endcan
                         </div>
-                        <div>
-                            <x-input-label for="sp_price" value="Monthly (GMD)" />
-                            <x-text-input id="sp_price" name="monthly_price" type="number" step="0.01" min="0" class="block w-full" required />
-                        </div>
-                        <div>
-                            <x-input-label for="sp_allowance" value="Allowance" />
-                            <x-text-input id="sp_allowance" name="clothes_allowance" type="number" min="1" class="block w-full" required />
-                        </div>
-                        <div class="sm:col-span-3">
-                            <x-primary-button>Add</x-primary-button>
-                        </div>
-                    </form>
-                </div>
-            @endcan
+                    </div>
+                @empty
+                    <div class="bg-surface border border-line rounded-2xl p-8 text-center text-ink-faint text-sm">No subscription packages yet.</div>
+                @endforelse
+            </div>
         </section>
 
     </div>
+
+    @can('catalog.manage')
+        <x-slide-panel name="laundry-package-create" title="New Laundry Package" :error-fields="['name', 'base_price']">
+            <form method="POST" action="{{ route('catalog.packages.laundry.store') }}" class="space-y-4">
+                @csrf
+                <div>
+                    <x-input-label for="lp_name" value="Name" />
+                    <x-text-input id="lp_name" name="name" type="text" class="block w-full" value="{{ old('name') }}" required autofocus />
+                    <x-input-error :messages="$errors->get('name')" class="mt-1.5" />
+                </div>
+                <div>
+                    <x-input-label for="lp_price" value="Price (GMD)" />
+                    <x-text-input id="lp_price" name="base_price" type="number" step="0.01" min="0" class="block w-full" value="{{ old('base_price') }}" required />
+                    <x-input-error :messages="$errors->get('base_price')" class="mt-1.5" />
+                </div>
+                <div class="flex items-center gap-3">
+                    <x-primary-button>Add</x-primary-button>
+                    <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                </div>
+            </form>
+        </x-slide-panel>
+
+        <x-slide-panel name="subscription-package-create" title="New Subscription Package" :error-fields="['name', 'monthly_price', 'clothes_allowance']">
+            <form method="POST" action="{{ route('catalog.packages.subscription.store') }}" class="space-y-4">
+                @csrf
+                <div>
+                    <x-input-label for="sp_name" value="Name" />
+                    <x-text-input id="sp_name" name="name" type="text" class="block w-full" value="{{ old('name') }}" required autofocus />
+                    <x-input-error :messages="$errors->get('name')" class="mt-1.5" />
+                </div>
+                <div>
+                    <x-input-label for="sp_price" value="Monthly (GMD)" />
+                    <x-text-input id="sp_price" name="monthly_price" type="number" step="0.01" min="0" class="block w-full" value="{{ old('monthly_price') }}" required />
+                    <x-input-error :messages="$errors->get('monthly_price')" class="mt-1.5" />
+                </div>
+                <div>
+                    <x-input-label for="sp_allowance" value="Allowance" />
+                    <x-text-input id="sp_allowance" name="clothes_allowance" type="number" min="1" class="block w-full" value="{{ old('clothes_allowance') }}" required />
+                    <x-input-error :messages="$errors->get('clothes_allowance')" class="mt-1.5" />
+                </div>
+                <div class="flex items-center gap-3">
+                    <x-primary-button>Add</x-primary-button>
+                    <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                </div>
+            </form>
+        </x-slide-panel>
+    @endcan
 </x-app-layout>

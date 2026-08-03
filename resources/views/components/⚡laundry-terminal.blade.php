@@ -7,6 +7,7 @@ use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\LaundryPackage;
 use App\Models\Order;
+use App\Models\Setting;
 use App\Support\CollectionScheduler;
 use App\Support\Numbering;
 use Illuminate\Database\QueryException;
@@ -298,9 +299,19 @@ new class extends Component
             return $this->submitSubscriptionCollection();
         }
 
+        $maxDiscountPercent = (float) Setting::get('order.max_discount_percent', '100');
+
         $this->validate([
             'customerId' => ['required', 'exists:customers,id'],
             'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
+            'discount' => [
+                'numeric', 'min:0',
+                function ($attribute, $value, $fail) use ($maxDiscountPercent) {
+                    if ($this->subtotal > 0 && ($value / $this->subtotal * 100) > $maxDiscountPercent) {
+                        $fail("Discount cannot exceed {$maxDiscountPercent}% of the subtotal.");
+                    }
+                },
+            ],
             'creditToApply' => ['numeric', 'min:0', 'max:'.$this->maxApplicableCredit],
             'paymentMethod' => [$this->remainingDue > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
         ], [
@@ -472,7 +483,9 @@ new class extends Component
             return null;
         }
 
-        $creditApplied = min($this->creditToApply, $order->total_amount);
+        $creditApplied = Setting::get('payment.store_credit_enabled', 'true') === 'true'
+            ? min($this->creditToApply, $order->total_amount)
+            : 0;
 
         if ($creditApplied > 0) {
             $order->customer->creditTransactions()->create([

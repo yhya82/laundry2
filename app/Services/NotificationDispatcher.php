@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Events\NotificationCreated;
 use App\Models\Customer;
 use App\Models\Notification;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -40,6 +41,13 @@ class NotificationDispatcher
             'title' => $title,
             'body' => $body,
         ]);
+
+        if (Setting::get("notification.{$channel}_enabled", 'true') !== 'true') {
+            Log::info("Notification[{$channel}] skipped -- disabled in Settings.");
+            $notification->update(['sent_at' => now()]);
+
+            return $notification;
+        }
 
         match ($channel) {
             'sms' => $this->sendSms($customer->phone, $body),

@@ -44,5 +44,9 @@
 
 <div class="flex items-center gap-3 mt-6">
     <x-primary-button>{{ isset($customer) ? 'Save changes' : 'Create customer' }}</x-primary-button>
-    <a href="{{ isset($customer) ? route('customers.show', $customer) : route('customers.index') }}" class="text-sm text-ink-muted hover:text-ink">Cancel</a>
+    @if (! empty($panel))
+        <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+    @else
+        <a href="{{ isset($customer) ? route('customers.show', $customer) : route('customers.index') }}" class="text-sm text-ink-muted hover:text-ink">Cancel</a>
+    @endif
 </div>

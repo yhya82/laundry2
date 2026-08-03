@@ -1,10 +1,6 @@
 <x-app-layout>
     <x-slot name="header">Damage Management</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-
     <form method="GET" class="mb-5 max-w-xs">
         <select name="status" onchange="this.form.submit()" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
             <option value="">All statuses</option>
@@ -14,7 +10,7 @@
         </select>
     </form>
 
-    <div class="bg-surface border border-line rounded-2xl overflow-hidden">
+    <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <table class="w-full text-sm">
             <thead class="bg-surface-2">
                 <tr>
@@ -41,6 +37,24 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="md:hidden space-y-3">
+        @forelse ($damageRecords as $damage)
+            <a href="{{ route('damage.show', $damage) }}" class="block bg-surface border border-line rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-mono text-accent-ink">{{ $damage->order->order_number }}</span>
+                    <x-status-pill :status="$damage->status" />
+                </div>
+                <div class="flex items-center justify-between text-sm text-ink-muted">
+                    <span>{{ $damage->order->customer->full_name }}</span>
+                    <span>{{ $damage->damageType->name }}</span>
+                </div>
+                <div class="text-ink-faint font-mono text-xs mt-1">{{ $damage->created_at->format('Y-m-d H:i') }}</div>
+            </a>
+        @empty
+            <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No damage reports.</div>
+        @endforelse
     </div>
 
     <div class="mt-4">{{ $damageRecords->links() }}</div>

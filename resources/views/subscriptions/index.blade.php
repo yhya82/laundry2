@@ -1,10 +1,6 @@
 <x-app-layout>
     <x-slot name="header">Subscriptions</x-slot>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-
     <div class="flex items-center justify-end mb-5">
         @can('subscriptions.manage')
             <a href="{{ route('subscriptions.create') }}" class="inline-flex items-center justify-center px-5 py-2.5 bg-accent border border-transparent rounded-lg font-semibold text-sm text-white hover:opacity-90">
@@ -13,7 +9,7 @@
         @endcan
     </div>
 
-    <div class="bg-surface border border-line rounded-2xl overflow-hidden">
+    <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <table class="w-full text-sm">
             <thead class="bg-surface-2">
                 <tr>
@@ -38,6 +34,23 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+
+    <div class="md:hidden space-y-3">
+        @forelse ($subscriptions as $subscription)
+            <a href="{{ route('subscriptions.show', $subscription) }}" class="block bg-surface border border-line rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-medium text-ink">{{ $subscription->customer->full_name }}</span>
+                    <x-status-pill :status="$subscription->status" />
+                </div>
+                <div class="flex items-center justify-between text-sm text-ink-muted">
+                    <span>{{ $subscription->subscriptionPackage->name }}</span>
+                    <span class="font-mono text-xs text-ink-faint">{{ $subscription->start_date->format('Y-m-d') }}</span>
+                </div>
+            </a>
+        @empty
+            <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No subscriptions yet.</div>
+        @endforelse
     </div>
 
     <div class="mt-4">{{ $subscriptions->links() }}</div>

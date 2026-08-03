@@ -13,17 +13,11 @@
         </form>
 
         @can('customers.manage')
-            <a href="{{ route('customers.create') }}" class="inline-flex items-center justify-center px-5 py-2.5 bg-accent border border-transparent rounded-lg font-semibold text-sm text-white hover:opacity-90">
-                + New Customer
-            </a>
+            <x-panel-trigger panel="customer-create">+ New Customer</x-panel-trigger>
         @endcan
     </div>
 
-    @if (session('status'))
-        <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
-    @endif
-
-    <div class="bg-surface border border-line rounded-2xl overflow-hidden">
+    <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="bg-surface-2">
@@ -68,7 +62,36 @@
         </div>
     </div>
 
+    <div class="md:hidden space-y-3">
+        @forelse ($customers as $customer)
+            <a href="{{ route('customers.show', $customer) }}" class="block bg-surface border border-line rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-medium text-ink">{{ $customer->full_name }}</span>
+                    <span class="inline-flex items-center gap-1.5 font-mono text-xs font-semibold px-2.5 py-1 rounded-full {{ $customer->customer_type === 'subscription' ? 'bg-accent-soft text-accent-ink' : 'bg-pill-bg text-pill-ink' }}">
+                        {{ $customer->customer_type === 'subscription' ? 'Subscription' : 'Walk-in' }}
+                    </span>
+                </div>
+                <div class="flex items-center justify-between text-sm text-ink-muted">
+                    <span class="font-mono">{{ $customer->phone }}</span>
+                    <span class="font-mono text-ink tabular-nums">GMD {{ number_format($customer->store_credit_balance, 2) }}</span>
+                </div>
+            </a>
+        @empty
+            <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">
+                {{ request('q') ? 'No customers match "'.request('q').'".' : 'No customers yet.' }}
+            </div>
+        @endforelse
+    </div>
+
     <div class="mt-4">
         {{ $customers->links() }}
     </div>
+
+    @can('customers.manage')
+        <x-slide-panel name="customer-create" title="New Customer" :error-fields="['full_name', 'phone', 'email', 'customer_type', 'address', 'notes']">
+            <form method="POST" action="{{ route('customers.store') }}">
+                @include('customers._form', ['panel' => true])
+            </form>
+        </x-slide-panel>
+    @endcan
 </x-app-layout>
