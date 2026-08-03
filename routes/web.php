@@ -4,6 +4,7 @@ use App\Http\Controllers\ClothesCategoryController;
 use App\Http\Controllers\ClothingItemController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\DamageRecordController;
 use App\Http\Controllers\LaundryPackageController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Route;
 
 // Sidebar destinations with a real controller now -- excluded from the
 // placeholder-route loop below.
-$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index'];
+$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index'];
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
@@ -133,6 +134,21 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
 
     Route::middleware('permission:payments.manage')->group(function () {
         Route::post('/payments/{payment}/refund', [PaymentController::class, 'refund'])->name('payments.refund');
+    });
+
+    Route::middleware('permission:damage.view')->group(function () {
+        Route::get('/damage', [DamageRecordController::class, 'index'])->name('damage.index');
+        Route::get('/damage/{damageRecord}', [DamageRecordController::class, 'show'])->name('damage.show');
+    });
+
+    Route::middleware('permission:damage.report')->group(function () {
+        Route::get('/orders/{order}/damage/create', [DamageRecordController::class, 'create'])->name('damage.create');
+        Route::post('/orders/{order}/damage', [DamageRecordController::class, 'store'])->name('damage.store');
+    });
+
+    Route::middleware('permission:damage.manage')->group(function () {
+        Route::post('/damage/{damageRecord}/transition', [DamageRecordController::class, 'transition'])->name('damage.transition');
+        Route::post('/damage/{damageRecord}/resolve', [DamageRecordController::class, 'resolve'])->name('damage.resolve');
     });
 
     // Placeholder routes for every remaining sidebar destination. Each is

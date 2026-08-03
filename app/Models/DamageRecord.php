@@ -8,6 +8,23 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DamageRecord extends Model
 {
+    /**
+     * Unlike orders' linear pipeline, review isn't strictly sequential --
+     * §2.4 allows pending_review to go straight to approved/rejected without
+     * passing through under_investigation. 'resolved' is deliberately absent
+     * here: it's never a manually-chosen target, only a side effect of a
+     * damage_resolutions insert (trg_damage_records_resolve_guard enforces
+     * this at the DB level; this map just keeps the UI from offering it).
+     */
+    public const VALID_TRANSITIONS = [
+        'pending_review' => ['under_investigation', 'approved', 'rejected'],
+        'under_investigation' => ['approved', 'rejected'],
+        'approved' => [],
+        'rejected' => ['closed'],
+        'resolved' => ['closed'],
+        'closed' => [],
+    ];
+
     protected $fillable = [
         'order_id',
         'damage_type_id',
@@ -31,5 +48,10 @@ class DamageRecord extends Model
     public function resolution(): HasOne
     {
         return $this->hasOne(DamageResolution::class);
+    }
+
+    public function canTransitionTo(string $status): bool
+    {
+        return in_array($status, self::VALID_TRANSITIONS[$this->status] ?? [], true);
     }
 }

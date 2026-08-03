@@ -86,14 +86,21 @@
             </div>
 
             <div class="bg-surface border border-line rounded-2xl p-6">
-                <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-3">Damage Reports</div>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Damage Reports</div>
+                    @can('damage.report')
+                        @if ($order->status !== 'cancelled')
+                            <a href="{{ route('damage.create', $order) }}" class="text-xs text-accent-ink hover:underline">+ Report damage</a>
+                        @endif
+                    @endcan
+                </div>
                 @forelse ($order->damageRecords as $damage)
-                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
+                    <a href="{{ route('damage.show', $damage) }}" class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm hover:bg-surface-2 -mx-2 px-2 rounded">
                         <span class="text-ink">{{ $damage->damageType->name ?? '—' }}</span>
                         <x-status-pill :status="$damage->status" />
-                    </div>
+                    </a>
                 @empty
-                    <p class="text-ink-faint text-sm">None reported — built in Phase 08.</p>
+                    <p class="text-ink-faint text-sm">None reported.</p>
                 @endforelse
             </div>
         </div>

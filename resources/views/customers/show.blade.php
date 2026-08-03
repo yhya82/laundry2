@@ -86,12 +86,12 @@
             <div class="bg-surface border border-line rounded-2xl p-6">
                 <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-3">Damage History</div>
                 @forelse ($damageRecords as $damage)
-                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
+                    <a href="{{ route('damage.show', $damage) }}" class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm hover:bg-surface-2 -mx-2 px-2 rounded">
                         <span class="text-ink">{{ $damage->damageType->name ?? '—' }}</span>
-                        <span class="text-ink-muted">{{ ucfirst(str_replace('_', ' ', $damage->status)) }}</span>
-                    </div>
+                        <x-status-pill :status="$damage->status" />
+                    </a>
                 @empty
-                    <p class="text-ink-faint text-sm">No damage reports — built in Phase 08.</p>
+                    <p class="text-ink-faint text-sm">No damage reports.</p>
                 @endforelse
             </div>
 
