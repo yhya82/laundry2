@@ -2,13 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\OrderStatusChanged;
 use App\Models\Order;
+use App\Services\NotificationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class OrderController extends Controller
 {
+    public function __construct(protected NotificationDispatcher $notifications)
+    {
+    }
+
     public function index(Request $request): View
     {
         $orders = Order::with('customer')
@@ -49,8 +55,20 @@ class OrderController extends Controller
             return back()->withErrors(['status' => 'This order has no further stage to advance to.']);
         }
 
+        $from = $order->status;
         $order->status = $next;
         $order->save();
+
+        OrderStatusChanged::dispatch($order, $from);
+
+        if ($next === 'completed') {
+            $this->notifications->toCustomer(
+                $order->customer,
+                'sms',
+                'Order ready',
+                "Hi {$order->customer->full_name}, your order {$order->order_number} is complete and ready for pickup."
+            );
+        }
 
         return back()->with('status', "Order moved to " . ucfirst($next) . '.');
     }
@@ -65,9 +83,12 @@ class OrderController extends Controller
             'cancellation_reason' => ['required', 'string', 'max:255'],
         ]);
 
+        $from = $order->status;
         $order->cancellation_reason = $validated['cancellation_reason'];
         $order->status = 'cancelled';
         $order->save();
+
+        OrderStatusChanged::dispatch($order, $from);
 
         return back()->with('status', 'Order cancelled.');
     }

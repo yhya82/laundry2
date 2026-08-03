@@ -7,6 +7,8 @@ use App\Http\Requests\StoreDamageResolutionRequest;
 use App\Models\DamageRecord;
 use App\Models\DamageType;
 use App\Models\Order;
+use App\Models\User;
+use App\Services\NotificationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +16,10 @@ use Illuminate\View\View;
 
 class DamageRecordController extends Controller
 {
+    public function __construct(protected NotificationDispatcher $notifications)
+    {
+    }
+
     public function index(Request $request): View
     {
         $damageRecords = DamageRecord::with(['order.customer', 'damageType'])
@@ -44,6 +50,14 @@ class DamageRecordController extends Controller
         $data['stage_at_report'] = $order->status;
 
         $damageRecord = $order->damageRecords()->create($data);
+
+        User::role('Admin')->get()->each(
+            fn (User $admin) => $this->notifications->toStaff(
+                $admin,
+                'Damage report submitted',
+                "{$damageRecord->damageType->name} reported on order {$order->order_number}."
+            )
+        );
 
         return redirect()->route('damage.show', $damageRecord)->with('status', 'Damage report submitted.');
     }

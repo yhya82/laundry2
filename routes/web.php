@@ -8,6 +8,7 @@ use App\Http\Controllers\DamageRecordController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\LaundryPackageController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileController;
@@ -34,6 +35,9 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::patch('/theme', [ThemeController::class, 'update'])->name('theme.update');
+
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.readAll');
 
     // Static-path routes (/create) must be registered before the /{customer}
     // wildcard, or "create" gets swallowed as a route-model-binding lookup.

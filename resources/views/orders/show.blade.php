@@ -11,10 +11,29 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <div class="lg:col-span-1 space-y-5">
-            <div class="bg-surface border border-line rounded-2xl p-6">
+            <div
+                class="bg-surface border border-line rounded-2xl p-6"
+                x-data="{
+                    status: @js($order->status),
+                    tones: { received:'neutral', sorting:'active', washing:'active', drying:'active', ironing:'active', packaging:'active', completed:'success', cancelled:'critical' },
+                    classes: { neutral:'bg-pill-bg text-pill-ink', active:'bg-accent-soft text-accent-ink', success:'bg-success-soft text-success', critical:'bg-critical-soft text-critical' },
+                    label() { return this.status.charAt(0).toUpperCase() + this.status.slice(1).replace('_', ' '); },
+                    init() {
+                        window.Echo.channel('orders').listen('.order.status-changed', (e) => {
+                            if (e.orderId === {{ $order->id }}) {
+                                this.status = e.toStatus;
+                            }
+                        });
+                    }
+                }"
+            >
                 <div class="flex items-center justify-between mb-4">
                     <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Order</div>
-                    <x-status-pill :status="$order->status" />
+                    <span
+                        class="inline-flex items-center gap-1.5 font-mono text-xs font-semibold px-2.5 py-1 rounded-full"
+                        :class="classes[tones[status]] ?? classes.neutral"
+                        x-text="label()"
+                    ></span>
                 </div>
                 <dl class="space-y-3 text-sm">
                     <div class="flex justify-between">
@@ -73,16 +92,29 @@
                 @endcan
             </div>
 
-            <div class="bg-surface border border-line rounded-2xl p-6">
+            <div
+                class="bg-surface border border-line rounded-2xl p-6"
+                x-data="{
+                    entries: @js($order->statusHistory->sortByDesc('created_at')->map(fn ($e) => ['from' => $e->from_status, 'to' => $e->to_status, 'time' => $e->created_at->format('H:i')])),
+                    init() {
+                        window.Echo.channel('orders').listen('.order.status-changed', (e) => {
+                            if (e.orderId === {{ $order->id }}) {
+                                this.entries.unshift({ from: e.fromStatus, to: e.toStatus, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
+                            }
+                        });
+                    }
+                }"
+            >
                 <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-3">Status Timeline</div>
-                @forelse ($order->statusHistory->sortByDesc('created_at') as $entry)
-                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
-                        <span class="text-ink">{{ $entry->from_status ? ucfirst($entry->from_status).' → ' : '' }}{{ ucfirst($entry->to_status) }}</span>
-                        <span class="text-ink-faint font-mono text-xs">{{ $entry->created_at->format('H:i') }}</span>
-                    </div>
-                @empty
+                <template x-if="entries.length === 0">
                     <p class="text-ink-faint text-sm">No status changes yet.</p>
-                @endforelse
+                </template>
+                <template x-for="(entry, i) in entries" :key="i">
+                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
+                        <span class="text-ink" x-text="(entry.from ? entry.from.charAt(0).toUpperCase() + entry.from.slice(1) + ' → ' : '') + entry.to.charAt(0).toUpperCase() + entry.to.slice(1)"></span>
+                        <span class="text-ink-faint font-mono text-xs" x-text="entry.time"></span>
+                    </div>
+                </template>
             </div>
 
             <div class="bg-surface border border-line rounded-2xl p-6">

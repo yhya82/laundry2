@@ -1,5 +1,7 @@
 <?php
 
+use App\Events\OrderStatusChanged;
+use App\Events\PaymentReceived;
 use App\Models\ClothingItem;
 use App\Models\Collection;
 use App\Models\Customer;
@@ -314,7 +316,7 @@ new class extends Component
         }
 
         try {
-            $order = DB::transaction(function () {
+            [$order, $payment] = DB::transaction(function () {
                 $order = Order::create([
                     'order_number' => Numbering::nextOrderNumber(),
                     'customer_id' => $this->customerId,
@@ -328,19 +330,27 @@ new class extends Component
                 $order->refresh();
 
                 $this->createLineItems($order);
-                $this->applyCreditAndPayment($order);
+                $payment = $this->applyCreditAndPayment($order);
 
                 $order->receipt()->create([
                     'receipt_number' => Numbering::nextReceiptNumber(),
                     'reprint_count' => 0,
                 ]);
 
-                return $order;
+                return [$order, $payment];
             });
         } catch (QueryException $e) {
             $this->addError('cart', $this->friendlyDatabaseError($e));
 
             return;
+        }
+
+        // Broadcast only after the transaction has actually committed --
+        // broadcasting from inside it risks announcing data that a later
+        // failure in the same transaction would roll back.
+        OrderStatusChanged::dispatch($order, null);
+        if ($payment) {
+            PaymentReceived::dispatch($payment);
         }
 
         session()->flash('status', "Order {$order->order_number} created.");
@@ -374,7 +384,7 @@ new class extends Component
         }
 
         try {
-            $order = DB::transaction(function () use ($collection) {
+            [$order, $payment] = DB::transaction(function () use ($collection) {
                 $order = Order::create([
                     'order_number' => Numbering::nextOrderNumber(),
                     'customer_id' => $collection->subscription->customer_id,
@@ -388,22 +398,27 @@ new class extends Component
                 $order->refresh();
 
                 $this->createLineItems($order);
-                $this->applyCreditAndPayment($order);
+                $payment = $this->applyCreditAndPayment($order);
 
                 $order->receipt()->create([
                     'receipt_number' => Numbering::nextReceiptNumber(),
-                'reprint_count' => 0,
-            ]);
+                    'reprint_count' => 0,
+                ]);
 
                 $collection->update(['status' => 'collected', 'collected_at' => now()]);
                 CollectionScheduler::scheduleNext($collection->subscription, $collection->scheduled_date);
 
-                return $order;
+                return [$order, $payment];
             });
         } catch (QueryException $e) {
             $this->addError('cart', $this->friendlyDatabaseError($e));
 
             return;
+        }
+
+        OrderStatusChanged::dispatch($order, null);
+        if ($payment) {
+            PaymentReceived::dispatch($payment);
         }
 
         session()->flash('status', "Collection recorded as order {$order->order_number}.");
@@ -451,10 +466,10 @@ new class extends Component
      * being pre-validated against maxApplicableCredit is a UX nicety, not the
      * real guarantee against double-spend.
      */
-    protected function applyCreditAndPayment(Order $order): void
+    protected function applyCreditAndPayment(Order $order): ?\App\Models\Payment
     {
         if ($order->total_amount <= 0) {
-            return;
+            return null;
         }
 
         $creditApplied = min($this->creditToApply, $order->total_amount);
@@ -469,7 +484,7 @@ new class extends Component
             ]);
         }
 
-        $order->payments()->create([
+        return $order->payments()->create([
             'amount' => $order->total_amount,
             'credit_applied' => $creditApplied,
             'method' => $creditApplied >= $order->total_amount ? 'store_credit' : $this->paymentMethod,
