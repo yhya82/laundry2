@@ -4,6 +4,9 @@
     @if (session('status'))
         <div class="mb-4 text-sm text-success bg-success-soft border border-success/30 rounded-lg px-4 py-2.5">{{ session('status') }}</div>
     @endif
+    @if ($errors->any())
+        <div class="mb-4 text-sm text-critical bg-critical-soft border border-critical/30 rounded-lg px-4 py-2.5">{{ $errors->first() }}</div>
+    @endif
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
@@ -36,7 +39,38 @@
                             <dd class="text-ink font-mono text-xs">{{ $order->receipt->receipt_number }}</dd>
                         </div>
                     @endif
+                    @if ($order->status === 'cancelled' && $order->cancellation_reason)
+                        <div class="pt-2 border-t border-line">
+                            <dt class="text-ink-muted mb-1">Cancellation reason</dt>
+                            <dd class="text-ink">{{ $order->cancellation_reason }}</dd>
+                        </div>
+                    @endif
                 </dl>
+
+                @can('orders.manage')
+                    @unless ($order->isTerminal())
+                        <div class="mt-5 pt-5 border-t border-line space-y-3" x-data="{ cancelling: false }">
+                            <form method="POST" action="{{ route('orders.advance', $order) }}">
+                                @csrf
+                                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90">
+                                    Mark as {{ ucfirst($order->nextStatus()) }}
+                                </button>
+                            </form>
+
+                            <button type="button" @click="cancelling = !cancelling" class="w-full text-xs text-critical hover:underline">
+                                Cancel order
+                            </button>
+
+                            <form x-show="cancelling" x-cloak method="POST" action="{{ route('orders.cancel', $order) }}" class="space-y-2">
+                                @csrf
+                                <input type="text" name="cancellation_reason" placeholder="Reason for cancellation" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm" required>
+                                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2 bg-critical-soft text-critical rounded-lg text-sm font-semibold">
+                                    Confirm cancellation
+                                </button>
+                            </form>
+                        </div>
+                    @endunless
+                @endcan
             </div>
 
             <div class="bg-surface border border-line rounded-2xl p-6">
@@ -47,7 +81,7 @@
                         <span class="text-ink-faint font-mono text-xs">{{ $entry->created_at->format('H:i') }}</span>
                     </div>
                 @empty
-                    <p class="text-ink-faint text-sm">No status changes yet — the processing pipeline is built in Phase 06.</p>
+                    <p class="text-ink-faint text-sm">No status changes yet.</p>
                 @endforelse
             </div>
 

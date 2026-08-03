@@ -2,10 +2,12 @@
 
 use App\Http\Controllers\ClothesCategoryController;
 use App\Http\Controllers\ClothingItemController;
+use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\LaundryPackageController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\SubscriptionPackageController;
 use App\Http\Controllers\ThemeController;
 use App\Support\NavItems;
@@ -13,14 +15,22 @@ use Illuminate\Support\Facades\Route;
 
 // Sidebar destinations with a real controller now -- excluded from the
 // placeholder-route loop below.
-$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index'];
+$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index'];
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
 });
 
 Route::get('/dashboard', function () {
-    return view('dashboard');
+    $queueCounts = auth()->user()->can('orders.view')
+        ? \App\Models\Order::query()
+            ->whereIn('status', array_keys(\App\Models\Order::STAGE_SEQUENCE))
+            ->selectRaw('status, count(*) as total')
+            ->groupBy('status')
+            ->pluck('total', 'status')
+        : collect();
+
+    return view('dashboard', compact('queueCounts'));
 })->middleware('auth')->name('dashboard');
 
 Route::middleware('auth')->group(function () use ($builtRoutes) {
@@ -87,6 +97,33 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
 
     Route::middleware('permission:orders.view')->group(function () {
         Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+    });
+
+    Route::middleware('permission:orders.manage')->group(function () {
+        Route::post('/orders/{order}/advance', [OrderController::class, 'advance'])->name('orders.advance');
+        Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
+    });
+
+    Route::middleware('permission:subscriptions.view')->group(function () {
+        Route::get('/subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
+    });
+
+    Route::middleware('permission:subscriptions.manage')->group(function () {
+        Route::get('/subscriptions/create', [SubscriptionController::class, 'create'])->name('subscriptions.create');
+        Route::post('/subscriptions', [SubscriptionController::class, 'store'])->name('subscriptions.store');
+    });
+
+    Route::middleware('permission:subscriptions.view')->group(function () {
+        Route::get('/subscriptions/{subscription}', [SubscriptionController::class, 'show'])->name('subscriptions.show');
+    });
+
+    Route::middleware('permission:collections.view')->group(function () {
+        Route::get('/collections', [CollectionController::class, 'index'])->name('collections.index');
+    });
+
+    Route::middleware('permission:collections.manage')->group(function () {
+        Route::post('/collections/{collection}/skip', [CollectionController::class, 'skip'])->name('collections.skip');
+        Route::get('/collections/{collection}/collect', [CollectionController::class, 'collect'])->name('collections.collect');
     });
 
     // Placeholder routes for every remaining sidebar destination. Each is

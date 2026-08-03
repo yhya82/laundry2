@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+    font-family: 'Geist';
+    src: url('/fonts/Geist-Variable.woff2') format('woff2-variations'), url('/fonts/Geist-Variable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Geist Mono';
+    src: url('/fonts/GeistMono-Variable.woff2') format('woff2-variations'), url('/fonts/GeistMono-Variable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
     --color-bg: #F4F6F8;
     --color-surface: #FFFFFF;
@@ -11,9 +27,9 @@
     --color-ink-faint: #8592A6;
     --color-line: #DCE3EA;
     --color-line-strong: #C3CEDA;
-    --color-accent: #D9770D;
-    --color-accent-ink: #8A4A0C;
-    --color-accent-soft: #FBEEDD;
+    --color-accent: #0E9C9E;
+    --color-accent-ink: #0B6C6E;
+    --color-accent-soft: #E1F6F6;
     --color-success: #2E7D5B;
     --color-success-soft: #E4F3EC;
     --color-critical: #B3413A;
@@ -31,9 +47,9 @@
     --color-ink-faint: #6B7A90;
     --color-line: #2A3340;
     --color-line-strong: #3A4557;
-    --color-accent: #F0913D;
-    --color-accent-ink: #FFCB94;
-    --color-accent-soft: #3A2712;
+    --color-accent: #4FDBDA;
+    --color-accent-ink: #A8F2F1;
+    --color-accent-soft: #123536;
     --color-success: #4CAF83;
     --color-success-soft: #163326;
     --color-critical: #E08479;

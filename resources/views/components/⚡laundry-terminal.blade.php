@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\ClothingItem;
+use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\LaundryPackage;
 use App\Models\Order;
+use App\Support\CollectionScheduler;
 use App\Support\Numbering;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -32,7 +34,65 @@ new class extends Component
 
     public string $discountReason = '';
 
+    public float $extraCharge = 0;
+
     public string $paymentMethod = 'cash';
+
+    /**
+     * When set, the Terminal is in subscription mode: customer is locked to
+     * the collection's subscription, packages/clothes are priced at 0
+     * (covered by the subscription fee), and only over-allowance clothes
+     * carry a manual extra charge. See Master Document §2.2.
+     */
+    public ?int $collectionId = null;
+
+    public function mount(?int $collectionId = null): void
+    {
+        if ($collectionId === null) {
+            return;
+        }
+
+        $collection = Collection::with('subscription')->find($collectionId);
+
+        if (! $collection || $collection->status !== 'scheduled') {
+            return;
+        }
+
+        $this->collectionId = $collectionId;
+        $this->customerId = $collection->subscription->customer_id;
+    }
+
+    #[Computed]
+    public function isSubscriptionMode(): bool
+    {
+        return $this->collectionId !== null;
+    }
+
+    #[Computed]
+    public function collection()
+    {
+        return $this->collectionId
+            ? Collection::with('subscription.customer', 'subscription.subscriptionPackage')->find($this->collectionId)
+            : null;
+    }
+
+    #[Computed]
+    public function allowance(): int
+    {
+        return $this->collection?->subscription?->subscriptionPackage?->clothes_allowance ?? 0;
+    }
+
+    #[Computed]
+    public function clothesCount(): int
+    {
+        return collect($this->cart)->sum(fn ($line) => collect($line['clothes'])->sum('quantity'));
+    }
+
+    #[Computed]
+    public function overAllowanceCount(): int
+    {
+        return max(0, $this->clothesCount - $this->allowance);
+    }
 
     #[Computed]
     public function customerResults()
@@ -71,28 +131,48 @@ new class extends Component
     #[Computed]
     public function subtotal(): float
     {
+        if ($this->isSubscriptionMode) {
+            return 0.0;
+        }
+
         return collect($this->cart)->sum(fn ($line) => $line['price'] * $line['quantity']);
     }
 
     #[Computed]
     public function total(): float
     {
+        if ($this->isSubscriptionMode) {
+            return max(0, $this->extraCharge);
+        }
+
         return max(0, $this->subtotal - $this->discount);
     }
 
     public function selectCustomer(int $id): void
     {
+        if ($this->isSubscriptionMode) {
+            return;
+        }
+
         $this->customerId = $id;
         $this->customerSearch = '';
     }
 
     public function clearCustomer(): void
     {
+        if ($this->isSubscriptionMode) {
+            return;
+        }
+
         $this->customerId = null;
     }
 
     public function createCustomer(): void
     {
+        if ($this->isSubscriptionMode) {
+            return;
+        }
+
         $this->validate([
             'newCustomerName' => ['required', 'string', 'max:255'],
             'newCustomerPhone' => ['required', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/', 'unique:customers,phone'],
@@ -134,7 +214,7 @@ new class extends Component
         $this->cart[] = [
             'laundry_package_id' => $package->id,
             'name' => $package->name,
-            'price' => (float) $package->base_price,
+            'price' => $this->isSubscriptionMode ? 0.0 : (float) $package->base_price,
             'quantity' => 1,
             'clothes' => [],
         ];
@@ -191,6 +271,10 @@ new class extends Component
 
     public function submitOrder()
     {
+        if ($this->isSubscriptionMode) {
+            return $this->submitSubscriptionCollection();
+        }
+
         $this->validate([
             'customerId' => ['required', 'exists:customers,id'],
             'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
@@ -219,24 +303,7 @@ new class extends Component
             ]);
             $order->refresh();
 
-            foreach ($this->cart as $line) {
-                $packageLine = $order->packageLines()->create([
-                    'laundry_package_id' => $line['laundry_package_id'],
-                    'package_name_snapshot' => $line['name'],
-                    'package_price_snapshot' => $line['price'],
-                    'quantity' => $line['quantity'],
-                ]);
-
-                foreach ($line['clothes'] as $clothesLine) {
-                    $packageLine->clothesLines()->create([
-                        'clothing_item_id' => $clothesLine['clothing_item_id'],
-                        'item_name_snapshot' => $clothesLine['name'],
-                        'item_price_snapshot' => 0,
-                        'quantity' => $clothesLine['quantity'],
-                        'is_extra' => false,
-                    ]);
-                }
-            }
+            $this->createLineItems($order);
 
             $order->payments()->create([
                 'amount' => $order->total_amount,
@@ -257,6 +324,101 @@ new class extends Component
 
         $this->redirect(route('orders.show', $order), navigate: false);
     }
+
+    protected function submitSubscriptionCollection()
+    {
+        $collection = $this->collection;
+
+        if (! $collection || $collection->status !== 'scheduled') {
+            $this->addError('cart', 'This collection is no longer available.');
+
+            return;
+        }
+
+        $this->validate([
+            'extraCharge' => [$this->overAllowanceCount > 0 ? 'required' : 'nullable', 'numeric', 'min:0.01'],
+            'paymentMethod' => [$this->total > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
+        ], [
+            'extraCharge.required' => 'This collection is over the allowance -- enter the extra charge.',
+        ]);
+
+        if (empty($this->cart)) {
+            $this->addError('cart', 'Record at least one package collected.');
+
+            return;
+        }
+
+        $order = DB::transaction(function () use ($collection) {
+            $order = Order::create([
+                'order_number' => Numbering::nextOrderNumber(),
+                'customer_id' => $collection->subscription->customer_id,
+                'collection_id' => $collection->id,
+                'user_id' => auth()->id(),
+                'order_source' => 'subscription',
+                'subtotal' => 0,
+                'discount' => 0,
+                'extra_charge' => $this->overAllowanceCount > 0 ? $this->extraCharge : 0,
+            ]);
+            $order->refresh();
+
+            $this->createLineItems($order);
+
+            if ($order->total_amount > 0) {
+                $order->payments()->create([
+                    'amount' => $order->total_amount,
+                    'credit_applied' => 0,
+                    'method' => $this->paymentMethod,
+                    'received_by' => auth()->id(),
+                ]);
+            }
+
+            $order->receipt()->create([
+                'receipt_number' => Numbering::nextReceiptNumber(),
+                'reprint_count' => 0,
+            ]);
+
+            $collection->update(['status' => 'collected', 'collected_at' => now()]);
+            CollectionScheduler::scheduleNext($collection->subscription, $collection->scheduled_date);
+
+            return $order;
+        });
+
+        session()->flash('status', "Collection recorded as order {$order->order_number}.");
+
+        $this->redirect(route('orders.show', $order), navigate: false);
+    }
+
+    /**
+     * Marks a clothes line as "extra" once the running total for the whole
+     * cart passes the subscription's allowance -- line-level granularity,
+     * not per-unit, to keep the allocation simple and deterministic.
+     */
+    protected function createLineItems(Order $order): void
+    {
+        $cumulative = 0;
+
+        foreach ($this->cart as $line) {
+            $packageLine = $order->packageLines()->create([
+                'laundry_package_id' => $line['laundry_package_id'],
+                'package_name_snapshot' => $line['name'],
+                'package_price_snapshot' => $line['price'],
+                'quantity' => $line['quantity'],
+            ]);
+
+            foreach ($line['clothes'] as $clothesLine) {
+                $cumulative += $clothesLine['quantity'];
+                $isExtra = $this->isSubscriptionMode && $cumulative > $this->allowance;
+
+                $packageLine->clothesLines()->create([
+                    'clothing_item_id' => $clothesLine['clothing_item_id'],
+                    'item_name_snapshot' => $clothesLine['name'],
+                    'item_price_snapshot' => 0,
+                    'quantity' => $clothesLine['quantity'],
+                    'is_extra' => $isExtra,
+                ]);
+            }
+        }
+    }
 };
 ?>
 
@@ -271,9 +433,11 @@ new class extends Component
                     <div class="font-semibold text-accent-ink">{{ $this->selectedCustomer->full_name }}</div>
                     <div class="text-xs text-ink-muted font-mono">{{ $this->selectedCustomer->phone }}</div>
                 </div>
-                <button type="button" wire:click="clearCustomer" class="text-xs text-ink-muted hover:text-critical">Change</button>
+                @unless ($this->isSubscriptionMode)
+                    <button type="button" wire:click="clearCustomer" class="text-xs text-ink-muted hover:text-critical">Change</button>
+                @endunless
             </div>
-        @else
+        @elseif (! $this->isSubscriptionMode)
             <input
                 type="text"
                 wire:model.live.debounce.300ms="customerSearch"
@@ -308,13 +472,32 @@ new class extends Component
             @endif
         @endif
 
+        @if ($this->isSubscriptionMode)
+            <div class="mt-4 p-3 rounded-lg bg-surface-2 text-sm">
+                <div class="flex justify-between text-ink-muted mb-1">
+                    <span>Plan</span>
+                    <span class="text-ink">{{ $this->collection?->subscription?->subscriptionPackage?->name }}</span>
+                </div>
+                <div class="flex justify-between text-ink-muted">
+                    <span>Allowance</span>
+                    <span class="font-mono tabular-nums {{ $this->overAllowanceCount > 0 ? 'text-critical font-semibold' : 'text-ink' }}">
+                        {{ $this->clothesCount }} / {{ $this->allowance }}
+                        @if ($this->overAllowanceCount > 0) (+{{ $this->overAllowanceCount }} over) @endif
+                    </span>
+                </div>
+            </div>
+        @endif
+
         <div class="mt-6">
             <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-3">Package</div>
             <div class="flex gap-2">
                 <select wire:model="selectedPackageId" class="flex-1 bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
                     <option value="">Select a package…</option>
                     @foreach ($this->packages as $package)
-                        <option value="{{ $package->id }}">{{ $package->name }} — GMD {{ number_format($package->base_price, 2) }}</option>
+                        <option value="{{ $package->id }}">
+                            {{ $package->name }}
+                            @unless ($this->isSubscriptionMode) — GMD {{ number_format($package->base_price, 2) }} @endunless
+                        </option>
                     @endforeach
                 </select>
                 <button type="button" wire:click="addPackage" class="px-4 py-2 bg-accent-soft text-accent-ink rounded-lg text-sm font-semibold">Add</button>
@@ -336,7 +519,9 @@ new class extends Component
                             <span class="font-mono text-sm w-6 text-center tabular-nums">{{ $line['quantity'] }}</span>
                             <button type="button" wire:click="incrementPackage({{ $index }})" class="w-6 h-6 rounded bg-surface-2 text-ink-muted">+</button>
                         </div>
-                        <span class="font-mono text-sm tabular-nums text-ink-muted">GMD {{ number_format($line['price'] * $line['quantity'], 2) }}</span>
+                        @unless ($this->isSubscriptionMode)
+                            <span class="font-mono text-sm tabular-nums text-ink-muted">GMD {{ number_format($line['price'] * $line['quantity'], 2) }}</span>
+                        @endunless
                         <button type="button" wire:click="removePackage({{ $index }})" class="text-critical text-xs hover:underline">Remove</button>
                     </div>
                 </div>
@@ -369,30 +554,56 @@ new class extends Component
                 </details>
             </div>
         @empty
-            <div class="text-center py-10 text-ink-faint text-sm">Select a package to start the cart.</div>
+            <div class="text-center py-10 text-ink-faint text-sm">
+                {{ $this->isSubscriptionMode ? 'Select a package to record what was collected.' : 'Select a package to start the cart.' }}
+            </div>
         @endforelse
 
         <div class="border-t border-line mt-4 pt-4 space-y-3">
-            <div class="flex items-center justify-between text-sm">
-                <span class="text-ink-muted">Subtotal</span>
-                <span class="font-mono tabular-nums text-ink">GMD {{ number_format($this->subtotal, 2) }}</span>
-            </div>
+            @if ($this->isSubscriptionMode)
+                @if ($this->overAllowanceCount > 0)
+                    <div class="flex items-center gap-3">
+                        <label class="text-sm text-critical font-semibold w-28">Extra charge</label>
+                        <input type="number" step="0.01" min="0" wire:model.live="extraCharge" class="w-32 bg-surface border-critical/40 rounded-lg shadow-sm text-sm font-mono">
+                        <span class="text-xs text-ink-faint">for {{ $this->overAllowanceCount }} item(s) over allowance</span>
+                    </div>
+                    @error('extraCharge') <p class="text-critical text-xs">{{ $message }}</p> @enderror
+                @else
+                    <p class="text-sm text-success">Within allowance — no extra charge.</p>
+                @endif
 
-            <div class="flex items-center gap-3">
-                <label class="text-sm text-ink-muted w-20">Discount</label>
-                <input type="number" step="0.01" min="0" wire:model.live="discount" class="w-32 bg-surface border-line-strong rounded-lg shadow-sm text-sm font-mono">
-                <input type="text" wire:model="discountReason" placeholder="Reason (required if discount > 0)" class="flex-1 bg-surface border-line-strong rounded-lg shadow-sm text-sm">
-            </div>
-            @error('discountReason') <p class="text-critical text-xs">{{ $message }}</p> @enderror
+                @if ($this->total > 0)
+                    <div class="flex items-center gap-3">
+                        <label class="text-sm text-ink-muted w-28">Payment</label>
+                        <select wire:model="paymentMethod" class="flex-1 bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="mixed">Mixed</option>
+                        </select>
+                    </div>
+                @endif
+            @else
+                <div class="flex items-center justify-between text-sm">
+                    <span class="text-ink-muted">Subtotal</span>
+                    <span class="font-mono tabular-nums text-ink">GMD {{ number_format($this->subtotal, 2) }}</span>
+                </div>
 
-            <div class="flex items-center gap-3">
-                <label class="text-sm text-ink-muted w-20">Payment</label>
-                <select wire:model="paymentMethod" class="flex-1 bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
-                    <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="mixed">Mixed</option>
-                </select>
-            </div>
+                <div class="flex items-center gap-3">
+                    <label class="text-sm text-ink-muted w-20">Discount</label>
+                    <input type="number" step="0.01" min="0" wire:model.live="discount" class="w-32 bg-surface border-line-strong rounded-lg shadow-sm text-sm font-mono">
+                    <input type="text" wire:model="discountReason" placeholder="Reason (required if discount > 0)" class="flex-1 bg-surface border-line-strong rounded-lg shadow-sm text-sm">
+                </div>
+                @error('discountReason') <p class="text-critical text-xs">{{ $message }}</p> @enderror
+
+                <div class="flex items-center gap-3">
+                    <label class="text-sm text-ink-muted w-20">Payment</label>
+                    <select wire:model="paymentMethod" class="flex-1 bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                        <option value="mixed">Mixed</option>
+                    </select>
+                </div>
+            @endif
 
             <div class="flex items-center justify-between pt-2 border-t border-line">
                 <span class="font-semibold text-ink">Total</span>
@@ -400,8 +611,8 @@ new class extends Component
             </div>
 
             <button type="button" wire:click="submitOrder" wire:loading.attr="disabled" class="w-full inline-flex items-center justify-center px-5 py-3 bg-accent rounded-lg text-white font-semibold text-sm disabled:opacity-60">
-                <span wire:loading.remove wire:target="submitOrder">Create Order</span>
-                <span wire:loading wire:target="submitOrder">Creating…</span>
+                <span wire:loading.remove wire:target="submitOrder">{{ $this->isSubscriptionMode ? 'Record Collection' : 'Create Order' }}</span>
+                <span wire:loading wire:target="submitOrder">Saving…</span>
             </button>
         </div>
     </div>

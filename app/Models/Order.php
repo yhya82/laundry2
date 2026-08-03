@@ -9,6 +9,23 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    /**
+     * Mirrors trg_orders_status_transition_guard exactly -- kept here so the
+     * UI only ever offers the one valid next stage, never a jump. The
+     * trigger is still the real enforcement; this just avoids the UI
+     * offering something the DB would reject.
+     */
+    public const STAGE_SEQUENCE = [
+        'received' => 'sorting',
+        'sorting' => 'washing',
+        'washing' => 'drying',
+        'drying' => 'ironing',
+        'ironing' => 'packaging',
+        'packaging' => 'completed',
+    ];
+
+    public const TERMINAL_STATUSES = ['completed', 'cancelled'];
+
     protected $fillable = [
         'order_number',
         'customer_id',
@@ -65,5 +82,15 @@ class Order extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function nextStatus(): ?string
+    {
+        return self::STAGE_SEQUENCE[$this->status] ?? null;
+    }
+
+    public function isTerminal(): bool
+    {
+        return in_array($this->status, self::TERMINAL_STATUSES, true);
     }
 }
