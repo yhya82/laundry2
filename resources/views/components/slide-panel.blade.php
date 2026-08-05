@@ -1,7 +1,7 @@
-@props(['name', 'title', 'errorFields' => []])
+@props(['name', 'title', 'errorFields' => [], 'open' => null])
 
 <div
-    x-data="{ open: @js(collect($errorFields)->contains(fn ($f) => $errors->has($f))) }"
+    x-data="{ open: @js($open ?? collect($errorFields)->contains(fn ($f) => $errors->has($f))) }"
     x-on:open-panel.window="$event.detail === '{{ $name }}' && (open = true)"
     x-on:close-panel.window="$event.detail === '{{ $name }}' && (open = false)"
     x-on:keydown.escape.window="open = false"

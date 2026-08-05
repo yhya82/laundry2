@@ -9,6 +9,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionPackage;
 use App\Support\CollectionScheduler;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class SubscriptionController extends Controller
@@ -20,12 +21,13 @@ class SubscriptionController extends Controller
         return view('subscriptions.index', compact('subscriptions'));
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
         $eligibleCustomers = Customer::where('customer_type', 'subscription')->orderBy('full_name')->get();
         $packages = SubscriptionPackage::where('is_active', true)->orderBy('name')->get();
+        $customerId = $request->integer('customer') ?: null;
 
-        return view('subscriptions.create', compact('eligibleCustomers', 'packages'));
+        return view('subscriptions.create', compact('eligibleCustomers', 'packages', 'customerId'));
     }
 
     public function store(StoreSubscriptionRequest $request): RedirectResponse
@@ -36,15 +38,73 @@ class SubscriptionController extends Controller
 
         $subscription = Subscription::create($request->validated());
 
-        CollectionScheduler::scheduleFirst($subscription);
+        CollectionScheduler::scheduleFirstCycle($subscription);
+
+        if ($request->boolean('return_to_profile')) {
+            return redirect()->route('customers.show', $subscription->customer_id)->with('status', 'Subscription created.');
+        }
 
         return redirect()->route('subscriptions.show', $subscription)->with('status', 'Subscription created.');
     }
 
     public function show(Subscription $subscription): View
     {
-        $subscription->load(['customer', 'subscriptionPackage', 'collections' => fn ($q) => $q->orderByDesc('scheduled_date')]);
+        $subscription->load([
+            'customer',
+            'subscriptionPackage',
+            'collections' => fn ($q) => $q->orderByDesc('scheduled_date'),
+            'cycles' => fn ($q) => $q->orderByDesc('starts_on'),
+        ]);
 
         return view('subscriptions.show', compact('subscription'));
+    }
+
+    public function pause(Subscription $subscription): RedirectResponse
+    {
+        if ($subscription->status !== 'active') {
+            return back()->withErrors(['subscription' => 'Only an active subscription can be paused.']);
+        }
+
+        $subscription->update(['status' => 'paused']);
+
+        return back()->with('status', 'Subscription paused.');
+    }
+
+    /**
+     * Re-schedules the next collection if none is currently pending -- e.g.
+     * the subscription was paused right after its last collection completed,
+     * which left scheduleNext()'s status guard blocking a follow-up.
+     */
+    public function resume(Subscription $subscription): RedirectResponse
+    {
+        if ($subscription->status !== 'paused') {
+            return back()->withErrors(['subscription' => 'Only a paused subscription can be resumed.']);
+        }
+
+        $subscription->update(['status' => 'active']);
+
+        if (! $subscription->collections()->where('status', 'scheduled')->exists()) {
+            CollectionScheduler::scheduleNextCycle($subscription, now());
+        }
+
+        return back()->with('status', 'Subscription resumed.');
+    }
+
+    /**
+     * Terminal -- cancelling also skips any collection still pending since
+     * no further service is expected. Mirrors Order::cancel()'s one-way
+     * transition; a cancelled subscription cannot be resumed.
+     */
+    public function cancel(Subscription $subscription): RedirectResponse
+    {
+        if ($subscription->status === 'cancelled') {
+            return back()->withErrors(['subscription' => 'This subscription is already cancelled.']);
+        }
+
+        $subscription->update(['status' => 'cancelled']);
+
+        $subscription->collections()->where('status', 'scheduled')->update(['status' => 'skipped']);
+
+        return back()->with('status', 'Subscription cancelled.');
     }
 }

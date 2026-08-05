@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreClothesCategoryRequest;
 use App\Models\ClothesCategory;
+use App\Models\ClothingItem;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
@@ -11,9 +12,11 @@ class ClothesCategoryController extends Controller
 {
     public function index(): View
     {
-        $categories = ClothesCategory::withCount('clothingItems')->orderBy('name')->get();
+        $categories = ClothesCategory::withCount('clothingItems')->orderBy('name')->paginate(10, pageName: 'category_page');
+        $clothingItems = ClothingItem::with('category')->orderBy('name')->paginate(10, pageName: 'item_page');
+        $allCategories = ClothesCategory::orderBy('name')->get();
 
-        return view('catalog.categories.index', compact('categories'));
+        return view('catalog.categories.index', compact('categories', 'clothingItems', 'allCategories'));
     }
 
     public function store(StoreClothesCategoryRequest $request): RedirectResponse

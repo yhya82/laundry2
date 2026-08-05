@@ -9,7 +9,7 @@ class CreditTransaction extends Model
 {
     const UPDATED_AT = null;
 
-    protected $fillable = ['customer_id', 'type', 'amount', 'reference_type', 'reference_id', 'created_by'];
+    protected $fillable = ['customer_id', 'type', 'amount', 'reference_type', 'reference_id', 'notes', 'created_by'];
 
     protected function casts(): array
     {

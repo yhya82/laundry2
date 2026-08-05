@@ -3,10 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Events\OrderStatusChanged;
+use App\Models\DamageType;
 use App\Models\Order;
+use App\Models\Setting;
 use App\Services\NotificationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class OrderController extends Controller
@@ -17,12 +20,20 @@ class OrderController extends Controller
 
     public function index(Request $request): View
     {
-        $orders = Order::with('customer')
+        $orders = Order::with(['customer', 'payments', 'packageLines.laundryPackage'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->get('status')))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $term = '%'.$request->get('q').'%';
-                $q->where('order_number', 'like', $term);
+                $q->where(function ($sub) use ($term) {
+                    $sub->where('order_number', 'like', $term)
+                        ->orWhereHas('customer', fn ($c) => $c->where('full_name', 'like', $term));
+                });
             })
+            ->orderByDesc(DB::raw("EXISTS (
+                SELECT 1 FROM order_package_lines opl
+                INNER JOIN laundry_packages lp ON lp.id = opl.laundry_package_id
+                WHERE opl.order_id = orders.id AND lp.priority = 'high'
+            )"))
             ->latest()
             ->paginate(15)
             ->withQueryString();
@@ -30,16 +41,20 @@ class OrderController extends Controller
         return view('orders.index', compact('orders'));
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
-        return view('orders.create');
+        $customerId = $request->integer('customer') ?: null;
+
+        return view('orders.create', compact('customerId'));
     }
 
     public function show(Order $order): View
     {
         $order->load(['customer', 'packageLines.clothesLines', 'payments', 'statusHistory.order', 'damageRecords', 'receipt', 'creator']);
 
-        return view('orders.show', compact('order'));
+        $damageTypes = DamageType::orderBy('name')->get();
+
+        return view('orders.show', compact('order', 'damageTypes'));
     }
 
     /**
@@ -53,6 +68,14 @@ class OrderController extends Controller
 
         if ($next === null) {
             return back()->withErrors(['status' => 'This order has no further stage to advance to.']);
+        }
+
+        if ($next === 'washing' && $maxWashing = Setting::get('laundry.max_concurrent_washing')) {
+            $currentlyWashing = Order::where('status', 'washing')->count();
+
+            if ($currentlyWashing >= (int) $maxWashing) {
+                return back()->withErrors(['status' => "Washing capacity full ({$currentlyWashing}/{$maxWashing} orders currently washing). Wait for one to finish before starting another."]);
+            }
         }
 
         $from = $order->status;

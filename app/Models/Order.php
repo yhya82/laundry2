@@ -37,6 +37,7 @@ class Order extends Model
         'discount_reason',
         'extra_charge',
         'cancellation_reason',
+        'notes',
     ];
 
     protected function casts(): array
@@ -49,9 +50,19 @@ class Order extends Model
         ];
     }
 
+    /**
+     * withTrashed() -- a soft-deleted customer's past orders still need a
+     * real customer to render/settle against (name display, store credit,
+     * receiving a payment), not a silently-null relation.
+     */
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Customer::class)->withTrashed();
+    }
+
+    public function collection(): BelongsTo
+    {
+        return $this->belongsTo(Collection::class);
     }
 
     public function payments(): HasMany
@@ -92,5 +103,91 @@ class Order extends Model
     public function isTerminal(): bool
     {
         return in_array($this->status, self::TERMINAL_STATUSES, true);
+    }
+
+    /**
+     * An order is "high" priority if any of its package lines used a
+     * laundry package flagged high priority in the catalog.
+     */
+    public function priority(): string
+    {
+        return $this->packageLines->contains(fn (OrderPackageLine $line) => $line->laundryPackage?->priority === 'high')
+            ? 'high'
+            : 'normal';
+    }
+
+    /**
+     * Same '!= refunded' convention used everywhere else money is summed
+     * (Dashboard, reports) -- a partially_refunded payment still means that
+     * much was paid toward the order; only a fully refunded one doesn't.
+     */
+    public function amountPaid(): float
+    {
+        return (float) $this->payments()->where('status', '!=', 'refunded')->sum('amount');
+    }
+
+    /**
+     * Cancelled orders are never "awaiting payment" regardless of the math
+     * -- there's no future collection expected once an order is cancelled.
+     */
+    public function balanceDue(): float
+    {
+        if ($this->status === 'cancelled') {
+            return 0.0;
+        }
+
+        return max(0, round($this->total_amount - $this->amountPaid(), 2));
+    }
+
+    /**
+     * 'paid'/'partial'/'unpaid' -- for cancelled orders balanceDue() is
+     * always 0, so this naturally resolves to 'paid' if something was
+     * collected before cancellation, or 'unpaid' if nothing ever was.
+     */
+    public function paymentStatus(): string
+    {
+        if ($this->balanceDue() <= 0) {
+            return $this->amountPaid() > 0 ? 'paid' : 'unpaid';
+        }
+
+        return $this->amountPaid() > 0 ? 'partial' : 'unpaid';
+    }
+
+    /**
+     * Same as paymentStatus(), but folds in the subscription cycle's
+     * balance too. A subscription order's own subtotal is always 0 -- the
+     * flat monthly fee lives on the cycle -- so an order with no
+     * over-allowance extra_charge would otherwise show "unpaid" here even
+     * when the whole cycle is fully settled, contradicting the cycle-status
+     * line shown alongside it. Walk-in orders (no cycle) fall back to
+     * paymentStatus() unchanged.
+     */
+    public function combinedPaymentStatus(): string
+    {
+        $cycle = $this->subscriptionCycle();
+
+        if (! $cycle) {
+            return $this->paymentStatus();
+        }
+
+        $totalDue = $this->balanceDue() + $cycle->balanceDue();
+        $totalPaid = $this->amountPaid() + $cycle->amountPaid();
+
+        if ($totalDue <= 0) {
+            return $totalPaid > 0 ? 'paid' : 'unpaid';
+        }
+
+        return $totalPaid > 0 ? 'partial' : 'unpaid';
+    }
+
+    /**
+     * The billing cycle this collection's flat subscription fee actually
+     * lives on -- null for walk-in orders, and for a legacy subscription
+     * order that predates cycles (its own subtotal carries the price
+     * instead, see the Terminal's submitSubscriptionCollection()).
+     */
+    public function subscriptionCycle(): ?SubscriptionCycle
+    {
+        return $this->collection?->subscriptionCycle;
     }
 }

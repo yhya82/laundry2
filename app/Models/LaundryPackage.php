@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class LaundryPackage extends Model
 {
-    protected $fillable = ['name', 'description', 'base_price', 'is_active'];
+    protected $fillable = ['name', 'description', 'base_price', 'priority', 'clothes_allowed', 'is_active'];
 
     protected function casts(): array
     {

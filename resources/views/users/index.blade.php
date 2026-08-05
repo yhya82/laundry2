@@ -63,6 +63,8 @@
         @endforelse
     </div>
 
+    <div class="mb-8">{{ $users->links() }}</div>
+
     <h2 class="font-semibold text-ink mb-3">Permission Matrix</h2>
     <div class="bg-surface border border-line rounded-2xl overflow-hidden">
         <div class="overflow-x-auto">

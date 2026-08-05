@@ -11,6 +11,7 @@ class Payment extends Model
     protected $fillable = [
         'order_id',
         'subscription_id',
+        'subscription_cycle_id',
         'amount',
         'credit_applied',
         'method',
@@ -33,6 +34,11 @@ class Payment extends Model
     public function subscription(): BelongsTo
     {
         return $this->belongsTo(Subscription::class);
+    }
+
+    public function subscriptionCycle(): BelongsTo
+    {
+        return $this->belongsTo(SubscriptionCycle::class);
     }
 
     public function refunds(): HasMany

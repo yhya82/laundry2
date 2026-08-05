@@ -17,6 +17,8 @@ class StoreLaundryPackageRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:500'],
             'base_price' => ['required', 'numeric', 'min:0'],
+            'priority' => ['nullable', 'in:normal,high'],
+            'clothes_allowed' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }

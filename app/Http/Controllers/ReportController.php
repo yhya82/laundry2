@@ -36,6 +36,10 @@ class ReportController extends Controller
         return view('reports.index', [
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
+            // Only highlighted when the range came from a period shortcut --
+            // an explicit custom from/to (via the date inputs) means none of
+            // the quick-filter tabs apply anymore.
+            'activePeriod' => $request->filled('from') || $request->filled('to') ? null : $request->get('period', 'month'),
             'revenue' => $revenue,
             'revenueTotal' => $revenue->sum('total'),
             'damageByStatus' => $damageByStatus,
@@ -105,14 +109,28 @@ class ReportController extends Controller
     }
 
     /**
+     * An explicit from/to (the manual date inputs) always wins. Otherwise a
+     * period shortcut -- all/day/month/year, defaulting to month -- decides
+     * the range. "All" is just "since the business could plausibly have any
+     * data" rather than a genuinely unbounded query.
+     *
      * @return array{0: \Carbon\Carbon, 1: \Carbon\Carbon}
      */
     private function range(Request $request): array
     {
-        $from = $request->filled('from') ? \Carbon\Carbon::parse($request->get('from'))->startOfDay() : now()->subDays(30)->startOfDay();
-        $to = $request->filled('to') ? \Carbon\Carbon::parse($request->get('to'))->endOfDay() : now()->endOfDay();
+        if ($request->filled('from') || $request->filled('to')) {
+            $from = $request->filled('from') ? \Carbon\Carbon::parse($request->get('from'))->startOfDay() : now()->subDays(30)->startOfDay();
+            $to = $request->filled('to') ? \Carbon\Carbon::parse($request->get('to'))->endOfDay() : now()->endOfDay();
 
-        return [$from, $to];
+            return [$from, $to];
+        }
+
+        return match ($request->get('period', 'month')) {
+            'all' => [\Carbon\Carbon::createFromDate(2000, 1, 1)->startOfDay(), now()->endOfDay()],
+            'day' => [now()->startOfDay(), now()->endOfDay()],
+            'year' => [now()->startOfYear(), now()->endOfYear()],
+            default => [now()->startOfMonth(), now()->endOfMonth()],
+        };
     }
 
     private function csv(string $name, array $header, $rows): StreamedResponse

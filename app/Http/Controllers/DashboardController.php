@@ -7,11 +7,13 @@ use App\Models\Expense;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Subscription;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
         $user = auth()->user();
 
@@ -52,25 +54,13 @@ class DashboardController extends Controller
             'resolved30d' => DamageRecord::where('status', 'resolved')->where('updated_at', '>=', now()->subDays(30))->count(),
         ] : null;
 
-        $revenueTrend = $user->can('payments.view')
-            ? Payment::where('status', '!=', 'refunded')
-                ->where('created_at', '>=', now()->subDays(6)->startOfDay())
-                ->selectRaw('DATE(created_at) as day, SUM(amount) as total')
-                ->groupBy('day')
-                ->orderBy('day')
-                ->get()
-                ->keyBy('day')
+        $revenueTrendPeriod = in_array($request->get('period'), ['all', 'day', 'month', 'year'], true)
+            ? $request->get('period')
+            : 'month';
+
+        $revenueTrendSeries = $user->can('payments.view')
+            ? $this->revenueTrendSeries($revenueTrendPeriod)
             : null;
-
-        $revenueTrendSeries = null;
-
-        if ($revenueTrend !== null) {
-            $revenueTrendSeries = collect(range(6, 0))->map(function ($daysAgo) use ($revenueTrend) {
-                $day = now()->subDays($daysAgo)->format('Y-m-d');
-
-                return ['label' => now()->subDays($daysAgo)->format('D'), 'total' => (float) ($revenueTrend[$day]->total ?? 0)];
-            });
-        }
 
         return view('dashboard', compact(
             'queueCounts',
@@ -82,6 +72,67 @@ class DashboardController extends Controller
             'monthExpenses',
             'damageSnapshot',
             'revenueTrendSeries',
+            'revenueTrendPeriod',
         ));
+    }
+
+    /**
+     * Bucketed to match how much detail is actually useful at each zoom
+     * level: a single day's worth of hours, a month's worth of days, or a
+     * year (or all of history) worth of months. "All" doesn't pad empty
+     * months since its span is open-ended -- it only plots months that
+     * actually have revenue.
+     */
+    private function revenueTrendSeries(string $period): Collection
+    {
+        $paid = Payment::where('status', '!=', 'refunded');
+
+        return match ($period) {
+            'day' => (function () use ($paid) {
+                $hourly = (clone $paid)->whereDate('created_at', now()->toDateString())
+                    ->selectRaw('HOUR(created_at) as bucket, SUM(amount) as total')
+                    ->groupBy('bucket')
+                    ->pluck('total', 'bucket');
+
+                return collect(range(0, 23))->map(fn ($hour) => [
+                    'label' => sprintf('%02d:00', $hour),
+                    'total' => (float) ($hourly[$hour] ?? 0),
+                ]);
+            })(),
+
+            'year' => (function () use ($paid) {
+                $monthly = (clone $paid)->whereBetween('created_at', [now()->startOfYear(), now()->endOfYear()])
+                    ->selectRaw('MONTH(created_at) as bucket, SUM(amount) as total')
+                    ->groupBy('bucket')
+                    ->pluck('total', 'bucket');
+
+                return collect(range(1, 12))->map(fn ($month) => [
+                    'label' => \Carbon\Carbon::create()->month($month)->format('M'),
+                    'total' => (float) ($monthly[$month] ?? 0),
+                ]);
+            })(),
+
+            'all' => (clone $paid)
+                ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as bucket, SUM(amount) as total")
+                ->groupBy('bucket')
+                ->orderBy('bucket')
+                ->get()
+                ->map(fn ($row) => [
+                    'label' => \Carbon\Carbon::createFromFormat('Y-m', $row->bucket)->format('M Y'),
+                    'total' => (float) $row->total,
+                ]),
+
+            default => (function () use ($paid) {
+                $daily = (clone $paid)->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
+                    ->selectRaw('DAY(created_at) as bucket, SUM(amount) as total')
+                    ->groupBy('bucket')
+                    ->pluck('total', 'bucket');
+
+                return collect(range(1, now()->daysInMonth))->map(fn ($day) => [
+                    'label' => (string) $day,
+                    'total' => (float) ($daily[$day] ?? 0),
+                ]);
+            })(),
+        };
     }
 }

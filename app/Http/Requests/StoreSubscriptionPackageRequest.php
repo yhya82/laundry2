@@ -18,6 +18,7 @@ class StoreSubscriptionPackageRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:500'],
             'monthly_price' => ['required', 'numeric', 'min:0'],
             'clothes_allowance' => ['required', 'integer', 'min:1'],
+            'collections_per_month' => ['required', 'integer', 'min:1', 'max:28'],
             'is_active' => ['sometimes', 'boolean'],
         ];
     }

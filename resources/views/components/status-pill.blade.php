@@ -2,11 +2,11 @@
 
 @php
 $tones = [
-    'received' => 'neutral', 'refunded' => 'neutral', 'closed' => 'neutral', 'pending_review' => 'neutral', 'paused' => 'neutral',
+    'received' => 'neutral', 'refunded' => 'neutral', 'closed' => 'neutral', 'pending_review' => 'neutral', 'paused' => 'neutral', 'normal' => 'neutral',
     'sorting' => 'active', 'washing' => 'active', 'drying' => 'active', 'ironing' => 'active', 'packaging' => 'active',
-    'under_investigation' => 'active', 'approved' => 'active', 'partially_refunded' => 'active', 'scheduled' => 'active',
-    'completed' => 'success', 'resolved' => 'success', 'active' => 'success', 'collected' => 'success',
-    'cancelled' => 'critical', 'rejected' => 'critical', 'skipped' => 'critical',
+    'under_investigation' => 'active', 'approved' => 'active', 'partially_refunded' => 'active', 'scheduled' => 'active', 'partial' => 'active',
+    'completed' => 'success', 'resolved' => 'success', 'active' => 'success', 'collected' => 'success', 'paid' => 'success',
+    'cancelled' => 'critical', 'rejected' => 'critical', 'skipped' => 'critical', 'unpaid' => 'critical', 'high' => 'critical',
 ];
 $tone = $tones[$status] ?? 'neutral';
 $classes = [

@@ -48,6 +48,12 @@
                     <p class="text-xs text-ink-faint mt-1">Shown as an estimated ready time on active orders. Leave blank to hide it.</p>
                     <x-input-error :messages="$errors->get('default_turnaround_hours')" class="mt-1.5" />
                 </div>
+                <div>
+                    <x-input-label for="max_concurrent_washing" value="Max orders washing at once" />
+                    <x-text-input id="max_concurrent_washing" name="max_concurrent_washing" type="number" min="1" max="1000" class="block w-full" value="{{ $settings->get('laundry.max_concurrent_washing')?->value }}" />
+                    <p class="text-xs text-ink-faint mt-1">Blocks moving an order to Washing once this many orders are already washing, to avoid mixing clothes. Leave blank for no limit.</p>
+                    <x-input-error :messages="$errors->get('max_concurrent_washing')" class="mt-1.5" />
+                </div>
                 <x-primary-button>Save Laundry settings</x-primary-button>
             </form>
         </div>
@@ -62,6 +68,13 @@
                     Allow new subscription sign-ups
                 </label>
                 <p class="text-xs text-ink-faint">When off, creating a new subscription is blocked with a message -- existing subscriptions keep running normally.</p>
+
+                <label class="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" name="charge_for_extra_clothes" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('subscription.charge_for_extra_clothes')?->value !== 'false')>
+                    Charge for clothes over the plan allowance
+                </label>
+                <p class="text-xs text-ink-faint">When off, the Terminal still shows over-allowance items but never requires or applies an extra charge for them.</p>
+
                 <x-primary-button>Save Subscription settings</x-primary-button>
             </form>
         </div>
@@ -101,6 +114,11 @@
                 @csrf
                 @method('PUT')
                 <input type="hidden" name="group" value="order">
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="discount_enabled" name="discount_enabled" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('order.discount_enabled')?->value === 'true')>
+                    <x-input-label for="discount_enabled" value="Allow discounts at the Terminal" class="mb-0" />
+                </div>
+                <p class="text-xs text-ink-faint -mt-2">When off, the Discount field is hidden from the cart entirely -- staff can't apply one.</p>
                 <div>
                     <x-input-label for="max_discount_percent" value="Maximum discount (% of subtotal)" />
                     <x-text-input id="max_discount_percent" name="max_discount_percent" type="number" min="0" max="100" class="block w-full" value="{{ $settings->get('order.max_discount_percent')?->value ?? 100 }}" required />

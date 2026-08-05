@@ -16,7 +16,7 @@
                     <select id="customer_id" name="customer_id" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent" required>
                         <option value="">Select a customer…</option>
                         @foreach ($eligibleCustomers as $customer)
-                            <option value="{{ $customer->id }}" @selected(old('customer_id') == $customer->id)>{{ $customer->full_name }} — {{ $customer->phone }}</option>
+                            <option value="{{ $customer->id }}" @selected(old('customer_id', $customerId) == $customer->id)>{{ $customer->full_name }} — {{ $customer->phone }}</option>
                         @endforeach
                     </select>
                     <x-input-error :messages="$errors->get('customer_id')" class="mt-1.5" />

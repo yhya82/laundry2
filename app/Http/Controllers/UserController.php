@@ -14,7 +14,7 @@ class UserController extends Controller
 {
     public function index(): View
     {
-        $users = User::with('roles')->orderBy('name')->get();
+        $users = User::with('roles')->orderBy('name')->paginate(15);
         $roles = Role::with('permissions')->orderBy('name')->get();
         $permissionsByModule = Permission::orderBy('name')->get()->groupBy('module');
 

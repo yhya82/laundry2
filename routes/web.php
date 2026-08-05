@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuditController;
 use App\Http\Controllers\ClothesCategoryController;
 use App\Http\Controllers\ClothingItemController;
 use App\Http\Controllers\CollectionController;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\Route;
 
 // Sidebar destinations with a real controller now -- excluded from the
 // placeholder-route loop below.
-$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index', 'expenses.index', 'reports.index', 'users.index', 'settings.index'];
+$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index', 'expenses.index', 'reports.index', 'users.index', 'settings.index', 'audit.index'];
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
@@ -59,6 +60,7 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::middleware('permission:customers.manage')->group(function () {
         Route::get('/customers/{customer}/edit', [CustomerController::class, 'edit'])->name('customers.edit');
         Route::put('/customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
+        Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])->name('customers.destroy');
     });
 
     Route::middleware('permission:catalog.view')->group(function () {
@@ -103,6 +105,8 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::middleware('permission:orders.manage')->group(function () {
         Route::post('/orders/{order}/advance', [OrderController::class, 'advance'])->name('orders.advance');
         Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
+        Route::post('/orders/{order}/payments', [PaymentController::class, 'record'])->name('orders.payments.record');
+        Route::post('/subscription-cycles/{subscriptionCycle}/payments', [PaymentController::class, 'recordForCycle'])->name('subscriptionCycles.payments.record');
     });
 
     Route::middleware('permission:subscriptions.view')->group(function () {
@@ -112,6 +116,9 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::middleware('permission:subscriptions.manage')->group(function () {
         Route::get('/subscriptions/create', [SubscriptionController::class, 'create'])->name('subscriptions.create');
         Route::post('/subscriptions', [SubscriptionController::class, 'store'])->name('subscriptions.store');
+        Route::post('/subscriptions/{subscription}/pause', [SubscriptionController::class, 'pause'])->name('subscriptions.pause');
+        Route::post('/subscriptions/{subscription}/resume', [SubscriptionController::class, 'resume'])->name('subscriptions.resume');
+        Route::post('/subscriptions/{subscription}/cancel', [SubscriptionController::class, 'cancel'])->name('subscriptions.cancel');
     });
 
     Route::middleware('permission:subscriptions.view')->group(function () {
@@ -123,7 +130,7 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     });
 
     Route::middleware('permission:collections.manage')->group(function () {
-        Route::post('/collections/{collection}/skip', [CollectionController::class, 'skip'])->name('collections.skip');
+        Route::post('/collections/{collection}/cancel', [CollectionController::class, 'cancel'])->name('collections.cancel');
         Route::get('/collections/{collection}/collect', [CollectionController::class, 'collect'])->name('collections.collect');
     });
 
@@ -180,6 +187,10 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
     });
 
+    Route::middleware('permission:audit.view')->group(function () {
+        Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
+    });
+
     // Placeholder routes for every remaining sidebar destination. Each is
     // permission-gated now so the sidebar and access control (Phase 02) can
     // be verified end-to-end before the real screens (Phase 03+) exist.
@@ -200,4 +211,5 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     }
 });
 
-require __DIR__.'/auth.php';
+require __DIR__.'/auth.php'; 
+  

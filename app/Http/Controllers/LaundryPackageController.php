@@ -12,22 +12,30 @@ class LaundryPackageController extends Controller
 {
     public function index(): View
     {
-        $laundryPackages = LaundryPackage::orderBy('name')->get();
-        $subscriptionPackages = SubscriptionPackage::orderBy('name')->get();
+        $laundryPackages = LaundryPackage::orderBy('name')->paginate(10, pageName: 'laundry_page');
+        $subscriptionPackages = SubscriptionPackage::orderBy('name')->paginate(10, pageName: 'subscription_page');
 
         return view('catalog.packages.index', compact('laundryPackages', 'subscriptionPackages'));
     }
 
     public function store(StoreLaundryPackageRequest $request): RedirectResponse
     {
-        LaundryPackage::create($request->validated() + ['is_active' => $request->boolean('is_active', true)]);
+        LaundryPackage::create(array_merge($request->validated(), [
+            'priority' => $request->input('priority', 'normal'),
+            'clothes_allowed' => $request->filled('clothes_allowed') ? (int) $request->input('clothes_allowed') : null,
+            'is_active' => $request->boolean('is_active', true),
+        ]));
 
         return back()->with('status', 'Laundry package created.');
     }
 
     public function update(StoreLaundryPackageRequest $request, LaundryPackage $laundryPackage): RedirectResponse
     {
-        $laundryPackage->update($request->validated() + ['is_active' => $request->boolean('is_active', true)]);
+        $laundryPackage->update(array_merge($request->validated(), [
+            'priority' => $request->input('priority', 'normal'),
+            'clothes_allowed' => $request->filled('clothes_allowed') ? (int) $request->input('clothes_allowed') : null,
+            'is_active' => $request->boolean('is_active', true),
+        ]));
 
         return back()->with('status', 'Laundry package updated.');
     }

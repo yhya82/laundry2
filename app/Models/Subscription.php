@@ -18,9 +18,14 @@ class Subscription extends Model
         ];
     }
 
+    /**
+     * withTrashed() -- a soft-deleted customer's subscriptions/collections
+     * still need a real customer to render/settle against (name display,
+     * store credit, recording a cycle payment), not a silently-null relation.
+     */
     public function customer(): BelongsTo
     {
-        return $this->belongsTo(Customer::class);
+        return $this->belongsTo(Customer::class)->withTrashed();
     }
 
     public function subscriptionPackage(): BelongsTo
@@ -31,5 +36,15 @@ class Subscription extends Model
     public function collections(): HasMany
     {
         return $this->hasMany(Collection::class);
+    }
+
+    public function cycles(): HasMany
+    {
+        return $this->hasMany(SubscriptionCycle::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
     }
 }

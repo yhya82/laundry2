@@ -1,6 +1,114 @@
 <x-app-layout>
     <x-slot name="header">{{ $order->order_number }}</x-slot>
 
+    <div class="flex items-center justify-between">
+        <x-breadcrumbs :items="[
+            ['label' => 'Customers', 'url' => route('customers.index')],
+            ['label' => $order->customer->full_name, 'url' => route('customers.show', $order->customer)],
+            ['label' => $order->order_number, 'url' => null],
+        ]" />
+
+        <a href="{{ route('orders.index') }}" class="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-accent-ink transition-colors">
+            <x-nav-icon name="clipboard" class="w-4 h-4" />
+            All Orders
+        </a>
+    </div>
+
+    @php
+        $stageIcons = [
+            'received' => 'box', 'sorting' => 'shirt', 'washing' => 'washer',
+            'drying' => 'dryer', 'ironing' => 'iron', 'packaging' => 'gift', 'completed' => 'check',
+        ];
+        $stages = [...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'completed'];
+
+        $stageTimestamps = ['received' => $order->created_at];
+        foreach ($order->statusHistory->sortBy('created_at') as $entry) {
+            if (in_array($entry->to_status, $stages, true)) {
+                $stageTimestamps[$entry->to_status] = $entry->created_at;
+            }
+        }
+
+        $lastReachedIndex = 0;
+        foreach ($stages as $i => $stage) {
+            if (isset($stageTimestamps[$stage])) {
+                $lastReachedIndex = $i;
+            }
+        }
+
+        $isActiveOrder = ! $order->isTerminal();
+    @endphp
+
+    <div
+        class="bg-surface border border-line rounded-2xl p-6 mb-5 shadow-sm overflow-x-auto"
+        x-data="{
+            status: @js($order->status),
+            stages: @js($stages),
+            currentIndex: @js($lastReachedIndex),
+            isActive: @js($isActiveOrder),
+            timestamps: @js(collect($stageTimestamps)->map(fn ($t) => $t->format('M d, g:i A'))),
+            init() {
+                window.Echo.channel('orders').listen('.order.status-changed', (e) => {
+                    if (e.orderId !== {{ $order->id }}) return;
+                    this.status = e.toStatus;
+                    const idx = this.stages.indexOf(e.toStatus);
+                    if (idx !== -1) this.currentIndex = idx;
+                    this.isActive = ! ['completed', 'cancelled'].includes(e.toStatus);
+                    this.timestamps[e.toStatus] = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                });
+            }
+        }"
+    >
+        <div class="flex items-center min-w-max">
+            @foreach ($stages as $i => $stage)
+                @php
+                    $canAdvance = $i === $lastReachedIndex + 1 && $isActiveOrder && auth()->user()?->can('orders.manage');
+                @endphp
+                <div class="flex items-center {{ $loop->last ? '' : 'flex-1' }}">
+                    <div class="flex flex-col items-center text-center w-24 flex-none">
+                        @if ($canAdvance)
+                            <form method="POST" action="{{ route('orders.advance', $order) }}" title="Mark as {{ ucfirst($stage) }}">
+                                @csrf
+                                <button
+                                    type="submit"
+                                    class="w-11 h-11 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
+                                >
+                                    <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
+                                </button>
+                            </form>
+                        @else
+                            <span
+                                class="w-11 h-11 rounded-full flex items-center justify-center relative"
+                                :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success-soft text-success' : (({{ $i }} === currentIndex && isActive) ? 'bg-accent-soft text-accent-ink ring-2 ring-accent' : 'bg-surface-2 text-ink-faint')"
+                            >
+                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
+                                <span
+                                    x-show="{{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)"
+                                    class="absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-full bg-success text-white flex items-center justify-center border-2 border-surface"
+                                >
+                                    <x-nav-icon name="check" class="w-2.5 h-2.5" />
+                                </span>
+                            </span>
+                        @endif
+
+                        <div
+                            class="text-xs font-semibold mt-2"
+                            :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'text-ink' : (({{ $i }} === currentIndex && isActive) ? 'text-accent-ink' : 'text-ink-faint')"
+                        >
+                            {{ ucfirst($stage) }}
+                        </div>
+
+                        <div class="text-[11px] text-ink-faint font-mono mt-0.5" x-show="timestamps['{{ $stage }}']" x-text="timestamps['{{ $stage }}']"></div>
+                        <div class="text-[11px] text-accent-ink font-semibold mt-0.5" x-show="{{ $i }} === currentIndex && isActive">In Progress</div>
+                    </div>
+
+                    @unless ($loop->last)
+                        <div class="flex-1 h-0.5 -mt-6" :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success' : 'bg-line'"></div>
+                    @endunless
+                </div>
+            @endforeach
+        </div>
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <div class="lg:col-span-1 space-y-5">
@@ -21,7 +129,7 @@
                 }"
             >
                 <div class="flex items-center justify-between mb-4">
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Order</div>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Order</div>
                     <span
                         class="inline-flex items-center gap-1.5 font-mono text-xs font-semibold px-2.5 py-1 rounded-full"
                         :class="classes[tones[status]] ?? classes.neutral"
@@ -29,17 +137,35 @@
                     ></span>
                 </div>
                 <dl class="space-y-3 text-sm">
-                    <div class="flex justify-between">
+                    <div class="flex justify-between items-center">
                         <dt class="text-ink-muted">Customer</dt>
-                        <dd><a href="{{ route('customers.show', $order->customer) }}" class="text-accent-ink hover:underline">{{ $order->customer->full_name }}</a></dd>
+                        <dd>
+                            <a href="{{ route('customers.show', $order->customer) }}" class="inline-flex items-center gap-2 hover:underline">
+                                <span class="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold flex-none">
+                                    {{ Str::substr($order->customer->full_name, 0, 1) }}
+                                </span>
+                                <span class="text-accent-ink font-medium">{{ $order->customer->full_name }}</span>
+                            </a>
+                        </dd>
                     </div>
                     <div class="flex justify-between">
                         <dt class="text-ink-muted">Source</dt>
                         <dd class="text-ink">{{ $order->order_source === 'walk_in' ? 'Walk-in' : 'Subscription' }}</dd>
                     </div>
-                    <div class="flex justify-between">
+                    <div class="flex justify-between items-center">
                         <dt class="text-ink-muted">Created by</dt>
-                        <dd class="text-ink">{{ $order->creator->name ?? '—' }}</dd>
+                        <dd>
+                            @if ($order->creator)
+                                <span class="inline-flex items-center gap-2">
+                                    <span class="w-6 h-6 rounded-full bg-pill-bg text-pill-ink flex items-center justify-center text-xs font-bold flex-none">
+                                        {{ Str::substr($order->creator->name, 0, 1) }}
+                                    </span>
+                                    <span class="text-ink font-medium">{{ $order->creator->name }}</span>
+                                </span>
+                            @else
+                                <span class="text-ink">—</span>
+                            @endif
+                        </dd>
                     </div>
                     <div class="flex justify-between">
                         <dt class="text-ink-muted">Created</dt>
@@ -57,6 +183,17 @@
                             <dd class="text-ink font-mono text-xs">{{ $order->receipt->receipt_number }}</dd>
                         </div>
                     @endif
+                    <div class="pt-2 border-t border-line">
+                        <dt class="text-ink-muted mb-1">Notes</dt>
+                        @if ($order->notes && $order->notes !== 'None')
+                            <dd class="flex items-start gap-2 bg-critical-soft text-critical rounded-lg p-2.5">
+                                <x-nav-icon name="alert" class="w-4 h-4 flex-none mt-0.5" />
+                                <span class="font-medium">{{ $order->notes }}</span>
+                            </dd>
+                        @else
+                            <dd class="text-ink-faint">None</dd>
+                        @endif
+                    </div>
                     @if ($order->status === 'cancelled' && $order->cancellation_reason)
                         <div class="pt-2 border-t border-line">
                             <dt class="text-ink-muted mb-1">Cancellation reason</dt>
@@ -91,37 +228,15 @@
                 @endcan
             </div>
 
-            <div
-                class="bg-surface border border-line rounded-2xl p-6"
-                x-data="{
-                    entries: @js($order->statusHistory->sortByDesc('created_at')->map(fn ($e) => ['from' => $e->from_status, 'to' => $e->to_status, 'time' => $e->created_at->format('H:i')])),
-                    init() {
-                        window.Echo.channel('orders').listen('.order.status-changed', (e) => {
-                            if (e.orderId === {{ $order->id }}) {
-                                this.entries.unshift({ from: e.fromStatus, to: e.toStatus, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) });
-                            }
-                        });
-                    }
-                }"
-            >
-                <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-3">Status Timeline</div>
-                <template x-if="entries.length === 0">
-                    <p class="text-ink-faint text-sm">No status changes yet.</p>
-                </template>
-                <template x-for="(entry, i) in entries" :key="i">
-                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
-                        <span class="text-ink" x-text="(entry.from ? entry.from.charAt(0).toUpperCase() + entry.from.slice(1) + ' → ' : '') + entry.to.charAt(0).toUpperCase() + entry.to.slice(1)"></span>
-                        <span class="text-ink-faint font-mono text-xs" x-text="entry.time"></span>
-                    </div>
-                </template>
-            </div>
-
             <div class="bg-surface border border-line rounded-2xl p-6">
                 <div class="flex items-center justify-between mb-3">
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Damage Reports</div>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Damage Reports</div>
                     @can('damage.report')
                         @if ($order->status !== 'cancelled')
-                            <a href="{{ route('damage.create', $order) }}" class="text-xs text-accent-ink hover:underline">+ Report damage</a>
+                            <button type="button" @click="$dispatch('open-panel', 'report-damage')" class="inline-flex items-center gap-1.5 bg-critical text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                                <x-nav-icon name="alert" class="w-3.5 h-3.5" />
+                                Report damage
+                            </button>
                         @endif
                     @endcan
                 </div>
@@ -139,7 +254,7 @@
         <div class="lg:col-span-2 space-y-5">
 
             <div class="bg-surface border border-line rounded-2xl p-6">
-                <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-3">Line Items</div>
+                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Line Items</div>
                 @foreach ($order->packageLines as $line)
                     <div class="border border-line rounded-xl p-4 mb-3 last:mb-0">
                         <div class="flex items-center justify-between mb-2">
@@ -172,18 +287,142 @@
             </div>
 
             <div class="bg-surface border border-line rounded-2xl p-6">
-                <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-3">Payments</div>
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Payments</div>
+                        <x-status-pill :status="$order->combinedPaymentStatus()" />
+                    </div>
+                    @can('orders.manage')
+                        @if ($order->balanceDue() > 0)
+                            <x-panel-trigger panel="record-payment">Record Payment</x-panel-trigger>
+                        @endif
+                    @endcan
+                </div>
+
+                @if ($order->order_source === 'subscription')
+                    @php $cycle = $order->subscriptionCycle(); @endphp
+                    <div class="flex items-center justify-between gap-2 mb-3 p-2.5 rounded-lg bg-accent-soft text-sm">
+                        <span class="inline-flex items-center gap-1.5 text-accent-ink font-semibold">
+                            <x-nav-icon name="repeat" class="w-3.5 h-3.5" />
+                            Subscription pickup
+                        </span>
+                        @if ($cycle)
+                            @if ($cycle->isPaid())
+                                <span class="font-mono text-xs text-success font-semibold">Cycle payment completed</span>
+                            @else
+                                <a href="{{ route('subscriptions.show', $order->collection->subscription) }}" class="font-mono text-xs text-critical font-semibold hover:underline">
+                                    Cycle balance due: GMD {{ number_format($cycle->balanceDue(), 2) }}
+                                </a>
+                            @endif
+                        @endif
+                    </div>
+                @endif
+
                 @forelse ($order->payments as $payment)
                     <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
-                        <span class="text-ink-muted">{{ ucfirst($payment->method) }}</span>
+                        <span class="text-ink-muted">{{ ucfirst(str_replace('_', ' ', $payment->method)) }}</span>
                         <x-status-pill :status="$payment->status" />
                         <span class="font-mono tabular-nums text-ink">GMD {{ number_format($payment->amount, 2) }}</span>
                     </div>
                 @empty
                     <p class="text-ink-faint text-sm">No payments recorded.</p>
                 @endforelse
+
+                <div class="border-t border-line mt-3 pt-3 space-y-1.5 text-sm">
+                    <div class="flex justify-between"><span class="text-ink-muted">Amount Paid</span><span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->amountPaid(), 2) }}</span></div>
+                    @if ($order->balanceDue() > 0)
+                        <div class="flex justify-between font-semibold"><span class="text-critical">Balance Due</span><span class="font-mono tabular-nums text-critical">GMD {{ number_format($order->balanceDue(), 2) }}</span></div>
+                    @endif
+                </div>
             </div>
 
         </div>
     </div>
+
+    @can('orders.manage')
+        @if ($order->balanceDue() > 0)
+            <x-slide-panel name="record-payment" title="Record Payment" :error-fields="['amount', 'credit_applied', 'method']">
+                <form method="POST" action="{{ route('orders.payments.record', $order) }}" class="space-y-4">
+                    @csrf
+                    <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-ink font-semibold">GMD {{ number_format($order->balanceDue(), 2) }}</span></p>
+
+                    @if ($order->customer->store_credit_balance > 0)
+                        <div>
+                            <x-input-label for="credit_applied" value="Apply store credit" />
+                            <x-text-input id="credit_applied" name="credit_applied" type="number" step="0.01" min="0" max="{{ min($order->customer->store_credit_balance, $order->balanceDue()) }}" class="block w-full" />
+                            <p class="text-xs text-ink-faint mt-1">Of GMD {{ number_format($order->customer->store_credit_balance, 2) }} available.</p>
+                            <x-input-error :messages="$errors->get('credit_applied')" class="mt-1.5" />
+                        </div>
+                    @endif
+
+                    <div>
+                        <x-input-label for="record_amount" value="Amount collected (GMD)" />
+                        <x-text-input id="record_amount" name="amount" type="number" step="0.01" min="0" class="block w-full" required />
+                        <x-input-error :messages="$errors->get('amount')" class="mt-1.5" />
+                    </div>
+
+                    <div>
+                        <x-input-label for="record_method" value="Method" />
+                        <select id="record_method" name="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="mixed">Mixed</option>
+                        </select>
+                        <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <x-primary-button>Record Payment</x-primary-button>
+                        <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                    </div>
+                </form>
+            </x-slide-panel>
+        @endif
+    @endcan
+
+    @can('damage.report')
+        @if ($order->status !== 'cancelled')
+            <x-slide-panel name="report-damage" title="Report Damage" :error-fields="['damage_type_id', 'item_description', 'description', 'photo']">
+                <form method="POST" action="{{ route('damage.store', $order) }}" enctype="multipart/form-data" class="space-y-4">
+                    @csrf
+
+                    <div>
+                        <x-input-label for="rd_damage_type_id" value="Damage type" />
+                        <select id="rd_damage_type_id" name="damage_type_id" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent" required>
+                            <option value="">Select a type…</option>
+                            @foreach ($damageTypes as $type)
+                                <option value="{{ $type->id }}" @selected(old('damage_type_id') == $type->id)>{{ $type->name }}</option>
+                            @endforeach
+                        </select>
+                        <x-input-error :messages="$errors->get('damage_type_id')" class="mt-1.5" />
+                    </div>
+
+                    <div>
+                        <x-input-label for="rd_item_description" value="Item" />
+                        <x-text-input id="rd_item_description" name="item_description" type="text" class="block w-full" value="{{ old('item_description') }}" placeholder="e.g. White Shirt" required />
+                        <x-input-error :messages="$errors->get('item_description')" class="mt-1.5" />
+                    </div>
+
+                    <div>
+                        <x-input-label for="rd_description" value="Description (optional)" />
+                        <textarea id="rd_description" name="description" rows="3" class="block w-full bg-surface border-line-strong text-ink placeholder:text-ink-faint focus:border-accent focus:ring-accent rounded-lg shadow-sm text-sm">{{ old('description') }}</textarea>
+                        <x-input-error :messages="$errors->get('description')" class="mt-1.5" />
+                    </div>
+
+                    <div>
+                        <x-input-label for="rd_photo" value="Photo evidence (optional)" />
+                        <input id="rd_photo" name="photo" type="file" accept="image/*" class="block w-full text-sm text-ink-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-accent-soft file:text-accent-ink file:text-xs file:font-semibold">
+                        <x-input-error :messages="$errors->get('photo')" class="mt-1.5" />
+                    </div>
+
+                    <p class="text-xs text-ink-faint">Reported at stage: <span class="font-mono">{{ ucfirst($order->status) }}</span></p>
+
+                    <div class="flex items-center gap-3">
+                        <x-primary-button>Submit report</x-primary-button>
+                        <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                    </div>
+                </form>
+            </x-slide-panel>
+        @endif
+    @endcan
 </x-app-layout>

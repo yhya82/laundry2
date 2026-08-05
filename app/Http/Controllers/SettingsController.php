@@ -52,14 +52,17 @@ class SettingsController extends Controller
     {
         $validated = $request->validate([
             'default_turnaround_hours' => ['nullable', 'integer', 'min:1', 'max:720'],
+            'max_concurrent_washing' => ['nullable', 'integer', 'min:1', 'max:1000'],
         ]);
 
         Setting::set('laundry.default_turnaround_hours', $validated['default_turnaround_hours'] ?? null, 'laundry', 'integer');
+        Setting::set('laundry.max_concurrent_washing', $validated['max_concurrent_washing'] ?? null, 'laundry', 'integer');
     }
 
     protected function saveSubscription(Request $request): void
     {
         Setting::set('subscription.allow_new_signups', $request->boolean('allow_new_signups') ? 'true' : 'false', 'subscription', 'boolean');
+        Setting::set('subscription.charge_for_extra_clothes', $request->boolean('charge_for_extra_clothes') ? 'true' : 'false', 'subscription', 'boolean');
     }
 
     protected function savePayment(Request $request): void
@@ -81,6 +84,7 @@ class SettingsController extends Controller
         ]);
 
         Setting::set('order.max_discount_percent', (string) $validated['max_discount_percent'], 'order', 'integer');
+        Setting::set('order.discount_enabled', $request->boolean('discount_enabled') ? 'true' : 'false', 'order', 'boolean');
     }
 
     protected function saveBackup(Request $request): void

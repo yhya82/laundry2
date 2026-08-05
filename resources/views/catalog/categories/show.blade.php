@@ -1,8 +1,12 @@
 <x-app-layout>
     <x-slot name="header">{{ $category->name }}</x-slot>
 
-    <div class="flex items-center justify-between mb-5">
-        <a href="{{ route('catalog.categories') }}" class="text-sm text-ink-muted hover:text-ink">&larr; All categories</a>
+    <x-breadcrumbs :items="[
+        ['label' => 'Categories', 'url' => route('catalog.categories')],
+        ['label' => $category->name, 'url' => null],
+    ]" />
+
+    <div class="flex items-center justify-end mb-5">
         @can('catalog.manage')
             <x-panel-trigger panel="item-create">+ New Item</x-panel-trigger>
         @endcan

@@ -16,22 +16,33 @@
 
             <!-- Top nav -->
             <header class="h-16 flex-none border-b border-line bg-surface flex items-center px-4 gap-4">
-                <button class="lg:hidden text-ink-muted" @click="sidebarOpen = !sidebarOpen" aria-label="Toggle navigation">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                    </svg>
-                </button>
+                <div class="flex items-center gap-4 lg:w-60 lg:flex-none">
+                    <button class="lg:hidden text-ink-muted" @click="sidebarOpen = !sidebarOpen" aria-label="Toggle navigation">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
 
-                <a href="{{ route('dashboard') }}" class="flex items-center gap-2 font-bold text-ink">
-                    @if ($logoPath = \App\Models\Setting::get('branding.logo_path'))
-                        <img src="{{ Storage::url($logoPath) }}" alt="" class="w-7 h-7 rounded object-cover">
-                    @else
-                        <span class="w-7 h-7 rounded bg-accent-soft text-accent-ink flex items-center justify-center text-sm font-bold">
-                            {{ Str::substr(\App\Models\Setting::get('branding.business_name', config('app.name')), 0, 1) }}
-                        </span>
-                    @endif
-                    <span class="hidden sm:inline">{{ \App\Models\Setting::get('branding.business_name', config('app.name')) }}</span>
-                </a>
+                    <a href="{{ route('dashboard') }}" class="flex items-center gap-2 font-bold text-ink">
+                        @if ($logoPath = \App\Models\Setting::get('branding.logo_path'))
+                            <img src="{{ Storage::url($logoPath) }}" alt="" class="w-7 h-7 rounded object-cover">
+                        @else
+                            <span class="w-7 h-7 rounded bg-accent-soft text-accent-ink flex items-center justify-center text-sm font-bold">
+                                {{ Str::substr(\App\Models\Setting::get('branding.business_name', config('app.name')), 0, 1) }}
+                            </span>
+                        @endif
+                        <span class="hidden sm:inline">{{ \App\Models\Setting::get('branding.business_name', config('app.name')) }}</span>
+                    </a>
+                </div>
+
+                @isset($header)
+                    <div class="hidden sm:flex items-center gap-3">
+                        <h1 class="text-base font-semibold text-ink">{{ $header }}</h1>
+                        @isset($headerActions)
+                            {{ $headerActions }}
+                        @endisset
+                    </div>
+                @endisset
 
                 <div class="ml-auto flex items-center gap-3">
                     <div
@@ -136,7 +147,7 @@
                                 @if (isset($item['children']))
                                     <div x-data="{ open: {{ request()->routeIs('catalog.*') ? 'true' : 'false' }} }">
                                         <button @click="open = !open" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-ink-muted hover:bg-surface-2">
-                                            <span class="w-4 h-4 rounded bg-line-strong flex-none"></span>
+                                            <x-nav-icon :name="$item['icon']" />
                                             {{ $item['label'] }}
                                             <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 ml-auto transition-transform" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
                                         </button>
@@ -152,7 +163,7 @@
                                     </div>
                                 @else
                                     <a href="{{ route($item['route']) }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
-                                        <span class="w-4 h-4 rounded {{ request()->routeIs($item['route']) ? 'bg-accent' : 'bg-line-strong' }} flex-none"></span>
+                                        <x-nav-icon :name="$item['icon']" />
                                         {{ $item['label'] }}
                                     </a>
                                 @endif
@@ -164,7 +175,7 @@
                             <div class="h-px bg-line my-3"></div>
                             @foreach ($adminItems as $item)
                                 <a href="{{ route($item['route']) }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
-                                    <span class="w-4 h-4 rounded {{ request()->routeIs($item['route']) ? 'bg-accent' : 'bg-line-strong' }} flex-none"></span>
+                                    <x-nav-icon :name="$item['icon']" />
                                     {{ $item['label'] }}
                                 </a>
                             @endforeach
@@ -173,12 +184,6 @@
                 </aside>
 
                 <div class="flex-1 min-w-0 flex flex-col min-h-0">
-                    @isset($header)
-                        <div class="px-6 py-5 border-b border-line bg-surface">
-                            <h1 class="text-xl font-bold text-ink">{{ $header }}</h1>
-                        </div>
-                    @endisset
-
                     <main class="flex-1 p-6 overflow-y-auto">
                         {{ $slot }}
                     </main>

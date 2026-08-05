@@ -1,6 +1,13 @@
 <x-app-layout>
     <x-slot name="header">Damage Report #{{ $damageRecord->id }} — {{ $damageRecord->order->order_number }}</x-slot>
 
+    <x-breadcrumbs :items="[
+        ['label' => 'Customers', 'url' => route('customers.index')],
+        ['label' => $damageRecord->order->customer->full_name, 'url' => route('customers.show', $damageRecord->order->customer)],
+        ['label' => $damageRecord->order->order_number, 'url' => route('orders.show', $damageRecord->order)],
+        ['label' => 'Damage #'.$damageRecord->id, 'url' => null],
+    ]" />
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <div class="lg:col-span-2 bg-surface border border-line rounded-2xl p-6">

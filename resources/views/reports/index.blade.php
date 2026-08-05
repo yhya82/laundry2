@@ -1,6 +1,14 @@
 <x-app-layout>
     <x-slot name="header">Reports</x-slot>
 
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+        @foreach (['all' => 'All', 'day' => 'Day', 'month' => 'Month', 'year' => 'Year'] as $period => $label)
+            <a href="{{ route('reports.index', ['period' => $period]) }}" class="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors {{ $activePeriod === $period ? 'bg-accent text-white' : 'bg-surface-2 text-ink-muted hover:text-ink' }}">
+                {{ $label }}
+            </a>
+        @endforeach
+    </div>
+
     <form method="GET" class="flex flex-wrap items-end gap-3 mb-6">
         <div>
             <label class="block text-xs text-ink-muted mb-1">From</label>

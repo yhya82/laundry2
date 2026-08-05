@@ -23,7 +23,7 @@
                 @forelse ($subscriptions as $subscription)
                     <tr class="border-t border-line hover:bg-surface-2">
                         <td class="px-4 py-3">
-                            <a href="{{ route('subscriptions.show', $subscription) }}" class="font-medium text-ink hover:text-accent-ink">{{ $subscription->customer->full_name }}</a>
+                            <a href="{{ route('subscriptions.show', $subscription) }}" class="font-medium text-ink hover:text-accent-ink">{{ $subscription->customer?->full_name ?? 'Deleted customer' }}</a>
                         </td>
                         <td class="px-4 py-3 text-ink-muted">{{ $subscription->subscriptionPackage->name }}</td>
                         <td class="px-4 py-3"><x-status-pill :status="$subscription->status" /></td>
@@ -40,7 +40,7 @@
         @forelse ($subscriptions as $subscription)
             <a href="{{ route('subscriptions.show', $subscription) }}" class="block bg-surface border border-line rounded-2xl p-4">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="font-medium text-ink">{{ $subscription->customer->full_name }}</span>
+                    <span class="font-medium text-ink">{{ $subscription->customer?->full_name ?? 'Deleted customer' }}</span>
                     <x-status-pill :status="$subscription->status" />
                 </div>
                 <div class="flex items-center justify-between text-sm text-ink-muted">
