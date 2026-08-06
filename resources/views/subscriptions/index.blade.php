@@ -9,6 +9,17 @@
         @endcan
     </div>
 
+    <div
+        x-data="{
+            init() {
+                window.Echo.channel('subscriptions').listen('.subscription.status-changed', (e) => {
+                    document.querySelectorAll('[data-subscription-status=\'' + e.subscriptionId + '\']').forEach((el) => {
+                        window.applyStatusPill(el, e.toStatus);
+                    });
+                });
+            }
+        }"
+    >
     <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <table class="w-full text-sm">
             <thead class="bg-surface-2">
@@ -26,7 +37,7 @@
                             <a href="{{ route('subscriptions.show', $subscription) }}" class="font-medium text-ink hover:text-accent-ink">{{ $subscription->customer?->full_name ?? 'Deleted customer' }}</a>
                         </td>
                         <td class="px-4 py-3 text-ink-muted">{{ $subscription->subscriptionPackage->name }}</td>
-                        <td class="px-4 py-3"><x-status-pill :status="$subscription->status" /></td>
+                        <td class="px-4 py-3"><x-status-pill :status="$subscription->status" data-subscription-status="{{ $subscription->id }}" /></td>
                         <td class="px-4 py-3 font-mono text-xs text-ink-faint">{{ $subscription->start_date->format('Y-m-d') }}</td>
                     </tr>
                 @empty
@@ -41,7 +52,7 @@
             <a href="{{ route('subscriptions.show', $subscription) }}" class="block bg-surface border border-line rounded-2xl p-4">
                 <div class="flex items-center justify-between mb-2">
                     <span class="font-medium text-ink">{{ $subscription->customer?->full_name ?? 'Deleted customer' }}</span>
-                    <x-status-pill :status="$subscription->status" />
+                    <x-status-pill :status="$subscription->status" data-subscription-status="{{ $subscription->id }}" />
                 </div>
                 <div class="flex items-center justify-between text-sm text-ink-muted">
                     <span>{{ $subscription->subscriptionPackage->name }}</span>
@@ -51,6 +62,7 @@
         @empty
             <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No subscriptions yet.</div>
         @endforelse
+    </div>
     </div>
 
     <div class="mt-4">{{ $subscriptions->links() }}</div>

@@ -25,6 +25,7 @@ class NavItems
                 'children' => [
                     ['label' => 'Categories', 'route' => 'catalog.categories', 'permission' => 'catalog.view'],
                     ['label' => 'Packages', 'route' => 'catalog.packages', 'permission' => 'catalog.view'],
+                    ['label' => 'Machines', 'route' => 'catalog.machines', 'permission' => 'catalog.view'],
                 ],
             ],
             ['label' => 'Payments', 'route' => 'payments.index', 'permission' => 'payments.view', 'icon' => 'wallet'],

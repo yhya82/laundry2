@@ -9,6 +9,31 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         @livewireStyles
+
+        <script>
+            // Mirrors resources/views/components/status-pill.blade.php's tone/class
+            // map exactly, so a live-patched pill is indistinguishable from one
+            // that was server-rendered on page load.
+            window.STATUS_PILL_TONES = {
+                received: 'neutral', refunded: 'neutral', closed: 'neutral', pending_review: 'neutral', paused: 'neutral', normal: 'neutral',
+                sorting: 'active', washing: 'active', drying: 'active', ironing: 'active', packaging: 'active',
+                under_investigation: 'active', approved: 'active', partially_refunded: 'active', scheduled: 'active', partial: 'active',
+                completed: 'success', resolved: 'success', active: 'success', collected: 'success', paid: 'success',
+                cancelled: 'critical', rejected: 'critical', skipped: 'critical', unpaid: 'critical', high: 'critical',
+            };
+            window.STATUS_PILL_CLASSES = {
+                neutral: 'bg-pill-bg text-pill-ink',
+                active: 'bg-accent-soft text-accent-ink',
+                success: 'bg-success-soft text-success',
+                critical: 'bg-critical-soft text-critical',
+            };
+            window.applyStatusPill = function (el, status) {
+                if (! el) return;
+                const tone = window.STATUS_PILL_TONES[status] || 'neutral';
+                el.className = 'inline-flex items-center gap-1.5 font-mono text-xs font-semibold px-2.5 py-1 rounded-full ' + window.STATUS_PILL_CLASSES[tone];
+                el.textContent = status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ');
+            };
+        </script>
     </head>
     <body class="font-sans antialiased bg-bg text-ink h-screen overflow-hidden" x-data="{ sidebarOpen: false }">
         <x-toast />

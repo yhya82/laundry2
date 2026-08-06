@@ -8,13 +8,24 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Subscription extends Model
 {
-    protected $fillable = ['customer_id', 'subscription_package_id', 'status', 'start_date', 'end_date'];
+    protected $fillable = [
+        'customer_id',
+        'subscription_package_id',
+        'status',
+        'start_date',
+        'end_date',
+        'collections_per_month',
+        'collection_type',
+        'max_clothes_per_cycle',
+    ];
 
     protected function casts(): array
     {
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'collections_per_month' => 'integer',
+            'max_clothes_per_cycle' => 'integer',
         ];
     }
 

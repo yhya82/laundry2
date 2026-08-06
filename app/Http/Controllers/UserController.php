@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreUserRequest;
+use App\Models\ActivityLog;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -21,6 +24,54 @@ class UserController extends Controller
         return view('users.index', compact('users', 'roles', 'permissionsByModule'));
     }
 
+    public function show(User $user): View
+    {
+        $user->load('roles');
+        $roles = Role::orderBy('name')->get();
+        $recentActivity = ActivityLog::where('causer_id', $user->id)->latest('created_at')->limit(10)->get();
+
+        return view('users.show', compact('user', 'roles', 'recentActivity'));
+    }
+
+    public function update(Request $request, User $user): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+        ]);
+
+        $user->update($validated);
+
+        return back()->with('status', 'User details updated.');
+    }
+
+    public function setPassword(Request $request, User $user): RedirectResponse
+    {
+        $validated = $request->validate([
+            'password' => ['required', 'confirmed', Password::defaults()],
+        ]);
+
+        $user->update(['password' => $validated['password']]);
+
+        return back()->with('status', "Password updated for {$user->name}.");
+    }
+
+    /**
+     * Deactivated (never deleted) -- see EnsureUserIsActive for why: every
+     * order, payment, and audit row this user ever touched still needs a
+     * real name attached to it, not a dangling reference.
+     */
+    public function toggleActive(User $user): RedirectResponse
+    {
+        if ($user->id === auth()->id()) {
+            return back()->withErrors(['user' => 'You cannot deactivate your own account.']);
+        }
+
+        $user->update(['is_active' => ! $user->is_active]);
+
+        return back()->with('status', $user->is_active ? 'User activated.' : 'User deactivated.');
+    }
+
     public function store(StoreUserRequest $request): RedirectResponse
     {
         $validated = $request->validated();
@@ -34,6 +85,17 @@ class UserController extends Controller
         $user->syncRoles($validated['roles']);
 
         return back()->with('status', 'User created.');
+    }
+
+    public function storeRole(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255', 'unique:roles,name'],
+        ]);
+
+        Role::create(['name' => $validated['name']]);
+
+        return back()->with('status', 'Role created — set its permissions below.');
     }
 
     public function updateRoles(Request $request, User $user): RedirectResponse

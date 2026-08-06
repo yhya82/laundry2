@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\OrderStatusChanged;
 use App\Models\DamageType;
 use App\Models\Order;
-use App\Models\Setting;
+use App\Models\WashingMachine;
 use App\Services\NotificationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -44,17 +44,19 @@ class OrderController extends Controller
     public function create(Request $request): View
     {
         $customerId = $request->integer('customer') ?: null;
+        $forceWalkIn = $request->get('mode') === 'walk_in';
 
-        return view('orders.create', compact('customerId'));
+        return view('orders.create', compact('customerId', 'forceWalkIn'));
     }
 
     public function show(Order $order): View
     {
-        $order->load(['customer', 'packageLines.clothesLines', 'payments', 'statusHistory.order', 'damageRecords', 'receipt', 'creator']);
+        $order->load(['customer', 'packageLines.clothesLines', 'payments', 'statusHistory.order', 'statusHistory.changedBy', 'damageRecords', 'receipt', 'creator', 'washingMachine']);
 
         $damageTypes = DamageType::orderBy('name')->get();
+        $washingMachines = WashingMachine::where('is_active', true)->orderBy('name')->get();
 
-        return view('orders.show', compact('order', 'damageTypes'));
+        return view('orders.show', compact('order', 'damageTypes', 'washingMachines'));
     }
 
     /**
@@ -62,7 +64,7 @@ class OrderController extends Controller
      * arbitrary target status from the request. trg_orders_status_history_log
      * writes the timeline row automatically; nothing here logs it.
      */
-    public function advance(Order $order): RedirectResponse
+    public function advance(Request $request, Order $order): RedirectResponse
     {
         $next = $order->nextStatus();
 
@@ -70,16 +72,29 @@ class OrderController extends Controller
             return back()->withErrors(['status' => 'This order has no further stage to advance to.']);
         }
 
-        if ($next === 'washing' && $maxWashing = Setting::get('laundry.max_concurrent_washing')) {
-            $currentlyWashing = Order::where('status', 'washing')->count();
+        $washingMachine = null;
 
-            if ($currentlyWashing >= (int) $maxWashing) {
-                return back()->withErrors(['status' => "Washing capacity full ({$currentlyWashing}/{$maxWashing} orders currently washing). Wait for one to finish before starting another."]);
+        if ($next === 'washing') {
+            $request->validate(['washing_machine_id' => ['required', 'exists:washing_machines,id']]);
+
+            $washingMachine = WashingMachine::find($request->integer('washing_machine_id'));
+
+            if (! $washingMachine->is_active) {
+                return back()->withErrors(['status' => 'This washing machine is retired and cannot take new orders.']);
+            }
+
+            if ($washingMachine->isBusy()) {
+                return back()->withErrors(['status' => "This washing machine is already washing order {$washingMachine->currentOrder()->order_number}."]);
             }
         }
 
         $from = $order->status;
         $order->status = $next;
+
+        if ($washingMachine) {
+            $order->washing_machine_id = $washingMachine->id;
+        }
+
         $order->save();
 
         OrderStatusChanged::dispatch($order, $from);

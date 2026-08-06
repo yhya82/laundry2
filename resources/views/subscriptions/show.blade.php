@@ -8,6 +8,7 @@
     ]" />
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="space-y-5">
         <div class="bg-surface border border-line rounded-2xl p-6">
             <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-4">Subscription</div>
             <dl class="space-y-3 text-sm">
@@ -81,6 +82,85 @@
             @endcan
         </div>
 
+        <div class="bg-surface border border-line rounded-2xl p-6">
+            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-4">Current Cycle</div>
+            @if ($currentCycle)
+                <dl class="space-y-3 text-sm">
+                    <div class="flex justify-between">
+                        <dt class="text-ink-muted">Period</dt>
+                        <dd class="font-mono text-xs text-ink">
+                            {{ $currentCycle->starts_on->format('M d') }}@if ($currentCycle->ends_on) – {{ $currentCycle->ends_on->format('M d') }}@endif
+                        </dd>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <dt class="text-ink-muted">Collection type</dt>
+                        <dd class="text-ink">
+                            @can('subscriptions.manage')
+                                @if ($cycleCollectionsCompleted === 0)
+                                    <form method="POST" action="{{ route('subscriptions.collection-type.update', $subscription) }}" class="flex items-center gap-2">
+                                        @csrf
+                                        @method('PUT')
+                                        <select name="collection_type" class="bg-surface border-line-strong text-ink rounded-lg shadow-sm text-xs focus:border-accent focus:ring-accent py-1">
+                                            <option value="scheduled" @selected($subscription->collection_type === 'scheduled')>Scheduled</option>
+                                            <option value="non_scheduled" @selected($subscription->collection_type === 'non_scheduled')>Non-scheduled</option>
+                                        </select>
+                                        <button type="submit" class="text-xs font-semibold text-accent-ink hover:underline">Save</button>
+                                    </form>
+                                @else
+                                    {{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}
+                                @endif
+                            @else
+                                {{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}
+                            @endcan
+                        </dd>
+                    </div>
+                    @error('collection_type') <p class="text-critical text-xs text-right">{{ $message }}</p> @enderror
+                    <div class="flex justify-between">
+                        <dt class="text-ink-muted">Collections</dt>
+                        <dd class="font-mono tabular-nums text-ink">{{ $cycleCollectionsCompleted }} completed of {{ $cycleCollectionsTotal }} planned</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-ink-muted">Clothes used</dt>
+                        <dd class="font-mono tabular-nums {{ $currentCycle->clothesCollected() > $currentCycle->max_clothes_snapshot ? 'text-critical font-semibold' : 'text-ink' }}">
+                            {{ $currentCycle->clothesCollected() }} / {{ $currentCycle->max_clothes_snapshot }}
+                            @if ($currentCycle->clothesCollected() > $currentCycle->max_clothes_snapshot)
+                                (+{{ $currentCycle->clothesCollected() - $currentCycle->max_clothes_snapshot }} over)
+                            @endif
+                        </dd>
+                    </div>
+                    <div class="flex justify-between pt-2 border-t border-line">
+                        <dt class="text-ink-muted">Cycle balance</dt>
+                        <dd>
+                            @if ($currentCycle->balanceDue() > 0)
+                                <span class="font-mono tabular-nums text-critical font-semibold">GMD {{ number_format($currentCycle->balanceDue(), 2) }} due</span>
+                            @else
+                                <span class="font-mono text-success font-semibold">Payment completed</span>
+                            @endif
+                        </dd>
+                    </div>
+                </dl>
+
+                @can('subscriptions.manage')
+                    @if ($needsRenewal)
+                        <div class="mt-5 pt-5 border-t border-line">
+                            <div class="bg-accent-soft rounded-xl p-3 mb-3">
+                                <p class="text-sm text-accent-ink font-medium">This cycle's collections are all resolved.</p>
+                                <p class="text-xs text-ink-muted mt-0.5">Nothing continues automatically — renew to start the next cycle.</p>
+                            </div>
+                            <button type="button" @click="$dispatch('open-panel', 'renew-cycle-{{ $subscription->id }}')" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
+                                <x-nav-icon name="repeat" class="w-3.5 h-3.5" />
+                                Renew
+                            </button>
+                            <x-renew-cycle-modal :subscription="$subscription" :packages="$packages" />
+                        </div>
+                    @endif
+                @endcan
+            @else
+                <p class="text-sm text-ink-faint">No active cycle for this subscription.</p>
+            @endif
+        </div>
+        </div>
+
         <div class="lg:col-span-2 bg-surface border border-line rounded-2xl p-6">
             <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-4">Collection History</div>
             <table class="w-full text-sm">
@@ -95,14 +175,14 @@
                 <tbody>
                     @forelse ($subscription->collections as $collection)
                         <tr class="border-t border-line">
-                            <td class="py-2.5 font-mono text-xs text-ink">{{ $collection->scheduled_date->format('Y-m-d') }}</td>
+                            <td class="py-2.5 font-mono text-xs text-ink">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'Anytime' }}</td>
                             <td class="py-2.5">
                                 <x-status-pill :status="$collection->status" />
                                 @if ($collection->status === 'cancelled')
                                     <div class="text-xs text-ink-faint mt-1">
                                         {{ $collection->cancellation_reason }}
                                         @if ($collection->combinedInto)
-                                            — combined into {{ $collection->combinedInto->scheduled_date->format('Y-m-d') }}
+                                            — combined into {{ $collection->combinedInto->scheduled_date?->format('Y-m-d') ?? 'anytime pickup #'.$collection->combinedInto->id }}
                                         @endif
                                     </div>
                                 @endif
@@ -256,7 +336,7 @@
                         @csrf
                         <input type="hidden" name="cancel_collection_id" value="{{ $collection->id }}">
                         <p class="text-sm text-ink-muted">
-                            Cancels the <span class="font-mono text-ink">{{ $collection->scheduled_date->format('Y-m-d') }}</span> pickup and folds it into another one -- that visit will cover both.
+                            Cancels the <span class="font-mono text-ink">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'anytime' }}</span> pickup and folds it into another one — that visit will cover both.
                         </p>
                         @php
                             $combineOptions = $subscription->collections
@@ -270,7 +350,7 @@
                             <select id="combine_into_{{ $collection->id }}" name="combined_into_collection_id" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent" required>
                                 <option value="">Select a pickup…</option>
                                 @foreach ($combineOptions as $option)
-                                    <option value="{{ $option->id }}">{{ $option->scheduled_date->format('Y-m-d') }}</option>
+                                    <option value="{{ $option->id }}">{{ $option->scheduled_date?->format('Y-m-d') ?? 'Anytime (#'.$option->id.')' }}</option>
                                 @endforeach
                             </select>
                             @if ((int) old('cancel_collection_id') === $collection->id)

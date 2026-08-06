@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Events\PaymentReceived;
-use App\Http\Requests\StoreRefundRequest;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\Setting;
@@ -25,21 +24,6 @@ class PaymentController extends Controller
             ->withQueryString();
 
         return view('payments.index', compact('payments'));
-    }
-
-    public function refund(StoreRefundRequest $request, Payment $payment): RedirectResponse
-    {
-        try {
-            $payment->refunds()->create([
-                'amount' => $request->validated('amount'),
-                'reason' => $request->validated('reason'),
-                'refunded_by' => auth()->id(),
-            ]);
-        } catch (QueryException $e) {
-            return back()->withErrors(['amount' => 'This refund could not be processed -- it may exceed what remains refundable.']);
-        }
-
-        return back()->with('status', 'Refund recorded.');
     }
 
     /**
@@ -96,7 +80,7 @@ class PaymentController extends Controller
                 ]);
             });
         } catch (QueryException $e) {
-            return back()->withInput()->withErrors(['amount' => 'This payment could not be processed -- refresh and try again.']);
+            return back()->withInput()->withErrors(['amount' => 'This payment could not be processed — refresh and try again.']);
         }
 
         PaymentReceived::dispatch($payment);
@@ -160,7 +144,7 @@ class PaymentController extends Controller
                 ]);
             });
         } catch (QueryException $e) {
-            return back()->withInput()->withErrors(['amount' => 'This payment could not be processed -- refresh and try again.']);
+            return back()->withInput()->withErrors(['amount' => 'This payment could not be processed — refresh and try again.']);
         }
 
         PaymentReceived::dispatch($payment);

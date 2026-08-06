@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\SubscriptionStatusChanged;
 use App\Http\Requests\StoreSubscriptionRequest;
 use App\Models\Customer;
 use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\SubscriptionPackage;
 use App\Support\CollectionScheduler;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class SubscriptionController extends Controller
@@ -56,7 +60,24 @@ class SubscriptionController extends Controller
             'cycles' => fn ($q) => $q->orderByDesc('starts_on'),
         ]);
 
-        return view('subscriptions.show', compact('subscription'));
+        $currentCycle = $subscription->cycles->first();
+        $needsRenewal = $subscription->status === 'active' && $currentCycle && $currentCycle->isExhausted();
+
+        $cycleCollections = $currentCycle
+            ? $subscription->collections->where('subscription_cycle_id', $currentCycle->id)
+            : collect();
+        $cycleCollectionsCompleted = $cycleCollections->where('status', 'collected')->count();
+        $cycleCollectionsTotal = $cycleCollections->count();
+        $packages = SubscriptionPackage::where('is_active', true)->orderBy('name')->get();
+
+        return view('subscriptions.show', compact(
+            'subscription',
+            'needsRenewal',
+            'currentCycle',
+            'cycleCollectionsCompleted',
+            'cycleCollectionsTotal',
+            'packages',
+        ));
     }
 
     public function pause(Subscription $subscription): RedirectResponse
@@ -66,6 +87,8 @@ class SubscriptionController extends Controller
         }
 
         $subscription->update(['status' => 'paused']);
+
+        SubscriptionStatusChanged::dispatch($subscription);
 
         return back()->with('status', 'Subscription paused.');
     }
@@ -87,6 +110,8 @@ class SubscriptionController extends Controller
             CollectionScheduler::scheduleNextCycle($subscription, now());
         }
 
+        SubscriptionStatusChanged::dispatch($subscription);
+
         return back()->with('status', 'Subscription resumed.');
     }
 
@@ -105,6 +130,100 @@ class SubscriptionController extends Controller
 
         $subscription->collections()->where('status', 'scheduled')->update(['status' => 'skipped']);
 
+        $subscription->cycles()->whereNull('ends_on')->get()->each->closeIfExhausted();
+
+        SubscriptionStatusChanged::dispatch($subscription);
+
         return back()->with('status', 'Subscription cancelled.');
+    }
+
+    /**
+     * Starts the next cycle -- the only way that happens now, for scheduled
+     * and non-scheduled subscriptions alike. Nothing auto-continues anymore
+     * once a cycle's collections are all resolved. The Renew modal lets
+     * staff change package/collection type/counts and pick the new cycle's
+     * start date, rather than just repeating the previous cycle unchanged.
+     */
+    public function renew(Request $request, Subscription $subscription): RedirectResponse
+    {
+        if ($subscription->status !== 'active') {
+            return back()->withErrors(['subscription' => 'Only an active subscription can be renewed.']);
+        }
+
+        $currentCycle = $subscription->cycles()->latest('starts_on')->first();
+
+        if ($currentCycle && ! $currentCycle->isExhausted()) {
+            return back()->withErrors(['subscription' => 'This subscription still has open collections in its current cycle.']);
+        }
+
+        $validated = $request->validate([
+            'subscription_package_id' => ['required', 'exists:subscription_packages,id'],
+            'collection_type' => ['required', 'in:scheduled,non_scheduled'],
+            'start_date' => [
+                'required',
+                'date',
+                Rule::unique('subscription_cycles', 'starts_on')->where('subscription_id', $subscription->id),
+            ],
+            'collections_per_month' => ['required', 'integer', 'min:1', 'max:28'],
+            'max_clothes_per_cycle' => ['required', 'integer', 'min:1'],
+        ], [
+            'start_date.unique' => 'This subscription already has a cycle starting on that date — pick a different date.',
+        ]);
+
+        $subscription->update([
+            'subscription_package_id' => $validated['subscription_package_id'],
+            'collection_type' => $validated['collection_type'],
+            'collections_per_month' => $validated['collections_per_month'],
+            'max_clothes_per_cycle' => $validated['max_clothes_per_cycle'],
+        ]);
+        $subscription->refresh();
+
+        CollectionScheduler::renew($subscription, Carbon::parse($validated['start_date']));
+
+        return back()->with('status', 'Subscription renewed for a new cycle.');
+    }
+
+    /**
+     * Lets staff flip Scheduled <-> Non-scheduled on the current cycle
+     * directly, rather than waiting for a full Renew. Only ever touches the
+     * cycle's still-open ('scheduled') collections -- anything already
+     * cancelled stays untouched as history, and the moment even one has
+     * actually been collected, this locks entirely (see the guard below).
+     */
+    public function updateCollectionType(Request $request, Subscription $subscription): RedirectResponse
+    {
+        $validated = $request->validate([
+            'collection_type' => ['required', 'in:scheduled,non_scheduled'],
+        ]);
+
+        $currentCycle = $subscription->cycles()->latest('starts_on')->first();
+
+        if (! $currentCycle) {
+            return back()->withErrors(['collection_type' => 'This subscription has no current cycle.']);
+        }
+
+        if ($currentCycle->collections()->where('status', 'collected')->exists()) {
+            return back()->withErrors(['collection_type' => 'This cycle already has a collected visit — collection type can no longer be changed for it.']);
+        }
+
+        if ($validated['collection_type'] === $subscription->collection_type) {
+            return back()->with('status', 'Collection type unchanged.');
+        }
+
+        DB::transaction(function () use ($subscription, $currentCycle, $validated) {
+            $subscription->update(['collection_type' => $validated['collection_type']]);
+
+            $openCount = $currentCycle->collections()->where('status', 'scheduled')->count();
+
+            if ($openCount === 0) {
+                return;
+            }
+
+            $currentCycle->collections()->where('status', 'scheduled')->delete();
+
+            CollectionScheduler::generateCollections($subscription, $currentCycle, $validated['collection_type'], now(), $openCount);
+        });
+
+        return back()->with('status', 'Collection type updated.');
     }
 }

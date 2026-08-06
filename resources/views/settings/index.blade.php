@@ -48,12 +48,6 @@
                     <p class="text-xs text-ink-faint mt-1">Shown as an estimated ready time on active orders. Leave blank to hide it.</p>
                     <x-input-error :messages="$errors->get('default_turnaround_hours')" class="mt-1.5" />
                 </div>
-                <div>
-                    <x-input-label for="max_concurrent_washing" value="Max orders washing at once" />
-                    <x-text-input id="max_concurrent_washing" name="max_concurrent_washing" type="number" min="1" max="1000" class="block w-full" value="{{ $settings->get('laundry.max_concurrent_washing')?->value }}" />
-                    <p class="text-xs text-ink-faint mt-1">Blocks moving an order to Washing once this many orders are already washing, to avoid mixing clothes. Leave blank for no limit.</p>
-                    <x-input-error :messages="$errors->get('max_concurrent_washing')" class="mt-1.5" />
-                </div>
                 <x-primary-button>Save Laundry settings</x-primary-button>
             </form>
         </div>
@@ -67,13 +61,26 @@
                     <input type="checkbox" name="allow_new_signups" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('subscription.allow_new_signups')?->value !== 'false')>
                     Allow new subscription sign-ups
                 </label>
-                <p class="text-xs text-ink-faint">When off, creating a new subscription is blocked with a message -- existing subscriptions keep running normally.</p>
+                <p class="text-xs text-ink-faint">When off, creating a new subscription is blocked with a message — existing subscriptions keep running normally.</p>
 
                 <label class="flex items-center gap-2 text-sm text-ink">
-                    <input type="checkbox" name="charge_for_extra_clothes" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('subscription.charge_for_extra_clothes')?->value !== 'false')>
-                    Charge for clothes over the plan allowance
+                    <input type="checkbox" name="charge_for_cycle_overage" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('subscription.charge_for_cycle_overage')?->value === 'true')>
+                    Charge when a cycle exceeds its max clothes limit
                 </label>
-                <p class="text-xs text-ink-faint">When off, the Terminal still shows over-allowance items but never requires or applies an extra charge for them.</p>
+                <p class="text-xs text-ink-faint">The Terminal always shows a per-visit item count for context, but only this cycle-wide limit is ever billable. When off, the Terminal just shows a warning with the amount over instead of requiring a charge.</p>
+
+                <div>
+                    <x-input-label for="max_active_packages_per_customer" value="Max active packages per customer" />
+                    <x-text-input id="max_active_packages_per_customer" name="max_active_packages_per_customer" type="number" min="1" class="block w-full" value="{{ $settings->get('subscription.max_active_packages_per_customer')?->value ?? 1 }}" />
+                    <p class="text-xs text-ink-faint mt-1">Blocks creating a new subscription for a customer once they're at this many active ones. Leave blank for unlimited. Doesn't affect anyone already over it.</p>
+                    <x-input-error :messages="$errors->get('max_active_packages_per_customer')" class="mt-1.5" />
+                </div>
+
+                <label class="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" name="walkin_extra_charge_enabled" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('subscription.walkin_extra_charge_enabled')?->value === 'true')>
+                    Allow an extra charge on walk-in orders
+                </label>
+                <p class="text-xs text-ink-faint">Separate from the cycle overage charge above, and only for walk-in (non-subscription) orders at the Terminal -- e.g. rush service or special handling not covered by the package price. When off, the Terminal has no way to add one.</p>
 
                 <x-primary-button>Save Subscription settings</x-primary-button>
             </form>
@@ -118,11 +125,11 @@
                     <input type="checkbox" id="discount_enabled" name="discount_enabled" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('order.discount_enabled')?->value === 'true')>
                     <x-input-label for="discount_enabled" value="Allow discounts at the Terminal" class="mb-0" />
                 </div>
-                <p class="text-xs text-ink-faint -mt-2">When off, the Discount field is hidden from the cart entirely -- staff can't apply one.</p>
+                <p class="text-xs text-ink-faint -mt-2">When off, the Discount field is hidden from the cart entirely — staff can't apply one.</p>
                 <div>
                     <x-input-label for="max_discount_percent" value="Maximum discount (% of subtotal)" />
                     <x-text-input id="max_discount_percent" name="max_discount_percent" type="number" min="0" max="100" class="block w-full" value="{{ $settings->get('order.max_discount_percent')?->value ?? 100 }}" required />
-                    <p class="text-xs text-ink-faint mt-1">Enforced at the Terminal -- a discount above this is rejected before the order is created.</p>
+                    <p class="text-xs text-ink-faint mt-1">Enforced at the Terminal — a discount above this is rejected before the order is created.</p>
                     <x-input-error :messages="$errors->get('max_discount_percent')" class="mt-1.5" />
                 </div>
                 <x-primary-button>Save Order settings</x-primary-button>
@@ -137,7 +144,7 @@
                 <div>
                     <x-input-label for="retention_days" value="Backup retention (days)" />
                     <x-text-input id="retention_days" name="retention_days" type="number" min="1" max="3650" class="block w-full" value="{{ $settings->get('backup.retention_days')?->value }}" />
-                    <p class="text-xs text-ink-faint mt-1">Stored for the backup automation introduced in a later phase -- not yet enforced by a running job.</p>
+                    <p class="text-xs text-ink-faint mt-1">Stored for the backup automation introduced in a later phase — not yet enforced by a running job.</p>
                     <x-input-error :messages="$errors->get('retention_days')" class="mt-1.5" />
                 </div>
                 <x-primary-button>Save Backup settings</x-primary-button>

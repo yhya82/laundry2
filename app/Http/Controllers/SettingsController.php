@@ -52,17 +52,21 @@ class SettingsController extends Controller
     {
         $validated = $request->validate([
             'default_turnaround_hours' => ['nullable', 'integer', 'min:1', 'max:720'],
-            'max_concurrent_washing' => ['nullable', 'integer', 'min:1', 'max:1000'],
         ]);
 
         Setting::set('laundry.default_turnaround_hours', $validated['default_turnaround_hours'] ?? null, 'laundry', 'integer');
-        Setting::set('laundry.max_concurrent_washing', $validated['max_concurrent_washing'] ?? null, 'laundry', 'integer');
     }
 
     protected function saveSubscription(Request $request): void
     {
+        $validated = $request->validate([
+            'max_active_packages_per_customer' => ['nullable', 'integer', 'min:1'],
+        ]);
+
         Setting::set('subscription.allow_new_signups', $request->boolean('allow_new_signups') ? 'true' : 'false', 'subscription', 'boolean');
-        Setting::set('subscription.charge_for_extra_clothes', $request->boolean('charge_for_extra_clothes') ? 'true' : 'false', 'subscription', 'boolean');
+        Setting::set('subscription.charge_for_cycle_overage', $request->boolean('charge_for_cycle_overage') ? 'true' : 'false', 'subscription', 'boolean');
+        Setting::set('subscription.max_active_packages_per_customer', $validated['max_active_packages_per_customer'] ?? null, 'subscription', 'integer');
+        Setting::set('subscription.walkin_extra_charge_enabled', $request->boolean('walkin_extra_charge_enabled') ? 'true' : 'false', 'subscription', 'boolean');
     }
 
     protected function savePayment(Request $request): void

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class SubscriptionPackage extends Model
 {
-    protected $fillable = ['name', 'description', 'monthly_price', 'clothes_allowance', 'collections_per_month', 'is_active'];
+    protected $fillable = ['name', 'description', 'monthly_price', 'clothes_allowance', 'collections_per_month', 'max_clothes_per_cycle', 'is_active'];
 
     protected function casts(): array
     {
@@ -14,6 +14,7 @@ class SubscriptionPackage extends Model
             'monthly_price' => 'decimal:2',
             'clothes_allowance' => 'integer',
             'collections_per_month' => 'integer',
+            'max_clothes_per_cycle' => 'integer',
             'is_active' => 'boolean',
         ];
     }

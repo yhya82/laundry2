@@ -21,6 +21,17 @@
         </div>
     </div>
 
+    <div
+        x-data="{
+            init() {
+                window.Echo.channel('orders').listen('.order.status-changed', (e) => {
+                    document.querySelectorAll('[data-order-status=\'' + e.orderId + '\']').forEach((el) => {
+                        window.applyStatusPill(el, e.toStatus);
+                    });
+                });
+            }
+        }"
+    >
     <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -43,7 +54,7 @@
                             </td>
                             <td class="px-4 py-3 text-ink">{{ $order->customer->full_name }}</td>
                             <td class="px-4 py-3"><x-status-pill :status="$order->priority()" /></td>
-                            <td class="px-4 py-3"><x-status-pill :status="$order->status" /></td>
+                            <td class="px-4 py-3"><x-status-pill :status="$order->status" data-order-status="{{ $order->id }}" /></td>
                             <td class="px-4 py-3">
                                 <x-status-pill :status="$order->combinedPaymentStatus()" />
                                 @if ($order->combinedPaymentStatus() !== 'paid' && $order->balanceDue() > 0)
@@ -70,7 +81,7 @@
                         @if ($order->priority() === 'high')
                             <x-status-pill :status="$order->priority()" />
                         @endif
-                        <x-status-pill :status="$order->status" />
+                        <x-status-pill :status="$order->status" data-order-status="{{ $order->id }}" />
                         <x-status-pill :status="$order->combinedPaymentStatus()" />
                     </div>
                 </div>
@@ -86,6 +97,7 @@
         @empty
             <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No orders yet.</div>
         @endforelse
+    </div>
     </div>
 
     <div class="mt-4">{{ $orders->links() }}</div>

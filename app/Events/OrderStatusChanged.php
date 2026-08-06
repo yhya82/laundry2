@@ -27,12 +27,15 @@ class OrderStatusChanged implements ShouldBroadcastNow
 
     public string $toStatus;
 
+    public ?int $washingMachineId;
+
     public function __construct(Order $order, ?string $fromStatus)
     {
         $this->orderId = $order->id;
         $this->orderNumber = $order->order_number;
         $this->fromStatus = $fromStatus;
         $this->toStatus = $order->status;
+        $this->washingMachineId = $order->washing_machine_id;
     }
 
     public function broadcastOn(): array
@@ -52,6 +55,7 @@ class OrderStatusChanged implements ShouldBroadcastNow
             'orderNumber' => $this->orderNumber,
             'fromStatus' => $this->fromStatus,
             'toStatus' => $this->toStatus,
+            'washingMachineId' => $this->washingMachineId,
         ];
     }
 }

@@ -19,12 +19,21 @@
             'received' => 'box', 'sorting' => 'shirt', 'washing' => 'washer',
             'drying' => 'dryer', 'ironing' => 'iron', 'packaging' => 'gift', 'completed' => 'check',
         ];
+        $stageLabels = [
+            'received' => 'Received', 'sorting' => 'Start Sorting', 'washing' => 'Start Washing',
+            'drying' => 'Start Drying', 'ironing' => 'Start Ironing', 'packaging' => 'Start Packaging', 'completed' => 'Completed',
+        ];
         $stages = [...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'completed'];
 
         $stageTimestamps = ['received' => $order->created_at];
+        // Received has no order_status_history row -- the trigger only fires
+        // on UPDATE, not the initial INSERT -- so its "who" comes from the
+        // order's own creator instead.
+        $stageChangedBy = ['received' => $order->creator?->name];
         foreach ($order->statusHistory->sortBy('created_at') as $entry) {
             if (in_array($entry->to_status, $stages, true)) {
                 $stageTimestamps[$entry->to_status] = $entry->created_at;
+                $stageChangedBy[$entry->to_status] = $entry->changedBy?->name;
             }
         }
 
@@ -36,6 +45,7 @@
         }
 
         $isActiveOrder = ! $order->isTerminal();
+        $nextIsWashing = $order->nextStatus() === 'washing';
     @endphp
 
     <div
@@ -65,8 +75,17 @@
                 @endphp
                 <div class="flex items-center {{ $loop->last ? '' : 'flex-1' }}">
                     <div class="flex flex-col items-center text-center w-24 flex-none">
-                        @if ($canAdvance)
-                            <form method="POST" action="{{ route('orders.advance', $order) }}" title="Mark as {{ ucfirst($stage) }}">
+                        @if ($canAdvance && $stage === 'washing')
+                            <button
+                                type="button"
+                                title="{{ $stageLabels[$stage] }}"
+                                @click="$dispatch('open-panel', 'select-washing-machine')"
+                                class="w-11 h-11 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
+                            >
+                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
+                            </button>
+                        @elseif ($canAdvance)
+                            <form method="POST" action="{{ route('orders.advance', $order) }}" title="{{ $stageLabels[$stage] }}">
                                 @csrf
                                 <button
                                     type="submit"
@@ -94,10 +113,16 @@
                             class="text-xs font-semibold mt-2"
                             :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'text-ink' : (({{ $i }} === currentIndex && isActive) ? 'text-accent-ink' : 'text-ink-faint')"
                         >
-                            {{ ucfirst($stage) }}
+                            {{ $stageLabels[$stage] }}
                         </div>
 
                         <div class="text-[11px] text-ink-faint font-mono mt-0.5" x-show="timestamps['{{ $stage }}']" x-text="timestamps['{{ $stage }}']"></div>
+                        @if (! empty($stageChangedBy[$stage]))
+                            <div class="text-[10px] text-ink-faint mt-0.5">by {{ $stageChangedBy[$stage] }}</div>
+                        @endif
+                        @if ($stage === 'washing' && isset($stageTimestamps['washing']) && $order->washingMachine)
+                            <div class="text-[10px] text-ink-faint mt-0.5">{{ $order->washingMachine->name }}</div>
+                        @endif
                         <div class="text-[11px] text-accent-ink font-semibold mt-0.5" x-show="{{ $i }} === currentIndex && isActive">In Progress</div>
                     </div>
 
@@ -171,6 +196,12 @@
                         <dt class="text-ink-muted">Created</dt>
                         <dd class="text-ink font-mono text-xs">{{ $order->created_at->format('Y-m-d H:i') }}</dd>
                     </div>
+                    @if ($order->washingMachine)
+                        <div class="flex justify-between">
+                            <dt class="text-ink-muted">Washing machine</dt>
+                            <dd class="text-ink font-mono text-xs">{{ $order->washingMachine->name }}</dd>
+                        </div>
+                    @endif
                     @if (! $order->isTerminal() && ($turnaroundHours = \App\Models\Setting::get('laundry.default_turnaround_hours')))
                         <div class="flex justify-between">
                             <dt class="text-ink-muted">Est. ready</dt>
@@ -205,12 +236,18 @@
                 @can('orders.manage')
                     @unless ($order->isTerminal())
                         <div class="mt-5 pt-5 border-t border-line space-y-3" x-data="{ cancelling: false }">
-                            <form method="POST" action="{{ route('orders.advance', $order) }}">
-                                @csrf
-                                <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90">
-                                    Mark as {{ ucfirst($order->nextStatus()) }}
+                            @if ($nextIsWashing)
+                                <button type="button" @click="$dispatch('open-panel', 'select-washing-machine')" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90">
+                                    {{ $stageLabels['washing'] }}
                                 </button>
-                            </form>
+                            @else
+                                <form method="POST" action="{{ route('orders.advance', $order) }}">
+                                    @csrf
+                                    <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90">
+                                        {{ $order->nextStatus() === 'completed' ? 'Mark as Completed' : $stageLabels[$order->nextStatus()] }}
+                                    </button>
+                                </form>
+                            @endif
 
                             <button type="button" @click="cancelling = !cancelling" class="w-full text-xs text-critical hover:underline">
                                 Cancel order
@@ -280,7 +317,10 @@
                         <div class="flex justify-between"><span class="text-ink-muted">Discount ({{ $order->discount_reason }})</span><span class="font-mono tabular-nums text-critical">− GMD {{ number_format($order->discount, 2) }}</span></div>
                     @endif
                     @if ($order->extra_charge > 0)
-                        <div class="flex justify-between"><span class="text-ink-muted">Extra charge</span><span class="font-mono tabular-nums text-ink">+ GMD {{ number_format($order->extra_charge, 2) }}</span></div>
+                        <div class="flex justify-between"><span class="text-ink-muted">Extra charge{{ $order->extra_charge_reason ? ' ('.$order->extra_charge_reason.')' : '' }}</span><span class="font-mono tabular-nums text-ink">+ GMD {{ number_format($order->extra_charge, 2) }}</span></div>
+                    @endif
+                    @if ($order->cycle_overage_charge > 0)
+                        <div class="flex justify-between"><span class="text-ink-muted">Cycle overage charge</span><span class="font-mono tabular-nums text-ink">+ GMD {{ number_format($order->cycle_overage_charge, 2) }}</span></div>
                     @endif
                     <div class="flex justify-between pt-2 border-t border-line font-semibold"><span class="text-ink">Total</span><span class="font-mono tabular-nums text-accent-ink text-lg">GMD {{ number_format($order->total_amount, 2) }}</span></div>
                 </div>
@@ -377,6 +417,102 @@
                     </div>
                 </form>
             </x-slide-panel>
+        @endif
+    @endcan
+
+    @can('orders.manage')
+        @if ($nextIsWashing)
+            <div
+                x-data="{
+                    open: @js($errors->has('washing_machine_id')),
+                    machines: @js($washingMachines->map(fn ($m) => [
+                        'id' => $m->id,
+                        'name' => $m->name,
+                        'busy' => $m->isBusy(),
+                        'currentOrderNumber' => $m->currentOrder()?->order_number,
+                    ])),
+                    get allBusy() { return this.machines.length > 0 && this.machines.every(m => m.busy); },
+                    init() {
+                        window.Echo.channel('orders').listen('.order.status-changed', (e) => {
+                            const machine = this.machines.find(m => m.id === e.washingMachineId);
+                            if (! machine) return;
+                            machine.busy = e.toStatus === 'washing';
+                            machine.currentOrderNumber = machine.busy ? e.orderNumber : null;
+                        });
+                    }
+                }"
+                x-on:open-panel.window="$event.detail === 'select-washing-machine' && (open = true)"
+                x-on:close-panel.window="$event.detail === 'select-washing-machine' && (open = false)"
+                x-on:keydown.escape.window="open = false"
+            >
+                <div
+                    x-show="open" x-cloak
+                    class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-40 flex items-center justify-center p-4"
+                    x-transition.opacity
+                    @click.self="open = false"
+                >
+                    <div
+                        class="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-md p-6"
+                        x-transition:enter="transition ease-out duration-200"
+                        x-transition:enter-start="opacity-0 scale-95"
+                        x-transition:enter-end="opacity-100 scale-100"
+                    >
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-semibold text-ink">Select Washing Machine</h3>
+                            <button type="button" @click="open = false" class="text-ink-faint hover:text-ink" aria-label="Close">✕</button>
+                        </div>
+
+                        @if ($washingMachines->isEmpty())
+                            <p class="text-sm text-ink-muted">
+                                No active washing machines yet.
+                                @can('catalog.manage')
+                                    <a href="{{ route('catalog.machines') }}" class="text-accent-ink hover:underline">Add one in Catalog &rarr; Machines</a>.
+                                @endcan
+                            </p>
+                            <div class="flex justify-end mt-4">
+                                <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Close</button>
+                            </div>
+                        @else
+                            <template x-if="allBusy">
+                                <div>
+                                    <p class="text-sm text-ink-muted">All washing machines are currently busy. Wait for one to finish before starting another.</p>
+                                    <div class="flex justify-end mt-4">
+                                        <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Close</button>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="! allBusy">
+                                <form method="POST" action="{{ route('orders.advance', $order) }}" class="space-y-4">
+                                    @csrf
+                                    <p class="text-sm text-ink-muted">Pick a machine to start washing this order.</p>
+
+                                    <div class="space-y-2">
+                                        <template x-for="machine in machines" :key="machine.id">
+                                            <label
+                                                class="flex items-center justify-between gap-2 border rounded-xl px-3 py-2.5 text-sm transition-colors"
+                                                :class="machine.busy ? 'opacity-50 cursor-not-allowed border-line' : 'cursor-pointer border-line-strong has-[:checked]:border-accent has-[:checked]:bg-accent-soft'"
+                                            >
+                                                <span class="flex items-center gap-2">
+                                                    <input type="radio" name="washing_machine_id" :value="machine.id" class="text-accent focus:ring-accent" :disabled="machine.busy" required>
+                                                    <span class="text-ink font-medium" x-text="machine.name"></span>
+                                                </span>
+                                                <span x-show="machine.busy" class="font-mono text-xs text-critical" x-text="'Washing — ' + machine.currentOrderNumber"></span>
+                                                <span x-show="! machine.busy" class="font-mono text-xs text-success">Idle</span>
+                                            </label>
+                                        </template>
+                                    </div>
+                                    <x-input-error :messages="$errors->get('washing_machine_id')" class="mt-1.5" />
+
+                                    <div class="flex items-center gap-3">
+                                        <x-primary-button>Start Washing</x-primary-button>
+                                        <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                                    </div>
+                                </form>
+                            </template>
+                        @endif
+                    </div>
+                </div>
+            </div>
         @endif
     @endcan
 

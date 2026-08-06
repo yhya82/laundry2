@@ -10,7 +10,11 @@ class SubscriptionPackageController extends Controller
 {
     public function store(StoreSubscriptionPackageRequest $request): RedirectResponse
     {
-        SubscriptionPackage::create($request->validated() + ['is_active' => $request->boolean('is_active', true)]);
+        $data = $request->validated();
+        $data['collections_per_month'] ??= 1;
+        $data['max_clothes_per_cycle'] ??= $data['clothes_allowance'] * 4;
+
+        SubscriptionPackage::create($data + ['is_active' => $request->boolean('is_active', true)]);
 
         return back()->with('status', 'Subscription package created.');
     }

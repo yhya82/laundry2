@@ -62,7 +62,10 @@ class CustomerController extends Controller
             'activeSubscriptions' => $customer->subscriptions()->where('status', 'active')->count(),
         ];
 
-        $subscriptions = $customer->subscriptions()->with('subscriptionPackage')->latest('start_date')->get();
+        $subscriptions = $customer->subscriptions()
+            ->with(['subscriptionPackage', 'cycles' => fn ($q) => $q->latest('starts_on')->limit(1), 'collections'])
+            ->latest('start_date')
+            ->get();
 
         $orders = $customer->orders()->with('payments')->latest()->get();
         $recentOrders = $orders->take(5);
@@ -90,9 +93,11 @@ class CustomerController extends Controller
         $lastPayment = $customer->paymentsQuery()->latest()->first();
         $payments = $customer->paymentsQuery()->with(['order', 'subscription'])->latest()->get();
 
+        // Nulls (non-scheduled, "anytime" slots) sort last -- a dated pickup
+        // is more informative to call "next" than an open-ended one.
         $nextCollection = Collection::whereIn('subscription_id', $subscriptionIds)
             ->where('status', 'scheduled')
-            ->orderBy('scheduled_date')
+            ->orderByRaw('scheduled_date IS NULL, scheduled_date')
             ->first();
 
         // The Collection Schedule card shows a subscription's *current cycle*
@@ -119,7 +124,7 @@ class CustomerController extends Controller
                         $q->whereIn('subscription_id', $subscriptionsWithoutCycles)->where('status', 'scheduled');
                     });
             })
-            ->orderBy('scheduled_date')
+            ->orderByRaw('scheduled_date IS NULL, scheduled_date')
             ->get();
 
         // One row per subscription's *current* cycle (paid or not) for the
@@ -135,6 +140,14 @@ class CustomerController extends Controller
         $creditTransactions = $customer->creditTransactions()->latest()->get();
 
         $subscriptionPackages = SubscriptionPackage::where('is_active', true)->orderBy('name')->get();
+
+        // Whether "Create Order" needs to ask Use Subscription vs Walk-in --
+        // only when there's an active subscription with pickups still left
+        // in its current cycle to potentially use instead. A subscription
+        // whose cycle is exhausted (renewal due) has nothing to choose
+        // between, so it's treated the same as no subscription at all.
+        $hasOpenSubscriptionCycle = $subscriptions->where('status', 'active')
+            ->contains(fn ($s) => $s->cycles->isNotEmpty() && ! $s->cycles->first()->isExhausted());
 
         return view('customers.show', compact(
             'customer',
@@ -152,6 +165,7 @@ class CustomerController extends Controller
             'damageRecords',
             'creditTransactions',
             'subscriptionPackages',
+            'hasOpenSubscriptionCycle',
         ));
     }
 

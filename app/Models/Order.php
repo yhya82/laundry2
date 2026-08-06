@@ -30,12 +30,15 @@ class Order extends Model
         'order_number',
         'customer_id',
         'collection_id',
+        'washing_machine_id',
         'user_id',
         'order_source',
         'subtotal',
         'discount',
         'discount_reason',
         'extra_charge',
+        'extra_charge_reason',
+        'cycle_overage_charge',
         'cancellation_reason',
         'notes',
     ];
@@ -46,6 +49,7 @@ class Order extends Model
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
             'extra_charge' => 'decimal:2',
+            'cycle_overage_charge' => 'decimal:2',
             'total_amount' => 'decimal:2',
         ];
     }
@@ -63,6 +67,11 @@ class Order extends Model
     public function collection(): BelongsTo
     {
         return $this->belongsTo(Collection::class);
+    }
+
+    public function washingMachine(): BelongsTo
+    {
+        return $this->belongsTo(WashingMachine::class);
     }
 
     public function payments(): HasMany

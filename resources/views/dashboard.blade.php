@@ -11,9 +11,7 @@
                     Welcome back, <strong>{{ auth()->user()->name }}</strong>.
                 </p>
                 <p class="text-ink-muted text-sm mt-1">
-                    Role{{ auth()->user()->roles->count() > 1 ? 's' : '' }}:
-                    {{ auth()->user()->roles->pluck('name')->implode(', ') ?: 'none assigned' }}
-                    &middot; {{ auth()->user()->getAllPermissions()->count() }} permissions
+                    {{ now()->format('l, F j, Y') }}
                 </p>
             </div>
         </div>
@@ -108,7 +106,7 @@
             </div>
         @endif
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
             @can('orders.view')
                 <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm">
                     <div class="flex items-center gap-2 mb-4">
@@ -127,24 +125,55 @@
             @endcan
 
             @if ($damageSnapshot !== null)
-                <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm">
-                    <div class="flex items-center gap-2 mb-4">
-                        <x-nav-icon name="alert" class="w-4 h-4 text-ink-faint" />
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Damage Snapshot</div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div class="bg-critical-soft rounded-xl p-3">
-                            <div class="text-xl font-bold text-critical tabular-nums">{{ $damageSnapshot['pending'] }}</div>
-                            <div class="text-xs text-ink-muted mt-1">Pending Review</div>
-                        </div>
-                        <div class="bg-success-soft rounded-xl p-3">
-                            <div class="text-xl font-bold text-success tabular-nums">{{ $damageSnapshot['resolved30d'] }}</div>
-                            <div class="text-xs text-ink-muted mt-1">Resolved (30d)</div>
-                        </div>
-                    </div>
+                <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                    <span class="w-9 h-9 rounded-xl bg-critical-soft text-critical flex items-center justify-center mb-3">
+                        <x-nav-icon name="alert" class="w-4.5 h-4.5" />
+                    </span>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Pending Review</div>
+                    <div class="text-2xl font-bold text-critical tabular-nums">{{ $damageSnapshot['pending'] }}</div>
+                </div>
+
+                <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                    <span class="w-9 h-9 rounded-xl bg-success-soft text-success flex items-center justify-center mb-3">
+                        <x-nav-icon name="alert" class="w-4.5 h-4.5" />
+                    </span>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Resolved (30d)</div>
+                    <div class="text-2xl font-bold text-success tabular-nums">{{ $damageSnapshot['resolved30d'] }}</div>
                 </div>
             @endif
         </div>
+
+        @if ($totalCustomers !== null || $walkInCustomers !== null || $subscriptionCustomers !== null)
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
+                @if ($totalCustomers !== null)
+                    <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                        <span class="w-9 h-9 rounded-xl bg-accent-soft text-accent-ink flex items-center justify-center mb-3">
+                            <x-nav-icon name="users" class="w-4.5 h-4.5" />
+                        </span>
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Total Customers</div>
+                        <div class="text-2xl font-bold text-ink tabular-nums">{{ $totalCustomers }}</div>
+                    </div>
+                @endif
+                @if ($walkInCustomers !== null)
+                    <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                        <span class="w-9 h-9 rounded-xl bg-pill-bg text-pill-ink flex items-center justify-center mb-3">
+                            <x-nav-icon name="users" class="w-4.5 h-4.5" />
+                        </span>
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Walk-in Customers</div>
+                        <div class="text-2xl font-bold text-ink tabular-nums">{{ $walkInCustomers }}</div>
+                    </div>
+                @endif
+                @if ($subscriptionCustomers !== null)
+                    <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                        <span class="w-9 h-9 rounded-xl bg-success-soft text-success flex items-center justify-center mb-3">
+                            <x-nav-icon name="repeat" class="w-4.5 h-4.5" />
+                        </span>
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Subscription Customers</div>
+                        <div class="text-2xl font-bold text-ink tabular-nums">{{ $subscriptionCustomers }}</div>
+                    </div>
+                @endif
+            </div>
+        @endif
     </div>
 
     @if ($revenueTrendSeries !== null)

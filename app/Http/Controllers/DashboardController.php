@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Customer;
 use App\Models\DamageRecord;
 use App\Models\Expense;
 use App\Models\Order;
@@ -54,6 +55,12 @@ class DashboardController extends Controller
             'resolved30d' => DamageRecord::where('status', 'resolved')->where('updated_at', '>=', now()->subDays(30))->count(),
         ] : null;
 
+        $totalCustomers = $user->can('customers.view') ? Customer::count() : null;
+
+        $walkInCustomers = $user->can('customers.view') ? Customer::where('customer_type', 'walk_in')->count() : null;
+
+        $subscriptionCustomers = $user->can('customers.view') ? Customer::where('customer_type', 'subscription')->count() : null;
+
         $revenueTrendPeriod = in_array($request->get('period'), ['all', 'day', 'month', 'year'], true)
             ? $request->get('period')
             : 'month';
@@ -71,6 +78,9 @@ class DashboardController extends Controller
             'pendingOrders',
             'monthExpenses',
             'damageSnapshot',
+            'totalCustomers',
+            'walkInCustomers',
+            'subscriptionCustomers',
             'revenueTrendSeries',
             'revenueTrendPeriod',
         ));

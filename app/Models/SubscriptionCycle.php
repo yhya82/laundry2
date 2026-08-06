@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SubscriptionCycle extends Model
 {
-    protected $fillable = ['subscription_id', 'starts_on', 'ends_on', 'monthly_price_snapshot'];
+    protected $fillable = ['subscription_id', 'starts_on', 'ends_on', 'monthly_price_snapshot', 'max_clothes_snapshot'];
 
     protected function casts(): array
     {
@@ -16,6 +16,7 @@ class SubscriptionCycle extends Model
             'starts_on' => 'date',
             'ends_on' => 'date',
             'monthly_price_snapshot' => 'decimal:2',
+            'max_clothes_snapshot' => 'integer',
         ];
     }
 
@@ -56,5 +57,52 @@ class SubscriptionCycle extends Model
     public function isPaid(): bool
     {
         return $this->balanceDue() <= 0;
+    }
+
+    /**
+     * Total clothes across every collection in this cycle so far -- the cap
+     * (max_clothes_snapshot) is cycle-wide, however many visits it takes to
+     * reach it, not a per-collection thing like the package's own
+     * clothes_allowance.
+     */
+    public function clothesCollected(): int
+    {
+        return (int) OrderClothesLine::whereHas(
+            'packageLine.order.collection',
+            fn ($q) => $q->where('subscription_cycle_id', $this->id)
+        )->sum('quantity');
+    }
+
+    public function clothesRemaining(): int
+    {
+        return max(0, $this->max_clothes_snapshot - $this->clothesCollected());
+    }
+
+    /**
+     * True once every collection belonging to this cycle has been resolved
+     * (collected or cancelled) -- the point at which Renew becomes available
+     * instead of the old auto-continue behavior.
+     */
+    public function isExhausted(): bool
+    {
+        return ! $this->collections()->where('status', 'scheduled')->exists();
+    }
+
+    /**
+     * Non-scheduled cycles are created with ends_on left null (see
+     * CollectionScheduler::scheduleCycle()) since there's no fixed schedule
+     * to derive one from upfront. Called after any collection in the cycle
+     * resolves, this backfills ends_on to today once the cycle is actually
+     * exhausted, so it reflects when the cycle really finished.
+     */
+    public function closeIfExhausted(): void
+    {
+        if ($this->ends_on !== null) {
+            return;
+        }
+
+        if ($this->isExhausted()) {
+            $this->update(['ends_on' => now()->toDateString()]);
+        }
     }
 }

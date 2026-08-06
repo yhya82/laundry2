@@ -134,6 +134,89 @@
                 @endforelse
             </div>
 
+            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Current Cycle</div>
+                @php
+                    $cycleSubscriptions = $subscriptions->where('status', 'active')->filter(fn ($s) => $s->cycles->isNotEmpty());
+                @endphp
+                @forelse ($cycleSubscriptions as $subscription)
+                    @php
+                        $cycle = $subscription->cycles->first();
+                        $cycleCollections = $subscription->collections->where('subscription_cycle_id', $cycle->id);
+                        $completed = $cycleCollections->where('status', 'collected')->count();
+                        $total = $cycleCollections->count();
+                        $clothesUsed = $cycle->clothesCollected();
+                        $clothesOver = $clothesUsed > $cycle->max_clothes_snapshot;
+                        $clothesPct = min(100, round($clothesUsed / max(1, $cycle->max_clothes_snapshot) * 100));
+                        $collectionsPct = $total > 0 ? min(100, round($completed / $total * 100)) : 0;
+                        $collectionTypeEditable = $cycleCollections->where('status', 'collected')->isEmpty();
+                    @endphp
+                    <div class="py-3 first:pt-0 border-t border-line first:border-0 last:pb-0">
+                        <div class="flex items-center justify-between mb-1">
+                            <a href="{{ route('subscriptions.show', $subscription) }}" class="text-sm font-medium text-ink hover:text-accent-ink">{{ $subscription->subscriptionPackage->name }}</a>
+                            @if ($cycle->isExhausted())
+                                <span class="font-mono text-xs font-semibold px-2 py-0.5 rounded-full bg-accent-soft text-accent-ink">Renewal due</span>
+                            @endif
+                        </div>
+
+                        @can('subscriptions.manage')
+                            @if ($collectionTypeEditable)
+                                <form method="POST" action="{{ route('subscriptions.collection-type.update', $subscription) }}" class="flex items-center gap-2 mb-2.5">
+                                    @csrf
+                                    @method('PUT')
+                                    <select name="collection_type" class="bg-surface border-line-strong text-ink rounded-lg shadow-sm text-xs focus:border-accent focus:ring-accent py-1">
+                                        <option value="scheduled" @selected($subscription->collection_type === 'scheduled')>Scheduled</option>
+                                        <option value="non_scheduled" @selected($subscription->collection_type === 'non_scheduled')>Non-scheduled</option>
+                                    </select>
+                                    <button type="submit" class="text-xs font-semibold text-accent-ink hover:underline">Save</button>
+                                </form>
+                                @error('collection_type') <p class="text-critical text-xs mb-2.5">{{ $message }}</p> @enderror
+                            @else
+                                <div class="text-xs text-ink-faint mb-2.5">{{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}</div>
+                            @endif
+                        @else
+                            <div class="text-xs text-ink-faint mb-2.5">{{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}</div>
+                        @endcan
+
+                        @can('subscriptions.manage')
+                            @if ($cycle->isExhausted())
+                                <button type="button" @click="$dispatch('open-panel', 'renew-cycle-{{ $subscription->id }}')" class="w-full mb-2.5 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
+                                    <x-nav-icon name="repeat" class="w-3 h-3" />
+                                    Renew
+                                </button>
+                                <x-renew-cycle-modal :subscription="$subscription" :packages="$subscriptionPackages" />
+                            @endif
+                        @endcan
+
+                        <div class="space-y-2.5">
+                            <div>
+                                <div class="flex justify-between text-xs text-ink-muted mb-1">
+                                    <span>Collections</span>
+                                    <span class="font-mono tabular-nums">{{ $completed }} / {{ $total }}</span>
+                                </div>
+                                <div class="w-full h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                                    <div class="h-full bg-accent rounded-full transition-all" style="width: {{ $collectionsPct }}%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs text-ink-muted mb-1">
+                                    <span>Clothes</span>
+                                    <span class="font-mono tabular-nums {{ $clothesOver ? 'text-critical font-semibold' : '' }}">
+                                        {{ $clothesUsed }} / {{ $cycle->max_clothes_snapshot }}
+                                        @if ($clothesOver) (+{{ $clothesUsed - $cycle->max_clothes_snapshot }} over) @endif
+                                    </span>
+                                </div>
+                                <div class="w-full h-1.5 bg-surface-2 rounded-full overflow-hidden">
+                                    <div class="h-full {{ $clothesOver ? 'bg-critical' : 'bg-accent' }} rounded-full transition-all" style="width: {{ $clothesPct }}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @empty
+                    <p class="text-ink-faint text-sm">No active cycle.</p>
+                @endforelse
+            </div>
+
             @can('subscriptions.manage')
                 @php $manageableSubscriptions = $subscriptions->whereIn('status', ['active', 'paused']); @endphp
                 @if ($manageableSubscriptions->isNotEmpty())
@@ -184,11 +267,52 @@
                 <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Quick Actions</div>
                 <div class="flex flex-col gap-1.5">
                     @can('terminal.use')
-                        <a href="{{ route('orders.create', ['customer' => $customer->id]) }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors">
-                            <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-4 h-4" /></span>
-                            <span class="flex-1">Create Order</span>
-                            <span class="text-ink-faint">&rarr;</span>
-                        </a>
+                        @if ($hasOpenSubscriptionCycle)
+                            <button type="button" @click="$dispatch('open-panel', 'new-order-choice')" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors text-left w-full">
+                                <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-4 h-4" /></span>
+                                <span class="flex-1">Create Order</span>
+                                <span class="text-ink-faint">&rarr;</span>
+                            </button>
+
+                            <div
+                                x-data="{ open: false }"
+                                x-on:open-panel.window="$event.detail === 'new-order-choice' && (open = true)"
+                                x-on:close-panel.window="$event.detail === 'new-order-choice' && (open = false)"
+                                x-on:keydown.escape.window="open = false"
+                            >
+                                <div x-show="open" x-cloak class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-40 flex items-center justify-center p-4" x-transition.opacity @click.self="open = false">
+                                    <div class="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-sm p-6" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <h3 class="font-semibold text-ink">Create Order</h3>
+                                            <button type="button" @click="open = false" class="text-ink-faint hover:text-ink" aria-label="Close">✕</button>
+                                        </div>
+                                        <p class="text-sm text-ink-muted mb-4">This customer has a subscription cycle running. How should this order be recorded?</p>
+                                        <div class="space-y-2">
+                                            <a href="{{ route('orders.create', ['customer' => $customer->id]) }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-line-strong text-sm font-medium text-ink hover:border-accent hover:bg-accent-soft transition-colors">
+                                                <span class="w-8 h-8 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="repeat" class="w-4 h-4" /></span>
+                                                <span class="flex-1">
+                                                    <span class="block">Use Subscription</span>
+                                                    <span class="block text-xs text-ink-faint font-normal">Record against their current plan</span>
+                                                </span>
+                                            </a>
+                                            <a href="{{ route('orders.create', ['customer' => $customer->id, 'mode' => 'walk_in']) }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-line-strong text-sm font-medium text-ink hover:border-accent hover:bg-accent-soft transition-colors">
+                                                <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-4 h-4" /></span>
+                                                <span class="flex-1">
+                                                    <span class="block">Walk-in Order</span>
+                                                    <span class="block text-xs text-ink-faint font-normal">A separate one-off order, paid on its own</span>
+                                                </span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        @else
+                            <a href="{{ route('orders.create', ['customer' => $customer->id]) }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors">
+                                <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-4 h-4" /></span>
+                                <span class="flex-1">Create Order</span>
+                                <span class="text-ink-faint">&rarr;</span>
+                            </a>
+                        @endif
                     @endcan
                     @can('subscriptions.manage')
                         @if ($customer->customer_type === 'subscription')
@@ -255,7 +379,7 @@
                         @if ($nextCollection)
                             <div class="flex justify-between">
                                 <dt class="text-ink-muted">Next Collection</dt>
-                                <dd class="font-mono text-accent-ink">{{ $nextCollection->scheduled_date->format('Y-m-d') }}</dd>
+                                <dd class="font-mono text-accent-ink">{{ $nextCollection->scheduled_date?->format('Y-m-d') ?? 'Anytime' }}</dd>
                             </div>
                         @endif
                     </dl>
@@ -314,7 +438,7 @@
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         @foreach ($upcomingCollections as $collection)
                             <div class="bg-surface-2 rounded-xl p-3 text-sm">
-                                <div class="font-mono text-xs text-ink-faint uppercase">{{ $collection->scheduled_date->format('D, M d') }}</div>
+                                <div class="font-mono text-xs text-ink-faint uppercase">{{ $collection->scheduled_date?->format('D, M d') ?? 'Anytime' }}</div>
                                 <div class="text-ink mt-1">{{ $collection->subscription->subscriptionPackage->name }}</div>
                                 <x-status-pill :status="$collection->status" />
                                 @if ($collection->status === 'scheduled')
@@ -376,7 +500,12 @@
                         <tr class="border-t border-line hover:bg-surface-2">
                             <td class="px-4 py-3 text-ink font-medium">{{ $subscription->subscriptionPackage->name }}</td>
                             <td class="px-4 py-3 font-mono text-ink-muted">{{ $subscription->subscriptionPackage->clothes_allowance }} items</td>
-                            <td class="px-4 py-3"><x-status-pill :status="$subscription->status" /></td>
+                            <td class="px-4 py-3">
+                                <x-status-pill :status="$subscription->status" />
+                                @if ($subscription->status === 'active' && $subscription->cycles->first()?->isExhausted())
+                                    <span class="ml-1 inline-flex items-center font-mono text-xs font-semibold px-2 py-0.5 rounded-full bg-accent-soft text-accent-ink">Renewal due</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3 font-mono text-xs text-ink-faint">{{ $subscription->start_date->format('Y-m-d') }}</td>
                             <td class="px-4 py-3 text-right"><a href="{{ route('subscriptions.show', $subscription) }}" class="text-accent-ink text-xs hover:underline">View</a></td>
                         </tr>
@@ -391,7 +520,12 @@
                 <a href="{{ route('subscriptions.show', $subscription) }}" class="block bg-surface border border-line rounded-2xl p-4">
                     <div class="flex items-center justify-between mb-1">
                         <span class="font-medium text-ink">{{ $subscription->subscriptionPackage->name }}</span>
-                        <x-status-pill :status="$subscription->status" />
+                        <div class="flex items-center gap-1">
+                            <x-status-pill :status="$subscription->status" />
+                            @if ($subscription->status === 'active' && $subscription->cycles->first()?->isExhausted())
+                                <span class="inline-flex items-center font-mono text-xs font-semibold px-2 py-0.5 rounded-full bg-accent-soft text-accent-ink">Renewal due</span>
+                            @endif
+                        </div>
                     </div>
                     <div class="flex items-center justify-between text-sm text-ink-muted">
                         <span>{{ $subscription->subscriptionPackage->clothes_allowance }} items</span>
@@ -699,7 +833,7 @@
                             @csrf
                             <input type="hidden" name="cancel_collection_id" value="{{ $collection->id }}">
                             <p class="text-sm text-ink-muted">
-                                Cancels the <span class="font-mono text-ink">{{ $collection->scheduled_date->format('Y-m-d') }}</span> pickup and folds it into another one -- that visit will cover both.
+                                Cancels the <span class="font-mono text-ink">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'anytime' }}</span> pickup and folds it into another one — that visit will cover both.
                             </p>
                             @php
                                 $combineOptions = $collection->subscription->collections()
@@ -714,7 +848,7 @@
                                 <select id="cust_combine_into_{{ $collection->id }}" name="combined_into_collection_id" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent" required>
                                     <option value="">Select a pickup…</option>
                                     @foreach ($combineOptions as $option)
-                                        <option value="{{ $option->id }}">{{ $option->scheduled_date->format('Y-m-d') }}</option>
+                                        <option value="{{ $option->id }}">{{ $option->scheduled_date?->format('Y-m-d') ?? 'Anytime (#'.$option->id.')' }}</option>
                                     @endforeach
                                 </select>
                                 @if ((int) old('cancel_collection_id') === $collection->id)
@@ -743,15 +877,32 @@
 
         @can('subscriptions.manage')
             @if ($customer->customer_type === 'subscription')
-                <x-slide-panel name="new-subscription" title="New Subscription" :error-fields="['subscription_package_id', 'start_date', 'end_date', 'customer_id']">
-                    <form method="POST" action="{{ route('subscriptions.store') }}" class="space-y-4">
+                <x-slide-panel name="new-subscription" title="New Subscription" :error-fields="['subscription_package_id', 'start_date', 'end_date', 'customer_id', 'collections_per_month', 'max_clothes_per_cycle', 'collection_type']">
+                    <form
+                        method="POST"
+                        action="{{ route('subscriptions.store') }}"
+                        class="space-y-4"
+                        x-data="{
+                            packages: {{ Js::from($subscriptionPackages->mapWithKeys(fn ($p) => [$p->id => [
+                                'collections_per_month' => $p->collections_per_month,
+                                'max_clothes_per_cycle' => $p->max_clothes_per_cycle,
+                            ]])) }},
+                            applyDefaults(id) {
+                                const pkg = this.packages[id];
+                                if (pkg) {
+                                    this.$refs.collectionsPerMonth.value = pkg.collections_per_month;
+                                    this.$refs.maxClothesPerCycle.value = pkg.max_clothes_per_cycle;
+                                }
+                            },
+                        }"
+                    >
                         @csrf
                         <input type="hidden" name="customer_id" value="{{ $customer->id }}">
                         <input type="hidden" name="return_to_profile" value="1">
 
                         <div>
                             <x-input-label for="ns_package" value="Package" />
-                            <select id="ns_package" name="subscription_package_id" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent" required>
+                            <select id="ns_package" name="subscription_package_id" @change="applyDefaults($event.target.value)" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent" required>
                                 <option value="">Select a package…</option>
                                 @foreach ($subscriptionPackages as $package)
                                     <option value="{{ $package->id }}" @selected(old('subscription_package_id') == $package->id)>
@@ -773,6 +924,34 @@
                                 <x-text-input id="ns_end_date" name="end_date" type="date" class="block w-full" value="{{ old('end_date') }}" />
                                 <x-input-error :messages="$errors->get('end_date')" class="mt-1.5" />
                             </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <x-input-label for="ns_collections_per_month" value="Number of collections" />
+                                <x-text-input x-ref="collectionsPerMonth" id="ns_collections_per_month" name="collections_per_month" type="number" min="1" max="28" class="block w-full" value="{{ old('collections_per_month') }}" required />
+                                <x-input-error :messages="$errors->get('collections_per_month')" class="mt-1.5" />
+                            </div>
+                            <div>
+                                <x-input-label for="ns_max_clothes_per_cycle" value="Max clothes per cycle" />
+                                <x-text-input x-ref="maxClothesPerCycle" id="ns_max_clothes_per_cycle" name="max_clothes_per_cycle" type="number" min="1" class="block w-full" value="{{ old('max_clothes_per_cycle') }}" required />
+                                <x-input-error :messages="$errors->get('max_clothes_per_cycle')" class="mt-1.5" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <x-input-label value="Collection type" />
+                            <div class="flex gap-3 mt-1">
+                                <label class="flex-1 inline-flex items-center justify-center gap-1.5 text-sm text-ink border border-line-strong rounded-lg py-2 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:text-accent-ink transition-colors">
+                                    <input type="radio" name="collection_type" value="scheduled" @checked(old('collection_type', 'scheduled') === 'scheduled') class="text-accent focus:ring-accent">
+                                    Scheduled
+                                </label>
+                                <label class="flex-1 inline-flex items-center justify-center gap-1.5 text-sm text-ink border border-line-strong rounded-lg py-2 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:text-accent-ink transition-colors">
+                                    <input type="radio" name="collection_type" value="non_scheduled" @checked(old('collection_type') === 'non_scheduled') class="text-accent focus:ring-accent">
+                                    Non-scheduled
+                                </label>
+                            </div>
+                            <x-input-error :messages="$errors->get('collection_type')" class="mt-1.5" />
                         </div>
 
                         <p class="text-xs text-ink-faint">The first collection is scheduled automatically for the start date.</p>

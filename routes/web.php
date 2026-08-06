@@ -19,12 +19,13 @@ use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SubscriptionPackageController;
 use App\Http\Controllers\ThemeController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\WashingMachineController;
 use App\Support\NavItems;
 use Illuminate\Support\Facades\Route;
 
 // Sidebar destinations with a real controller now -- excluded from the
 // placeholder-route loop below.
-$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index', 'expenses.index', 'reports.index', 'users.index', 'settings.index', 'audit.index'];
+$builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'catalog.machines', 'orders.index', 'subscriptions.index', 'collections.index', 'payments.index', 'damage.index', 'expenses.index', 'reports.index', 'users.index', 'settings.index', 'audit.index'];
 
 Route::get('/', function () {
     return redirect()->route('dashboard');
@@ -67,6 +68,7 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::get('/catalog/categories', [ClothesCategoryController::class, 'index'])->name('catalog.categories');
         Route::get('/catalog/categories/{category}', [ClothesCategoryController::class, 'show'])->name('catalog.categories.show');
         Route::get('/catalog/packages', [LaundryPackageController::class, 'index'])->name('catalog.packages');
+        Route::get('/catalog/machines', [WashingMachineController::class, 'index'])->name('catalog.machines');
     });
 
     Route::middleware('permission:catalog.manage')->group(function () {
@@ -86,6 +88,10 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::post('/catalog/packages/subscription', [SubscriptionPackageController::class, 'store'])->name('catalog.packages.subscription.store');
         Route::put('/catalog/packages/subscription/{subscriptionPackage}', [SubscriptionPackageController::class, 'update'])->name('catalog.packages.subscription.update');
         Route::delete('/catalog/packages/subscription/{subscriptionPackage}', [SubscriptionPackageController::class, 'destroy'])->name('catalog.packages.subscription.destroy');
+
+        Route::post('/catalog/machines', [WashingMachineController::class, 'store'])->name('catalog.machines.store');
+        Route::put('/catalog/machines/{washingMachine}', [WashingMachineController::class, 'update'])->name('catalog.machines.update');
+        Route::post('/catalog/machines/{washingMachine}/toggle-active', [WashingMachineController::class, 'toggleActive'])->name('catalog.machines.toggleActive');
     });
 
     Route::middleware('permission:orders.view')->group(function () {
@@ -119,6 +125,8 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::post('/subscriptions/{subscription}/pause', [SubscriptionController::class, 'pause'])->name('subscriptions.pause');
         Route::post('/subscriptions/{subscription}/resume', [SubscriptionController::class, 'resume'])->name('subscriptions.resume');
         Route::post('/subscriptions/{subscription}/cancel', [SubscriptionController::class, 'cancel'])->name('subscriptions.cancel');
+        Route::post('/subscriptions/{subscription}/renew', [SubscriptionController::class, 'renew'])->name('subscriptions.renew');
+        Route::put('/subscriptions/{subscription}/collection-type', [SubscriptionController::class, 'updateCollectionType'])->name('subscriptions.collection-type.update');
     });
 
     Route::middleware('permission:subscriptions.view')->group(function () {
@@ -136,10 +144,6 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
 
     Route::middleware('permission:payments.view')->group(function () {
         Route::get('/payments', [PaymentController::class, 'index'])->name('payments.index');
-    });
-
-    Route::middleware('permission:payments.manage')->group(function () {
-        Route::post('/payments/{payment}/refund', [PaymentController::class, 'refund'])->name('payments.refund');
     });
 
     Route::middleware('permission:damage.view')->group(function () {
@@ -178,7 +182,12 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::middleware('permission:users.manage')->group(function () {
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
         Route::post('/users', [UserController::class, 'store'])->name('users.store');
+        Route::get('/users/{user}', [UserController::class, 'show'])->name('users.show');
+        Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+        Route::put('/users/{user}/password', [UserController::class, 'setPassword'])->name('users.setPassword');
+        Route::post('/users/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('users.toggleActive');
         Route::put('/users/{user}/roles', [UserController::class, 'updateRoles'])->name('users.roles.update');
+        Route::post('/roles', [UserController::class, 'storeRole'])->name('roles.store');
         Route::put('/roles/{role}/permissions', [UserController::class, 'updateRolePermissions'])->name('roles.permissions.update');
     });
 

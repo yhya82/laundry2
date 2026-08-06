@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\CollectionStatusChanged;
 use App\Models\Collection;
-use App\Support\CollectionScheduler;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -15,7 +15,7 @@ class CollectionController extends Controller
     {
         $collections = Collection::with(['subscription.customer', 'subscription.subscriptionPackage'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->get('status')))
-            ->orderBy('scheduled_date')
+            ->orderByRaw('scheduled_date IS NULL, scheduled_date')
             ->paginate(20)
             ->withQueryString();
 
@@ -41,7 +41,7 @@ class CollectionController extends Controller
         $collection->loadMissing('subscription');
 
         if ($collection->subscription->status !== 'active') {
-            return back()->withErrors(['collection' => 'This subscription is paused -- resume it before skipping or cancelling a collection.']);
+            return back()->withErrors(['collection' => 'This subscription is paused — resume it before skipping or cancelling a collection.']);
         }
 
         $validated = $request->validate([
@@ -69,7 +69,9 @@ class CollectionController extends Controller
             'combined_into_collection_id' => $validated['combined_into_collection_id'] ?? null,
         ]);
 
-        CollectionScheduler::maybeScheduleNextCycleAfter($collection);
+        $collection->subscriptionCycle?->closeIfExhausted();
+
+        CollectionStatusChanged::dispatch($collection);
 
         return back()->with('status', $validated['combined_into_collection_id'] ?? null
             ? 'Collection cancelled and combined into another pickup.'
@@ -89,7 +91,7 @@ class CollectionController extends Controller
         $collection->loadMissing('subscription');
 
         if ($collection->subscription->status !== 'active') {
-            return redirect()->route('collections.index')->withErrors(['collection' => 'This subscription is paused -- resume it before collecting.']);
+            return redirect()->route('collections.index')->withErrors(['collection' => 'This subscription is paused — resume it before collecting.']);
         }
 
         $collection->load('subscription.customer', 'subscription.subscriptionPackage');

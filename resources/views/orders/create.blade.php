@@ -7,5 +7,5 @@
         </a>
     </x-slot>
 
-    <livewire:laundry-terminal :customer-id="$customerId" />
+    <livewire:laundry-terminal :customer-id="$customerId" :force-walk-in="$forceWalkIn" />
 </x-app-layout>

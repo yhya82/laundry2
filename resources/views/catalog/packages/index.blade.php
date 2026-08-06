@@ -106,51 +106,55 @@
                 @endcan
             </div>
             <div class="bg-surface border border-line rounded-2xl overflow-hidden mb-4 hidden md:block">
-                <table class="w-full text-sm">
-                    <thead class="bg-surface-2">
-                        <tr>
-                            <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Name</th>
-                            <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Monthly</th>
-                            <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Allowance</th>
-                            <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Collections/mo</th>
-                            <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse ($subscriptionPackages as $package)
-                            <tr class="border-t border-line">
-                                <td class="px-4 py-3 text-ink font-medium">{{ $package->name }}</td>
-                                <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->monthly_price, 2) }}</td>
-                                <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">{{ $package->clothes_allowance }} items</td>
-                                <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">{{ $package->collections_per_month }}</td>
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center justify-end gap-1.5">
-                                        @can('catalog.manage')
-                                            <button type="button" @click="$dispatch('open-panel', 'subscription-edit-{{ $package->id }}')" title="Edit" class="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center hover:opacity-90">
-                                                <x-nav-icon name="edit" class="w-4 h-4" />
-                                            </button>
-                                            <form method="POST" action="{{ route('catalog.packages.subscription.destroy', $package) }}" onsubmit="return confirm('Delete this package?')">
-                                                @csrf @method('DELETE')
-                                                <button type="submit" title="Delete" class="w-8 h-8 rounded-lg bg-critical-soft text-critical flex items-center justify-center hover:bg-critical hover:text-white transition-colors">
-                                                    <x-nav-icon name="trash" class="w-4 h-4" />
-                                                </button>
-                                            </form>
-                                        @endcan
-                                    </div>
-                                </td>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-surface-2">
+                            <tr>
+                                <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Name</th>
+                                <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Monthly</th>
+                                <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Allowance</th>
+                                <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Collections/mo</th>
+                                <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Max clothes/cycle</th>
+                                <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
                             </tr>
-                        @empty
-                            <tr><td colspan="5" class="px-4 py-8 text-center text-ink-faint text-sm">No subscription packages yet.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            @forelse ($subscriptionPackages as $package)
+                                <tr class="border-t border-line">
+                                    <td class="px-4 py-3 text-ink font-medium">{{ $package->name }}</td>
+                                    <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->monthly_price, 2) }}</td>
+                                    <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">{{ $package->clothes_allowance }} items</td>
+                                    <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">{{ $package->collections_per_month }}</td>
+                                    <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">{{ $package->max_clothes_per_cycle }}</td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex items-center justify-end gap-1.5">
+                                            @can('catalog.manage')
+                                                <button type="button" @click="$dispatch('open-panel', 'subscription-edit-{{ $package->id }}')" title="Edit" class="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center hover:opacity-90">
+                                                    <x-nav-icon name="edit" class="w-4 h-4" />
+                                                </button>
+                                                <form method="POST" action="{{ route('catalog.packages.subscription.destroy', $package) }}" onsubmit="return confirm('Delete this package?')">
+                                                    @csrf @method('DELETE')
+                                                    <button type="submit" title="Delete" class="w-8 h-8 rounded-lg bg-critical-soft text-critical flex items-center justify-center hover:bg-critical hover:text-white transition-colors">
+                                                        <x-nav-icon name="trash" class="w-4 h-4" />
+                                                    </button>
+                                                </form>
+                                            @endcan
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="6" class="px-4 py-8 text-center text-ink-faint text-sm">No subscription packages yet.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <div class="md:hidden space-y-3 mb-4">
                 @forelse ($subscriptionPackages as $package)
                     <div class="bg-surface border border-line rounded-2xl p-4">
                         <div class="font-medium text-ink mb-1">{{ $package->name }}</div>
                         <div class="text-sm mb-2">
-                            <span class="font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->monthly_price, 2) }} · {{ $package->clothes_allowance }} items · {{ $package->collections_per_month }}/mo</span>
+                            <span class="font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->monthly_price, 2) }} · {{ $package->clothes_allowance }} items · {{ $package->collections_per_month }}/mo · max {{ $package->max_clothes_per_cycle }}/cycle</span>
                         </div>
                         @can('catalog.manage')
                             <div class="flex items-center gap-2">
@@ -265,7 +269,7 @@
             </x-slide-panel>
         @endforeach
 
-        <x-slide-panel name="subscription-package-create" title="New Subscription Package" :error-fields="['name', 'monthly_price', 'clothes_allowance', 'collections_per_month']">
+        <x-slide-panel name="subscription-package-create" title="New Subscription Package" :error-fields="['name', 'monthly_price', 'clothes_allowance']">
             <form method="POST" action="{{ route('catalog.packages.subscription.store') }}" class="space-y-4">
                 @csrf
                 <div>
@@ -283,12 +287,7 @@
                     <x-text-input id="sp_allowance" name="clothes_allowance" type="number" min="1" class="block w-full" value="{{ old('clothes_allowance') }}" required />
                     <x-input-error :messages="$errors->get('clothes_allowance')" class="mt-1.5" />
                 </div>
-                <div>
-                    <x-input-label for="sp_collections_per_month" value="Collections per month" />
-                    <x-text-input id="sp_collections_per_month" name="collections_per_month" type="number" min="1" class="block w-full" value="{{ old('collections_per_month', 1) }}" required />
-                    <p class="text-xs text-ink-faint mt-1">Pickups are spaced evenly across the month based on this count.</p>
-                    <x-input-error :messages="$errors->get('collections_per_month')" class="mt-1.5" />
-                </div>
+                <p class="text-xs text-ink-faint">Collections per month and max clothes per cycle are fixed at 1 and allowance × 4 — individual subscriptions can still override both when created or renewed.</p>
                 <div class="flex items-center gap-3">
                     <x-primary-button>Add</x-primary-button>
                     <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
@@ -315,12 +314,6 @@
                         <x-input-label for="sp_edit_allowance_{{ $package->id }}" value="Allowance" />
                         <x-text-input id="sp_edit_allowance_{{ $package->id }}" name="clothes_allowance" type="number" min="1" class="block w-full" value="{{ $package->clothes_allowance }}" required />
                         <x-input-error :messages="$errors->get('clothes_allowance')" class="mt-1.5" />
-                    </div>
-                    <div>
-                        <x-input-label for="sp_edit_collections_per_month_{{ $package->id }}" value="Collections per month" />
-                        <x-text-input id="sp_edit_collections_per_month_{{ $package->id }}" name="collections_per_month" type="number" min="1" class="block w-full" value="{{ $package->collections_per_month }}" required />
-                        <p class="text-xs text-ink-faint mt-1">Pickups are spaced evenly across the month based on this count.</p>
-                        <x-input-error :messages="$errors->get('collections_per_month')" class="mt-1.5" />
                     </div>
                     <label class="inline-flex items-center gap-2 text-sm text-ink">
                         <input type="checkbox" name="is_active" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($package->is_active)>

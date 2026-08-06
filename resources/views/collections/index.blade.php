@@ -10,6 +10,22 @@
         </select>
     </form>
 
+    <div
+        x-data="{
+            init() {
+                window.Echo.channel('collections').listen('.collection.status-changed', (e) => {
+                    document.querySelectorAll('[data-collection-status=\'' + e.collectionId + '\']').forEach((el) => {
+                        window.applyStatusPill(el, e.toStatus);
+                    });
+                    if (e.toStatus !== 'scheduled') {
+                        document.querySelectorAll('[data-collection-actions=\'' + e.collectionId + '\']').forEach((el) => {
+                            el.innerHTML = '';
+                        });
+                    }
+                });
+            }
+        }"
+    >
     <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <table class="w-full text-sm">
             <thead class="bg-surface-2">
@@ -24,13 +40,13 @@
             <tbody>
                 @forelse ($collections as $collection)
                     <tr class="border-t border-line hover:bg-surface-2">
-                        <td class="px-4 py-3 font-mono text-xs text-ink">{{ $collection->scheduled_date->format('Y-m-d') }}</td>
+                        <td class="px-4 py-3 font-mono text-xs text-ink">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'Anytime' }}</td>
                         <td class="px-4 py-3">
                             <a href="{{ route('subscriptions.show', $collection->subscription) }}" class="text-ink hover:text-accent-ink">{{ $collection->subscription->customer?->full_name ?? 'Deleted customer' }}</a>
                         </td>
                         <td class="px-4 py-3 text-ink-muted">{{ $collection->subscription->subscriptionPackage->name }}</td>
-                        <td class="px-4 py-3"><x-status-pill :status="$collection->status" /></td>
-                        <td class="px-4 py-3 text-right">
+                        <td class="px-4 py-3"><x-status-pill :status="$collection->status" data-collection-status="{{ $collection->id }}" /></td>
+                        <td class="px-4 py-3 text-right" data-collection-actions="{{ $collection->id }}">
                             @if ($collection->status === 'scheduled')
                                 @can('collections.manage')
                                     <div class="flex justify-end gap-2">
@@ -79,12 +95,13 @@
             <div class="bg-surface border border-line rounded-2xl p-4">
                 <div class="flex items-center justify-between mb-2">
                     <a href="{{ route('subscriptions.show', $collection->subscription) }}" class="text-ink hover:text-accent-ink font-medium">{{ $collection->subscription->customer?->full_name ?? 'Deleted customer' }}</a>
-                    <x-status-pill :status="$collection->status" />
+                    <x-status-pill :status="$collection->status" data-collection-status="{{ $collection->id }}" />
                 </div>
                 <div class="flex items-center justify-between text-sm text-ink-muted">
                     <span>{{ $collection->subscription->subscriptionPackage->name }}</span>
-                    <span class="font-mono text-xs">{{ $collection->scheduled_date->format('Y-m-d') }}</span>
+                    <span class="font-mono text-xs">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'Anytime' }}</span>
                 </div>
+                <div data-collection-actions="{{ $collection->id }}">
                 @if ($collection->status === 'scheduled')
                     @can('collections.manage')
                         <div class="flex gap-2 mt-2">
@@ -119,10 +136,12 @@
                         </div>
                     @endcan
                 @endif
+                </div>
             </div>
         @empty
             <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No collections scheduled.</div>
         @endforelse
+    </div>
     </div>
 
     <div class="mt-4">{{ $collections->links() }}</div>
@@ -135,7 +154,7 @@
                         @csrf
                         <input type="hidden" name="cancel_collection_id" value="{{ $collection->id }}">
                         <p class="text-sm text-ink-muted">
-                            Cancels the <span class="font-mono text-ink">{{ $collection->scheduled_date->format('Y-m-d') }}</span> pickup and folds it into another one -- that visit will cover both.
+                            Cancels the <span class="font-mono text-ink">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'anytime' }}</span> pickup and folds it into another one — that visit will cover both.
                         </p>
                         @php
                             $combineOptions = $collection->subscription->collections()
@@ -150,7 +169,7 @@
                             <select id="combine_into_{{ $collection->id }}" name="combined_into_collection_id" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent" required>
                                 <option value="">Select a pickup…</option>
                                 @foreach ($combineOptions as $option)
-                                    <option value="{{ $option->id }}">{{ $option->scheduled_date->format('Y-m-d') }}</option>
+                                    <option value="{{ $option->id }}">{{ $option->scheduled_date?->format('Y-m-d') ?? 'Anytime (#'.$option->id.')' }}</option>
                                 @endforeach
                             </select>
                             @if ((int) old('cancel_collection_id') === $collection->id)
