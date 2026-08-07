@@ -27,6 +27,7 @@ class SettingsController extends Controller
             'payment' => $this->savePayment($request),
             'notification' => $this->saveNotification($request),
             'order' => $this->saveOrder($request),
+            'receipt' => $this->saveReceipt($request),
             'backup' => $this->saveBackup($request),
             default => abort(422, 'Unknown settings group.'),
         };
@@ -39,9 +40,15 @@ class SettingsController extends Controller
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:255'],
             'logo' => ['nullable', 'image', 'max:2048'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'address' => ['nullable', 'string', 'max:255'],
         ]);
 
         Setting::set('branding.business_name', $validated['business_name'], 'general');
+        Setting::set('branding.phone', $validated['phone'] ?? null, 'general');
+        Setting::set('branding.email', $validated['email'] ?? null, 'general');
+        Setting::set('branding.address', $validated['address'] ?? null, 'general');
 
         if ($request->hasFile('logo')) {
             Setting::set('branding.logo_path', $request->file('logo')->store('branding', 'public'), 'general');
@@ -89,6 +96,17 @@ class SettingsController extends Controller
 
         Setting::set('order.max_discount_percent', (string) $validated['max_discount_percent'], 'order', 'integer');
         Setting::set('order.discount_enabled', $request->boolean('discount_enabled') ? 'true' : 'false', 'order', 'boolean');
+        Setting::set('order.assignment_enabled', $request->boolean('assignment_enabled') ? 'true' : 'false', 'order', 'boolean');
+    }
+
+    protected function saveReceipt(Request $request): void
+    {
+        $validated = $request->validate([
+            'footer_message' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        Setting::set('receipt.show_logo', $request->boolean('show_logo') ? 'true' : 'false', 'receipt', 'boolean');
+        Setting::set('receipt.footer_message', $validated['footer_message'] ?? null, 'receipt');
     }
 
     protected function saveBackup(Request $request): void

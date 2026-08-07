@@ -91,55 +91,16 @@
         </div>
 
         <div x-show="tab === 'overview'" class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            @php
+                $cycleSubscriptions = $subscriptions->where('status', 'active')->filter(fn ($s) => $s->cycles->isNotEmpty());
+            @endphp
+            @if ($cycleSubscriptions->isNotEmpty())
             <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Customer Information</div>
-                <dl class="space-y-3 text-sm">
-                    <div class="flex justify-between">
-                        <dt class="text-ink-muted">Phone</dt>
-                        <dd class="font-mono text-ink">{{ $customer->phone }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-ink-muted">Email</dt>
-                        <dd class="text-ink">{{ $customer->email ?: '—' }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-ink-muted">Address</dt>
-                        <dd class="text-ink text-right">{{ $customer->address ?: '—' }}</dd>
-                    </div>
-                    @if ($customer->notes)
-                        <div class="pt-2 border-t border-line">
-                            <dt class="text-ink-muted mb-1">Notes</dt>
-                            <dd class="text-ink">{{ $customer->notes }}</dd>
-                        </div>
-                    @endif
-                </dl>
-            </div>
-
-            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Active Packages</div>
-                    <button type="button" @click="tab = 'packages'" class="text-xs text-accent-ink hover:underline">View All</button>
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="w-7 h-7 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="repeat" class="w-3.5 h-3.5" /></span>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Current Cycle</div>
                 </div>
-                @php $activePackages = $subscriptions->where('status', 'active'); @endphp
-                @forelse ($activePackages as $subscription)
-                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
-                        <div>
-                            <div class="text-ink">{{ $subscription->subscriptionPackage->name }}</div>
-                            <div class="text-ink-faint text-xs">{{ $subscription->subscriptionPackage->clothes_allowance }} items</div>
-                        </div>
-                        <a href="{{ route('subscriptions.show', $subscription) }}" class="text-accent-ink text-xs hover:underline">View</a>
-                    </div>
-                @empty
-                    <p class="text-ink-faint text-sm">No active packages.</p>
-                @endforelse
-            </div>
-
-            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Current Cycle</div>
-                @php
-                    $cycleSubscriptions = $subscriptions->where('status', 'active')->filter(fn ($s) => $s->cycles->isNotEmpty());
-                @endphp
-                @forelse ($cycleSubscriptions as $subscription)
+                @foreach ($cycleSubscriptions as $subscription)
                     @php
                         $cycle = $subscription->cycles->first();
                         $cycleCollections = $subscription->collections->where('subscription_cycle_id', $cycle->id);
@@ -212,59 +173,34 @@
                             </div>
                         </div>
                     </div>
+                @endforeach
+            </div>
+            @endif
+
+            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-3.5 h-3.5" /></span>
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Recent Orders</div>
+                    </div>
+                    <button type="button" @click="tab = 'orders'" class="text-xs text-accent-ink hover:underline">View All</button>
+                </div>
+                @forelse ($recentOrders as $order)
+                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
+                        <a href="{{ route('orders.show', $order) }}" class="font-mono text-ink hover:text-accent-ink">{{ $order->order_number }}</a>
+                        <x-status-pill :status="$order->status" />
+                        <span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->total_amount, 2) }}</span>
+                    </div>
                 @empty
-                    <p class="text-ink-faint text-sm">No active cycle.</p>
+                    <p class="text-ink-faint text-sm">No orders yet.</p>
                 @endforelse
             </div>
 
-            @can('subscriptions.manage')
-                @php $manageableSubscriptions = $subscriptions->whereIn('status', ['active', 'paused']); @endphp
-                @if ($manageableSubscriptions->isNotEmpty())
-                    <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Manage Subscription</div>
-                        @foreach ($manageableSubscriptions as $subscription)
-                            <div class="py-2.5 border-b border-line last:border-0">
-                                <div class="flex items-center justify-between mb-2">
-                                    <div>
-                                        <div class="text-ink text-sm">{{ $subscription->subscriptionPackage->name }}</div>
-                                        <x-status-pill :status="$subscription->status" />
-                                    </div>
-                                    <a href="{{ route('subscriptions.show', $subscription) }}" class="text-accent-ink text-xs hover:underline">View</a>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    @if ($subscription->status === 'active')
-                                        <form method="POST" action="{{ route('subscriptions.pause', $subscription) }}" class="flex-1">
-                                            @csrf
-                                            <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-pill-bg text-pill-ink rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
-                                                <x-nav-icon name="pause" class="w-3 h-3" />
-                                                Pause
-                                            </button>
-                                        </form>
-                                    @elseif ($subscription->status === 'paused')
-                                        <form method="POST" action="{{ route('subscriptions.resume', $subscription) }}" class="flex-1">
-                                            @csrf
-                                            <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-success-soft text-success rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
-                                                <x-nav-icon name="play" class="w-3 h-3" />
-                                                Resume
-                                            </button>
-                                        </form>
-                                    @endif
-                                    <form method="POST" action="{{ route('subscriptions.cancel', $subscription) }}" class="flex-1" onsubmit="return confirm('Cancel this subscription? This cannot be undone.')">
-                                        @csrf
-                                        <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-critical text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
-                                            <x-nav-icon name="x" class="w-3 h-3" />
-                                            Cancel
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
-            @endcan
-
             <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Quick Actions</div>
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="w-7 h-7 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="zap" class="w-3.5 h-3.5" /></span>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Quick Actions</div>
+                </div>
                 <div class="flex flex-col gap-1.5">
                     @can('terminal.use')
                         @if ($hasOpenSubscriptionCycle)
@@ -326,26 +262,62 @@
                 </div>
             </div>
 
-            <div class="lg:col-span-2 bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Recent Orders</div>
-                    <button type="button" @click="tab = 'orders'" class="text-xs text-accent-ink hover:underline">View All</button>
-                </div>
-                @forelse ($recentOrders as $order)
-                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
-                        <a href="{{ route('orders.show', $order) }}" class="font-mono text-ink hover:text-accent-ink">{{ $order->order_number }}</a>
-                        <x-status-pill :status="$order->status" />
-                        <span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->total_amount, 2) }}</span>
+            @can('subscriptions.manage')
+                @php $manageableSubscriptions = $subscriptions->whereIn('status', ['active', 'paused']); @endphp
+                @if ($manageableSubscriptions->isNotEmpty())
+                    <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="gear" class="w-3.5 h-3.5" /></span>
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Manage Subscription</div>
+                        </div>
+                        @foreach ($manageableSubscriptions as $subscription)
+                            <div class="py-2.5 border-b border-line last:border-0">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div>
+                                        <div class="text-ink text-sm">{{ $subscription->subscriptionPackage->name }}</div>
+                                        <x-status-pill :status="$subscription->status" />
+                                    </div>
+                                    <a href="{{ route('subscriptions.show', $subscription) }}" class="text-accent-ink text-xs hover:underline">View</a>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    @if ($subscription->status === 'active')
+                                        <form method="POST" action="{{ route('subscriptions.pause', $subscription) }}" class="flex-1">
+                                            @csrf
+                                            <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-pill-bg text-pill-ink rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
+                                                <x-nav-icon name="pause" class="w-3 h-3" />
+                                                Pause
+                                            </button>
+                                        </form>
+                                    @elseif ($subscription->status === 'paused')
+                                        <form method="POST" action="{{ route('subscriptions.resume', $subscription) }}" class="flex-1">
+                                            @csrf
+                                            <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-success-soft text-success rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
+                                                <x-nav-icon name="play" class="w-3 h-3" />
+                                                Resume
+                                            </button>
+                                        </form>
+                                    @endif
+                                    <form method="POST" action="{{ route('subscriptions.cancel', $subscription) }}" class="flex-1" onsubmit="return confirm('Cancel this subscription? This cannot be undone.')">
+                                        @csrf
+                                        <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-critical text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
+                                            <x-nav-icon name="x" class="w-3 h-3" />
+                                            Cancel
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        @endforeach
                     </div>
-                @empty
-                    <p class="text-ink-faint text-sm">No orders yet.</p>
-                @endforelse
-            </div>
+                @endif
+            @endcan
 
             <div class="space-y-5">
                 <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between mb-3">
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Payment Summary</div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-7 h-7 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="wallet" class="w-3.5 h-3.5" /></span>
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Payment Summary</div>
+                        </div>
                         <button type="button" @click="tab = 'payments'" class="text-xs text-accent-ink hover:underline">View All</button>
                     </div>
                     <dl class="space-y-2 text-sm">
@@ -354,10 +326,17 @@
                             <dd class="font-mono text-ink">GMD {{ number_format($stats['lifetimeSpend'], 2) }}</dd>
                         </div>
                         @foreach ($currentCycles as $cycle)
+                            @php
+                                // isPaid() itself just checks balanceDue() <= 0
+                                // -- compute the due amount once and derive
+                                // both from it instead of two live queries.
+                                $cycleDue = $cycle->balanceDue();
+                                $cyclePaid = $cycleDue <= 0;
+                            @endphp
                             <div class="flex justify-between">
                                 <dt class="text-ink-muted">{{ $cycle->subscription->subscriptionPackage->name }} ({{ $cycle->starts_on->format('M Y') }})</dt>
-                                <dd class="font-mono font-semibold {{ $cycle->isPaid() ? 'text-success' : 'text-critical' }}">
-                                    {{ $cycle->isPaid() ? 'Paid' : 'GMD '.number_format($cycle->balanceDue(), 2).' due' }}
+                                <dd class="font-mono font-semibold {{ $cyclePaid ? 'text-success' : 'text-critical' }}">
+                                    {{ $cyclePaid ? 'Paid' : 'GMD '.number_format($cycleDue, 2).' due' }}
                                 </dd>
                             </div>
                         @endforeach
@@ -422,17 +401,53 @@
 
                 @if ($customer->notes)
                     <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-2">Customer Notes</div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="log" class="w-3.5 h-3.5" /></span>
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Customer Notes</div>
+                        </div>
                         <p class="text-sm text-ink">{{ $customer->notes }}</p>
                         <p class="text-xs text-ink-faint mt-2">Updated {{ $customer->updated_at->format('Y-m-d') }}</p>
                     </div>
                 @endif
             </div>
 
+            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="user" class="w-3.5 h-3.5" /></span>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Customer Information</div>
+                </div>
+                <dl class="space-y-3 text-sm">
+                    <div class="flex items-center justify-between gap-3">
+                        <dt class="flex items-center gap-2 text-ink-muted">
+                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="phone" class="w-3 h-3" /></span>
+                            Phone
+                        </dt>
+                        <dd class="font-mono text-ink">{{ $customer->phone }}</dd>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <dt class="flex items-center gap-2 text-ink-muted">
+                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="mail" class="w-3 h-3" /></span>
+                            Email
+                        </dt>
+                        <dd class="text-ink">{{ $customer->email ?: '—' }}</dd>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <dt class="flex items-center gap-2 text-ink-muted">
+                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="map-pin" class="w-3 h-3" /></span>
+                            Address
+                        </dt>
+                        <dd class="text-ink text-right">{{ $customer->address ?: '—' }}</dd>
+                    </div>
+                </dl>
+            </div>
+
             @if ($upcomingCollections->isNotEmpty())
                 <div class="lg:col-span-3 bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between mb-3">
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Collection Schedule</div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="truck" class="w-3.5 h-3.5" /></span>
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Collection Schedule</div>
+                        </div>
                         <a href="{{ route('collections.index') }}" class="text-xs text-accent-ink hover:underline">View All Collections</a>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -725,19 +740,20 @@
 
         @can('orders.manage')
             @foreach ($unpaidCycles as $cycle)
+                @php $cycleDue = $cycle->balanceDue(); @endphp
                 <x-slide-panel name="record-cycle-payment-{{ $cycle->id }}" title="Record Payment" :open="$errors->any() && (int) old('subscription_cycle_id') === $cycle->id">
                     <form method="POST" action="{{ route('subscriptionCycles.payments.record', $cycle) }}" class="space-y-4">
                         @csrf
                         <input type="hidden" name="subscription_cycle_id" value="{{ $cycle->id }}">
                         <p class="text-sm text-ink-muted">
                             {{ $cycle->subscription->subscriptionPackage->name }} — {{ $cycle->starts_on->format('M Y') }} —
-                            balance due: <span class="font-mono text-ink font-semibold">GMD {{ number_format($cycle->balanceDue(), 2) }}</span>
+                            balance due: <span class="font-mono text-ink font-semibold">GMD {{ number_format($cycleDue, 2) }}</span>
                         </p>
 
                         @if ($customer->store_credit_balance > 0)
                             <div>
                                 <x-input-label for="cyclecp_credit_applied_{{ $cycle->id }}" value="Apply store credit" />
-                                <x-text-input id="cyclecp_credit_applied_{{ $cycle->id }}" name="credit_applied" type="number" step="0.01" min="0" max="{{ min($customer->store_credit_balance, $cycle->balanceDue()) }}" class="block w-full" />
+                                <x-text-input id="cyclecp_credit_applied_{{ $cycle->id }}" name="credit_applied" type="number" step="0.01" min="0" max="{{ min($customer->store_credit_balance, $cycleDue) }}" class="block w-full" />
                                 <p class="text-xs text-ink-faint mt-1">Of GMD {{ number_format($customer->store_credit_balance, 2) }} available.</p>
                                 @if ((int) old('subscription_cycle_id') === $cycle->id)
                                     <x-input-error :messages="$errors->get('credit_applied')" class="mt-1.5" />
@@ -776,19 +792,20 @@
 
         @can('orders.manage')
             @foreach ($unpaidOrders as $order)
+                @php $orderDue = $order->balanceDue(); @endphp
                 <x-slide-panel name="record-payment-{{ $order->id }}" title="Record Payment" :open="$errors->any() && (int) old('order_id') === $order->id">
                     <form method="POST" action="{{ route('orders.payments.record', $order) }}" class="space-y-4">
                         @csrf
                         <input type="hidden" name="order_id" value="{{ $order->id }}">
                         <p class="text-sm text-ink-muted">
                             Order <a href="{{ route('orders.show', $order) }}" class="font-mono text-accent-ink hover:underline">{{ $order->order_number }}</a> —
-                            balance due: <span class="font-mono text-ink font-semibold">GMD {{ number_format($order->balanceDue(), 2) }}</span>
+                            balance due: <span class="font-mono text-ink font-semibold">GMD {{ number_format($orderDue, 2) }}</span>
                         </p>
 
                         @if ($customer->store_credit_balance > 0)
                             <div>
                                 <x-input-label for="cp_credit_applied_{{ $order->id }}" value="Apply store credit" />
-                                <x-text-input id="cp_credit_applied_{{ $order->id }}" name="credit_applied" type="number" step="0.01" min="0" max="{{ min($customer->store_credit_balance, $order->balanceDue()) }}" class="block w-full" />
+                                <x-text-input id="cp_credit_applied_{{ $order->id }}" name="credit_applied" type="number" step="0.01" min="0" max="{{ min($customer->store_credit_balance, $orderDue) }}" class="block w-full" />
                                 <p class="text-xs text-ink-faint mt-1">Of GMD {{ number_format($customer->store_credit_balance, 2) }} available.</p>
                                 @if ((int) old('order_id') === $order->id)
                                     <x-input-error :messages="$errors->get('credit_applied')" class="mt-1.5" />

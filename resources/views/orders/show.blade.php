@@ -1,7 +1,7 @@
 <x-app-layout>
     <x-slot name="header">{{ $order->order_number }}</x-slot>
 
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between mb-6">
         <x-breadcrumbs :items="[
             ['label' => 'Customers', 'url' => route('customers.index')],
             ['label' => $order->customer->full_name, 'url' => route('customers.show', $order->customer)],
@@ -46,10 +46,71 @@
 
         $isActiveOrder = ! $order->isTerminal();
         $nextIsWashing = $order->nextStatus() === 'washing';
+        $paymentStatus = $order->combinedPaymentStatus();
+        // orderDue is the order's own balance -- the only thing "Record
+        // Payment" here actually settles. combinedDue/combinedPaid fold in
+        // the subscription cycle's balance too (most of what's owed on a
+        // subscription visit usually sits on the cycle, not the order
+        // itself), matching what combinedPaymentStatus() already checks --
+        // otherwise the hero and the Payments card can disagree about
+        // whether the order is "paid" at all.
+        $cycle = $order->subscriptionCycle();
+        $orderDue = $order->balanceDue();
+        $combinedDue = $orderDue + ($cycle?->balanceDue() ?? 0);
+        $combinedPaid = $order->amountPaid() + ($cycle?->amountPaid() ?? 0);
+        $grandTotal = (float) $order->total_amount + ($cycle->monthly_price_snapshot ?? 0);
+        $statusTones = ['received' => 'neutral', 'sorting' => 'active', 'washing' => 'active', 'drying' => 'active', 'ironing' => 'active', 'packaging' => 'active', 'completed' => 'success', 'cancelled' => 'critical'];
+        $statusToneClasses = ['neutral' => 'bg-pill-bg text-pill-ink', 'active' => 'bg-accent-soft text-accent-ink', 'success' => 'bg-success-soft text-success', 'critical' => 'bg-critical-soft text-critical'];
     @endphp
 
+    {{-- Summary hero: who, what stage, and the one number that matters -- answers "what do I need to know" before any card does. --}}
     <div
-        class="bg-surface border border-line rounded-2xl p-6 mb-5 shadow-sm overflow-x-auto"
+        class="flex items-center justify-between gap-6 flex-wrap pb-6 mb-6 border-b border-line"
+        x-data="{
+            status: @js($order->status),
+            tones: @js($statusTones),
+            classes: @js($statusToneClasses),
+            label() { return this.status.charAt(0).toUpperCase() + this.status.slice(1).replace('_', ' '); },
+            init() {
+                window.Echo.channel('orders').listen('.order.status-changed', (e) => {
+                    if (e.orderId === {{ $order->id }}) {
+                        this.status = e.toStatus;
+                    }
+                });
+            }
+        }"
+    >
+        <div class="flex items-center gap-4 min-w-0">
+            <span class="w-12 h-12 rounded-full bg-accent text-white flex items-center justify-center text-lg font-bold flex-none">
+                {{ Str::substr($order->customer->full_name, 0, 1) }}
+            </span>
+            <div class="min-w-0">
+                <h1 class="text-2xl font-bold text-ink tracking-tight truncate">{{ $order->order_number }}</h1>
+                <div class="flex items-center gap-2.5 text-sm text-ink-muted mt-0.5 flex-wrap">
+                    <a href="{{ route('customers.show', $order->customer) }}" class="font-semibold text-accent-ink hover:underline">{{ $order->customer->full_name }}</a>
+                    <span class="w-1 h-1 rounded-full bg-ink-faint"></span>
+                    <span>{{ $order->order_source === 'walk_in' ? 'Walk-in order' : 'Subscription pickup' }}</span>
+                    <span class="w-1 h-1 rounded-full bg-ink-faint"></span>
+                    <span
+                        class="inline-flex items-center font-mono text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide"
+                        :class="classes[tones[status]] ?? classes.neutral"
+                        x-text="label()"
+                    ></span>
+                </div>
+            </div>
+        </div>
+        <div class="text-right flex-none">
+            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">{{ $combinedDue > 0 ? 'Balance due' : 'Payment' }}</div>
+            @if ($combinedDue > 0)
+                <div class="font-mono text-3xl font-bold tabular-nums text-critical">GMD {{ number_format($combinedDue, 2) }}</div>
+            @else
+                <div class="font-mono text-3xl font-bold tabular-nums text-success">Paid in full</div>
+            @endif
+        </div>
+    </div>
+
+    <div
+        class="bg-surface border border-line rounded-2xl px-6 pt-7 pb-6 mb-6 shadow-sm overflow-x-auto"
         x-data="{
             status: @js($order->status),
             stages: @js($stages),
@@ -80,7 +141,7 @@
                                 type="button"
                                 title="{{ $stageLabels[$stage] }}"
                                 @click="$dispatch('open-panel', 'select-washing-machine')"
-                                class="w-11 h-11 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
+                                class="w-12 h-12 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
                             >
                                 <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
                             </button>
@@ -89,14 +150,14 @@
                                 @csrf
                                 <button
                                     type="submit"
-                                    class="w-11 h-11 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
+                                    class="w-12 h-12 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
                                 >
                                     <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
                                 </button>
                             </form>
                         @else
                             <span
-                                class="w-11 h-11 rounded-full flex items-center justify-center relative"
+                                class="w-12 h-12 rounded-full flex items-center justify-center relative"
                                 :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success-soft text-success' : (({{ $i }} === currentIndex && isActive) ? 'bg-accent-soft text-accent-ink ring-2 ring-accent' : 'bg-surface-2 text-ink-faint')"
                             >
                                 <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
@@ -110,13 +171,13 @@
                         @endif
 
                         <div
-                            class="text-xs font-semibold mt-2"
+                            class="text-xs font-semibold mt-2.5"
                             :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'text-ink' : (({{ $i }} === currentIndex && isActive) ? 'text-accent-ink' : 'text-ink-faint')"
                         >
                             {{ $stageLabels[$stage] }}
                         </div>
 
-                        <div class="text-[11px] text-ink-faint font-mono mt-0.5" x-show="timestamps['{{ $stage }}']" x-text="timestamps['{{ $stage }}']"></div>
+                        <div class="text-[11px] text-ink-faint font-mono mt-1" x-show="timestamps['{{ $stage }}']" x-text="timestamps['{{ $stage }}']"></div>
                         @if (! empty($stageChangedBy[$stage]))
                             <div class="text-[10px] text-ink-faint mt-0.5">by {{ $stageChangedBy[$stage] }}</div>
                         @endif
@@ -127,7 +188,7 @@
                     </div>
 
                     @unless ($loop->last)
-                        <div class="flex-1 h-0.5 -mt-6" :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success' : 'bg-line'"></div>
+                        <div class="flex-1 h-0.5 -mt-7" :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success' : 'bg-line'"></div>
                     @endunless
                 </div>
             @endforeach
@@ -137,42 +198,10 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         <div class="lg:col-span-1 space-y-5">
-            <div
-                class="bg-surface border border-line rounded-2xl p-6"
-                x-data="{
-                    status: @js($order->status),
-                    tones: { received:'neutral', sorting:'active', washing:'active', drying:'active', ironing:'active', packaging:'active', completed:'success', cancelled:'critical' },
-                    classes: { neutral:'bg-pill-bg text-pill-ink', active:'bg-accent-soft text-accent-ink', success:'bg-success-soft text-success', critical:'bg-critical-soft text-critical' },
-                    label() { return this.status.charAt(0).toUpperCase() + this.status.slice(1).replace('_', ' '); },
-                    init() {
-                        window.Echo.channel('orders').listen('.order.status-changed', (e) => {
-                            if (e.orderId === {{ $order->id }}) {
-                                this.status = e.toStatus;
-                            }
-                        });
-                    }
-                }"
-            >
-                <div class="flex items-center justify-between mb-4">
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Order</div>
-                    <span
-                        class="inline-flex items-center gap-1.5 font-mono text-xs font-semibold px-2.5 py-1 rounded-full"
-                        :class="classes[tones[status]] ?? classes.neutral"
-                        x-text="label()"
-                    ></span>
-                </div>
-                <dl class="space-y-3 text-sm">
-                    <div class="flex justify-between items-center">
-                        <dt class="text-ink-muted">Customer</dt>
-                        <dd>
-                            <a href="{{ route('customers.show', $order->customer) }}" class="inline-flex items-center gap-2 hover:underline">
-                                <span class="w-6 h-6 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold flex-none">
-                                    {{ Str::substr($order->customer->full_name, 0, 1) }}
-                                </span>
-                                <span class="text-accent-ink font-medium">{{ $order->customer->full_name }}</span>
-                            </a>
-                        </dd>
-                    </div>
+            <div class="bg-surface border border-line rounded-2xl p-6">
+                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-4">Order Details</div>
+
+                <div class="space-y-2 text-sm mb-5">
                     <div class="flex justify-between">
                         <dt class="text-ink-muted">Source</dt>
                         <dd class="text-ink">{{ $order->order_source === 'walk_in' ? 'Walk-in' : 'Subscription' }}</dd>
@@ -196,54 +225,82 @@
                         <dt class="text-ink-muted">Created</dt>
                         <dd class="text-ink font-mono text-xs">{{ $order->created_at->format('Y-m-d H:i') }}</dd>
                     </div>
-                    @if ($order->washingMachine)
-                        <div class="flex justify-between">
-                            <dt class="text-ink-muted">Washing machine</dt>
-                            <dd class="text-ink font-mono text-xs">{{ $order->washingMachine->name }}</dd>
-                        </div>
-                    @endif
-                    @if (! $order->isTerminal() && ($turnaroundHours = \App\Models\Setting::get('laundry.default_turnaround_hours')))
-                        <div class="flex justify-between">
-                            <dt class="text-ink-muted">Est. ready</dt>
-                            <dd class="text-ink font-mono text-xs">{{ $order->created_at->copy()->addHours((int) $turnaroundHours)->format('Y-m-d H:i') }}</dd>
-                        </div>
-                    @endif
-                    @if ($order->receipt)
-                        <div class="flex justify-between pt-2 border-t border-line">
-                            <dt class="text-ink-muted">Receipt</dt>
-                            <dd class="text-ink font-mono text-xs">{{ $order->receipt->receipt_number }}</dd>
-                        </div>
-                    @endif
-                    <div class="pt-2 border-t border-line">
-                        <dt class="text-ink-muted mb-1">Notes</dt>
-                        @if ($order->notes && $order->notes !== 'None')
-                            <dd class="flex items-start gap-2 bg-critical-soft text-critical rounded-lg p-2.5">
-                                <x-nav-icon name="alert" class="w-4 h-4 flex-none mt-0.5" />
-                                <span class="font-medium">{{ $order->notes }}</span>
-                            </dd>
-                        @else
-                            <dd class="text-ink-faint">None</dd>
+                </div>
+
+                @if ($assignmentEnabled || $order->washingMachine || (! $order->isTerminal() && \App\Models\Setting::get('laundry.default_turnaround_hours')))
+                    <div class="space-y-2 text-sm mb-5">
+                        <div class="text-[11px] font-bold text-ink-faint uppercase tracking-wide mb-1.5">Handling</div>
+                        @if ($assignmentEnabled)
+                            <div class="flex justify-between items-center">
+                                <dt class="text-ink-muted">Assigned to</dt>
+                                <dd>
+                                    @if ($order->assignedTo)
+                                        <span class="inline-flex items-center gap-2">
+                                            <span class="w-6 h-6 rounded-full bg-accent-soft text-accent-ink flex items-center justify-center text-xs font-bold flex-none">
+                                                {{ Str::substr($order->assignedTo->name, 0, 1) }}
+                                            </span>
+                                            <span class="text-ink font-medium">{{ $order->assignedTo->name }}</span>
+                                        </span>
+                                    @else
+                                        <span class="text-ink-faint">Unassigned</span>
+                                    @endif
+                                </dd>
+                            </div>
+                        @endif
+                        @if ($order->washingMachine)
+                            <div class="flex justify-between">
+                                <dt class="text-ink-muted">Washing machine</dt>
+                                <dd class="text-ink font-mono text-xs">{{ $order->washingMachine->name }}</dd>
+                            </div>
+                        @endif
+                        @if (! $order->isTerminal() && ($turnaroundHours = \App\Models\Setting::get('laundry.default_turnaround_hours')))
+                            <div class="flex justify-between">
+                                <dt class="text-ink-muted">Est. ready</dt>
+                                <dd class="text-ink font-mono text-xs">{{ $order->created_at->copy()->addHours((int) $turnaroundHours)->format('Y-m-d H:i') }}</dd>
+                            </div>
                         @endif
                     </div>
-                    @if ($order->status === 'cancelled' && $order->cancellation_reason)
-                        <div class="pt-2 border-t border-line">
-                            <dt class="text-ink-muted mb-1">Cancellation reason</dt>
-                            <dd class="text-ink">{{ $order->cancellation_reason }}</dd>
+                @endif
+
+                <div class="mb-5">
+                    @if ($order->notes && $order->notes !== 'None')
+                        <div class="flex items-start gap-2 bg-critical-soft text-critical rounded-xl p-3 text-sm font-medium leading-relaxed">
+                            <x-nav-icon name="alert" class="w-4 h-4 flex-none mt-0.5" />
+                            <span>{{ $order->notes }}</span>
                         </div>
+                    @else
+                        <div class="text-ink-faint text-xs">No notes for this order.</div>
                     @endif
-                </dl>
+                </div>
+
+                @if ($order->status === 'cancelled' && $order->cancellation_reason)
+                    <div class="text-sm mb-5">
+                        <dt class="text-ink-muted mb-1">Cancellation reason</dt>
+                        <dd class="text-ink">{{ $order->cancellation_reason }}</dd>
+                    </div>
+                @endif
+
+                @if ($order->receipt)
+                    <a href="{{ route('orders.receipt', $order) }}" target="_blank" class="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-surface-2 hover:bg-accent-soft transition-colors group">
+                        <span class="font-mono text-xs text-ink-faint">{{ $order->receipt->receipt_number }}</span>
+                        <span class="inline-flex items-center gap-1.5 font-semibold text-accent-ink text-sm">
+                            <x-nav-icon name="receipt" class="w-3.5 h-3.5" />
+                            Print Receipt
+                        </span>
+                    </a>
+                @endif
 
                 @can('orders.manage')
                     @unless ($order->isTerminal())
                         <div class="mt-5 pt-5 border-t border-line space-y-3" x-data="{ cancelling: false }">
                             @if ($nextIsWashing)
-                                <button type="button" @click="$dispatch('open-panel', 'select-washing-machine')" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90">
+                                <button type="button" @click="$dispatch('open-panel', 'select-washing-machine')" class="w-full inline-flex items-center justify-center px-4 py-3 bg-accent rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity">
                                     {{ $stageLabels['washing'] }}
                                 </button>
                             @else
                                 <form method="POST" action="{{ route('orders.advance', $order) }}">
                                     @csrf
-                                    <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90">
+                                    <button type="submit" class="w-full inline-flex items-center justify-center px-4 py-3 bg-accent rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity">
                                         {{ $order->nextStatus() === 'completed' ? 'Mark as Completed' : $stageLabels[$order->nextStatus()] }}
                                     </button>
                                 </form>
@@ -270,16 +327,25 @@
                     <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Damage Reports</div>
                     @can('damage.report')
                         @if ($order->status !== 'cancelled')
-                            <button type="button" @click="$dispatch('open-panel', 'report-damage')" class="inline-flex items-center gap-1.5 bg-critical text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
+                            <button type="button" @click="$dispatch('open-panel', 'report-damage')" title="Report damage" aria-label="Report damage" class="w-8 h-8 rounded-lg bg-critical-soft text-critical flex items-center justify-center hover:bg-critical hover:text-white transition-colors">
                                 <x-nav-icon name="alert" class="w-3.5 h-3.5" />
-                                Report damage
                             </button>
                         @endif
                     @endcan
                 </div>
                 @forelse ($order->damageRecords as $damage)
-                    <a href="{{ route('damage.show', $damage) }}" class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm hover:bg-surface-2 -mx-2 px-2 rounded">
-                        <span class="text-ink">{{ $damage->damageType->name ?? '—' }}</span>
+                    <a href="{{ route('damage.show', $damage) }}" class="flex items-center justify-between gap-3 py-2 px-1.5 rounded-lg hover:bg-surface-2 transition-colors {{ ! $loop->last ? 'mb-1' : '' }}">
+                        <span class="flex items-center gap-2.5 min-w-0">
+                            <span class="w-8 h-8 rounded-lg bg-critical-soft text-critical flex items-center justify-center flex-none">
+                                <x-nav-icon name="alert" class="w-4 h-4" />
+                            </span>
+                            <span class="min-w-0">
+                                <span class="block text-sm font-semibold text-ink truncate">{{ $damage->damageType->name ?? '—' }}</span>
+                                @if ($damage->item_description)
+                                    <span class="block text-xs text-ink-faint truncate">{{ $damage->item_description }}</span>
+                                @endif
+                            </span>
+                        </span>
                         <x-status-pill :status="$damage->status" />
                     </a>
                 @empty
@@ -291,7 +357,7 @@
         <div class="lg:col-span-2 space-y-5">
 
             <div class="bg-surface border border-line rounded-2xl p-6">
-                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Line Items</div>
+                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-4">Line Items</div>
                 @foreach ($order->packageLines as $line)
                     <div class="border border-line rounded-xl p-4 mb-3 last:mb-0">
                         <div class="flex items-center justify-between mb-2">
@@ -311,40 +377,46 @@
                     </div>
                 @endforeach
 
-                <div class="border-t border-line mt-4 pt-4 space-y-2 text-sm">
-                    <div class="flex justify-between"><span class="text-ink-muted">Subtotal</span><span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->subtotal, 2) }}</span></div>
+                <div class="border-t border-line mt-5 pt-5 space-y-2 text-sm">
+                    @if ($cycle)
+                        <div class="flex justify-between text-ink-muted"><span>Subscription Plan{{ $order->collection?->subscription?->subscriptionPackage?->name ? ' ('.$order->collection->subscription->subscriptionPackage->name.')' : '' }}</span><span class="font-mono tabular-nums">GMD {{ number_format($cycle->monthly_price_snapshot, 2) }}</span></div>
+                    @else
+                        <div class="flex justify-between text-ink-muted"><span>Subtotal</span><span class="font-mono tabular-nums">GMD {{ number_format($order->subtotal, 2) }}</span></div>
+                    @endif
                     @if ($order->discount > 0)
-                        <div class="flex justify-between"><span class="text-ink-muted">Discount ({{ $order->discount_reason }})</span><span class="font-mono tabular-nums text-critical">− GMD {{ number_format($order->discount, 2) }}</span></div>
+                        <div class="flex justify-between text-ink-muted"><span>Discount ({{ $order->discount_reason }})</span><span class="font-mono tabular-nums text-critical">− GMD {{ number_format($order->discount, 2) }}</span></div>
                     @endif
                     @if ($order->extra_charge > 0)
-                        <div class="flex justify-between"><span class="text-ink-muted">Extra charge{{ $order->extra_charge_reason ? ' ('.$order->extra_charge_reason.')' : '' }}</span><span class="font-mono tabular-nums text-ink">+ GMD {{ number_format($order->extra_charge, 2) }}</span></div>
+                        <div class="flex justify-between text-ink-muted"><span>Extra charge{{ $order->extra_charge_reason ? ' ('.$order->extra_charge_reason.')' : '' }}</span><span class="font-mono tabular-nums text-ink">+ GMD {{ number_format($order->extra_charge, 2) }}</span></div>
                     @endif
                     @if ($order->cycle_overage_charge > 0)
-                        <div class="flex justify-between"><span class="text-ink-muted">Cycle overage charge</span><span class="font-mono tabular-nums text-ink">+ GMD {{ number_format($order->cycle_overage_charge, 2) }}</span></div>
+                        <div class="flex justify-between text-ink-muted"><span>Cycle overage charge</span><span class="font-mono tabular-nums text-ink">+ GMD {{ number_format($order->cycle_overage_charge, 2) }}</span></div>
                     @endif
-                    <div class="flex justify-between pt-2 border-t border-line font-semibold"><span class="text-ink">Total</span><span class="font-mono tabular-nums text-accent-ink text-lg">GMD {{ number_format($order->total_amount, 2) }}</span></div>
+                    <div class="flex justify-between items-baseline pt-3 mt-1 border-t border-line">
+                        <span class="font-bold text-ink">{{ $cycle ? 'Cycle Total' : 'Total' }}</span>
+                        <span class="font-mono tabular-nums text-accent-ink text-2xl font-bold">GMD {{ number_format($grandTotal, 2) }}</span>
+                    </div>
                 </div>
             </div>
 
             <div class="bg-surface border border-line rounded-2xl p-6">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-2">
+                <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                    <div class="flex items-center gap-2.5">
                         <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Payments</div>
-                        <x-status-pill :status="$order->combinedPaymentStatus()" />
+                        <x-status-pill :status="$paymentStatus" />
                     </div>
                     @can('orders.manage')
-                        @if ($order->balanceDue() > 0)
+                        @if ($orderDue > 0)
                             <x-panel-trigger panel="record-payment">Record Payment</x-panel-trigger>
                         @endif
                     @endcan
                 </div>
 
                 @if ($order->order_source === 'subscription')
-                    @php $cycle = $order->subscriptionCycle(); @endphp
-                    <div class="flex items-center justify-between gap-2 mb-3 p-2.5 rounded-lg bg-accent-soft text-sm">
+                    <div class="flex items-center justify-between gap-2 mb-4 p-3 rounded-xl bg-accent-soft text-sm">
                         <span class="inline-flex items-center gap-1.5 text-accent-ink font-semibold">
                             <x-nav-icon name="repeat" class="w-3.5 h-3.5" />
-                            Subscription pickup
+                            Subscription cycle
                         </span>
                         @if ($cycle)
                             @if ($cycle->isPaid())
@@ -359,7 +431,7 @@
                 @endif
 
                 @forelse ($order->payments as $payment)
-                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
+                    <div class="flex items-center justify-between py-2.5 border-b border-line last:border-0 text-sm">
                         <span class="text-ink-muted">{{ ucfirst(str_replace('_', ' ', $payment->method)) }}</span>
                         <x-status-pill :status="$payment->status" />
                         <span class="font-mono tabular-nums text-ink">GMD {{ number_format($payment->amount, 2) }}</span>
@@ -368,10 +440,16 @@
                     <p class="text-ink-faint text-sm">No payments recorded.</p>
                 @endforelse
 
-                <div class="border-t border-line mt-3 pt-3 space-y-1.5 text-sm">
-                    <div class="flex justify-between"><span class="text-ink-muted">Amount Paid</span><span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->amountPaid(), 2) }}</span></div>
-                    @if ($order->balanceDue() > 0)
-                        <div class="flex justify-between font-semibold"><span class="text-critical">Balance Due</span><span class="font-mono tabular-nums text-critical">GMD {{ number_format($order->balanceDue(), 2) }}</span></div>
+                <div class="flex gap-6 mt-4 pt-4 border-t border-line">
+                    <div class="flex-1">
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Amount Paid</div>
+                        <div class="font-mono tabular-nums text-xl font-bold text-ink">GMD {{ number_format($combinedPaid, 2) }}</div>
+                    </div>
+                    @if ($combinedDue > 0)
+                        <div class="flex-1">
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Balance Due</div>
+                            <div class="font-mono tabular-nums text-xl font-bold text-critical">GMD {{ number_format($combinedDue, 2) }}</div>
+                        </div>
                     @endif
                 </div>
             </div>
@@ -380,16 +458,16 @@
     </div>
 
     @can('orders.manage')
-        @if ($order->balanceDue() > 0)
+        @if ($orderDue > 0)
             <x-slide-panel name="record-payment" title="Record Payment" :error-fields="['amount', 'credit_applied', 'method']">
                 <form method="POST" action="{{ route('orders.payments.record', $order) }}" class="space-y-4">
                     @csrf
-                    <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-ink font-semibold">GMD {{ number_format($order->balanceDue(), 2) }}</span></p>
+                    <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-ink font-semibold">GMD {{ number_format($orderDue, 2) }}</span></p>
 
                     @if ($order->customer->store_credit_balance > 0)
                         <div>
                             <x-input-label for="credit_applied" value="Apply store credit" />
-                            <x-text-input id="credit_applied" name="credit_applied" type="number" step="0.01" min="0" max="{{ min($order->customer->store_credit_balance, $order->balanceDue()) }}" class="block w-full" />
+                            <x-text-input id="credit_applied" name="credit_applied" type="number" step="0.01" min="0" max="{{ min($order->customer->store_credit_balance, $orderDue) }}" class="block w-full" />
                             <p class="text-xs text-ink-faint mt-1">Of GMD {{ number_format($order->customer->store_credit_balance, 2) }} available.</p>
                             <x-input-error :messages="$errors->get('credit_applied')" class="mt-1.5" />
                         </div>

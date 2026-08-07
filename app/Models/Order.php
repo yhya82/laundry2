@@ -32,6 +32,7 @@ class Order extends Model
         'collection_id',
         'washing_machine_id',
         'user_id',
+        'assigned_to',
         'order_source',
         'subtotal',
         'discount',
@@ -104,6 +105,17 @@ class Order extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    /**
+     * Purely informational -- see OrderController::assign() -- never gates
+     * who can actually act on the order, only (when
+     * order.assignment_enabled is on) who a view-only staff member sees it
+     * in their own list at all.
+     */
+    public function assignedTo(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
     public function nextStatus(): ?string
     {
         return self::STAGE_SEQUENCE[$this->status] ?? null;
@@ -129,10 +141,17 @@ class Order extends Model
      * Same '!= refunded' convention used everywhere else money is summed
      * (Dashboard, reports) -- a partially_refunded payment still means that
      * much was paid toward the order; only a fully refunded one doesn't.
+     * Memoized per instance -- balanceDue()/paymentStatus()/
+     * combinedPaymentStatus() all call this independently, and every caller
+     * across the app only ever reads it before creating a new payment on
+     * this instance within a request, never after, so a cached value never
+     * goes stale in practice.
      */
+    protected ?float $amountPaidCache = null;
+
     public function amountPaid(): float
     {
-        return (float) $this->payments()->where('status', '!=', 'refunded')->sum('amount');
+        return $this->amountPaidCache ??= (float) $this->payments()->where('status', '!=', 'refunded')->sum('amount');
     }
 
     /**

@@ -42,11 +42,14 @@ class SubscriptionCycle extends Model
 
     /**
      * Same '!= refunded' convention used everywhere else money is summed
-     * (Order::amountPaid(), Dashboard, reports).
+     * (Order::amountPaid(), Dashboard, reports). Memoized per instance --
+     * see Order::amountPaid()'s doc comment for why that's safe here too.
      */
+    protected ?float $amountPaidCache = null;
+
     public function amountPaid(): float
     {
-        return (float) $this->payments()->where('status', '!=', 'refunded')->sum('amount');
+        return $this->amountPaidCache ??= (float) $this->payments()->where('status', '!=', 'refunded')->sum('amount');
     }
 
     public function balanceDue(): float
@@ -63,11 +66,15 @@ class SubscriptionCycle extends Model
      * Total clothes across every collection in this cycle so far -- the cap
      * (max_clothes_snapshot) is cycle-wide, however many visits it takes to
      * reach it, not a per-collection thing like the package's own
-     * clothes_allowance.
+     * clothes_allowance. Memoized per instance, same reasoning as
+     * amountPaid() -- always read, never re-checked after a change within
+     * the same request.
      */
+    protected ?int $clothesCollectedCache = null;
+
     public function clothesCollected(): int
     {
-        return (int) OrderClothesLine::whereHas(
+        return $this->clothesCollectedCache ??= (int) OrderClothesLine::whereHas(
             'packageLine.order.collection',
             fn ($q) => $q->where('subscription_cycle_id', $this->id)
         )->sum('quantity');

@@ -106,6 +106,7 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
 
     Route::middleware('permission:orders.view')->group(function () {
         Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
+        Route::get('/orders/{order}/receipt', [OrderController::class, 'receipt'])->name('orders.receipt');
     });
 
     Route::middleware('permission:orders.manage')->group(function () {
@@ -113,6 +114,13 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
         Route::post('/orders/{order}/payments', [PaymentController::class, 'record'])->name('orders.payments.record');
         Route::post('/subscription-cycles/{subscriptionCycle}/payments', [PaymentController::class, 'recordForCycle'])->name('subscriptionCycles.payments.record');
+    });
+
+    // Separate from orders.manage -- who can see every order and hand work
+    // out is a distinct capability from who can process one they already
+    // see (see PermissionsAndRolesSeeder).
+    Route::middleware('permission:orders.assign')->group(function () {
+        Route::put('/orders/{order}/assign', [OrderController::class, 'assign'])->name('orders.assign');
     });
 
     Route::middleware('permission:subscriptions.view')->group(function () {

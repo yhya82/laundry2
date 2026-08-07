@@ -113,8 +113,6 @@
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Name</th>
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Monthly</th>
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Allowance</th>
-                                <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Collections/mo</th>
-                                <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Max clothes/cycle</th>
                                 <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
                             </tr>
                         </thead>
@@ -124,8 +122,6 @@
                                     <td class="px-4 py-3 text-ink font-medium">{{ $package->name }}</td>
                                     <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->monthly_price, 2) }}</td>
                                     <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">{{ $package->clothes_allowance }} items</td>
-                                    <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">{{ $package->collections_per_month }}</td>
-                                    <td class="px-4 py-3 font-mono tabular-nums text-ink-muted">{{ $package->max_clothes_per_cycle }}</td>
                                     <td class="px-4 py-3">
                                         <div class="flex items-center justify-end gap-1.5">
                                             @can('catalog.manage')
@@ -143,7 +139,7 @@
                                     </td>
                                 </tr>
                             @empty
-                                <tr><td colspan="6" class="px-4 py-8 text-center text-ink-faint text-sm">No subscription packages yet.</td></tr>
+                                <tr><td colspan="4" class="px-4 py-8 text-center text-ink-faint text-sm">No subscription packages yet.</td></tr>
                             @endforelse
                         </tbody>
                     </table>
@@ -154,7 +150,7 @@
                     <div class="bg-surface border border-line rounded-2xl p-4">
                         <div class="font-medium text-ink mb-1">{{ $package->name }}</div>
                         <div class="text-sm mb-2">
-                            <span class="font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->monthly_price, 2) }} · {{ $package->clothes_allowance }} items · {{ $package->collections_per_month }}/mo · max {{ $package->max_clothes_per_cycle }}/cycle</span>
+                            <span class="font-mono tabular-nums text-ink-muted">GMD {{ number_format($package->monthly_price, 2) }} · {{ $package->clothes_allowance }} items</span>
                         </div>
                         @can('catalog.manage')
                             <div class="flex items-center gap-2">

@@ -15,7 +15,13 @@ class PermissionsAndRolesSeeder extends Seeder
         'customers' => ['customers.view', 'customers.manage'],
         'catalog' => ['catalog.view', 'catalog.manage'],
         'terminal' => ['terminal.use'],
-        'orders' => ['orders.view', 'orders.manage'],
+        // orders.assign is deliberately its own permission, separate from
+        // orders.manage -- it's who can see every order and hand work out
+        // (assignment scoping's "sees everything" tier), not who can
+        // process one they can already see. Laundry needs orders.manage to
+        // do its job but should stay scoped once assignment is on, so it's
+        // not in laundryPermissions below.
+        'orders' => ['orders.view', 'orders.manage', 'orders.assign'],
         'subscriptions' => ['subscriptions.view', 'subscriptions.manage'],
         'collections' => ['collections.view', 'collections.manage'],
         'payments' => ['payments.view', 'payments.manage'],

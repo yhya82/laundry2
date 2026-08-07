@@ -106,70 +106,94 @@
             </div>
         @endif
 
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
-            @can('orders.view')
-                <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm">
-                    <div class="flex items-center gap-2 mb-4">
-                        <x-nav-icon name="clipboard" class="w-4 h-4 text-ink-faint" />
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Laundry Queue</div>
-                    </div>
-                    <div class="grid grid-cols-3 gap-3">
-                        @foreach (array_keys(\App\Models\Order::STAGE_SEQUENCE) as $stage)
-                            <div class="bg-surface-2 rounded-xl p-3 hover:bg-accent-soft/40 transition-colors">
-                                <div class="text-xl font-bold text-ink tabular-nums" x-text="queueCounts['{{ $stage }}'] ?? 0"></div>
-                                <div class="text-xs text-ink-muted mt-1">{{ ucfirst($stage) }}</div>
+        @can('orders.view')
+            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm mb-5">
+                <div class="flex items-center gap-2 mb-4">
+                    <x-nav-icon name="clipboard" class="w-4 h-4 text-ink-faint" />
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Laundry Queue</div>
+                </div>
+                <div class="flex items-stretch gap-0 overflow-x-auto pb-1">
+                    @foreach (array_keys(\App\Models\Order::STAGE_SEQUENCE) as $stage)
+                        @if (!$loop->first)
+                            <div class="flex items-center justify-center flex-none w-6 text-line-strong">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="9 6 15 12 9 18" /></svg>
                             </div>
-                        @endforeach
+                        @endif
+                        <div
+                            class="flex-1 min-w-[6rem] flex flex-col items-center text-center px-2 py-3.5 rounded-xl transition-colors"
+                            :class="(queueCounts['{{ $stage }}'] ?? 0) > 0 ? 'bg-accent-soft' : 'bg-surface-2'"
+                        >
+                            <div
+                                class="font-mono text-xl font-bold tabular-nums"
+                                :class="(queueCounts['{{ $stage }}'] ?? 0) > 0 ? 'text-accent-ink' : 'text-ink-faint'"
+                                x-text="queueCounts['{{ $stage }}'] ?? 0"
+                            ></div>
+                            <div class="text-xs text-ink-muted mt-0.5 capitalize">{{ $stage }}</div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endcan
+
+        @if ($damageSnapshot !== null)
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-5">
+                <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3">
+                    <span class="w-9 h-9 rounded-xl bg-critical-soft text-critical flex items-center justify-center flex-none">
+                        <x-nav-icon name="alert" class="w-4.5 h-4.5" />
+                    </span>
+                    <div>
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Pending Review</div>
+                        <div class="text-2xl font-bold text-critical tabular-nums">{{ $damageSnapshot['pending'] }}</div>
                     </div>
                 </div>
-            @endcan
 
-            @if ($damageSnapshot !== null)
-                <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                    <span class="w-9 h-9 rounded-xl bg-critical-soft text-critical flex items-center justify-center mb-3">
+                <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3">
+                    <span class="w-9 h-9 rounded-xl bg-success-soft text-success flex items-center justify-center flex-none">
                         <x-nav-icon name="alert" class="w-4.5 h-4.5" />
                     </span>
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Pending Review</div>
-                    <div class="text-2xl font-bold text-critical tabular-nums">{{ $damageSnapshot['pending'] }}</div>
+                    <div>
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Resolved (30d)</div>
+                        <div class="text-2xl font-bold text-success tabular-nums">{{ $damageSnapshot['resolved30d'] }}</div>
+                    </div>
                 </div>
-
-                <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                    <span class="w-9 h-9 rounded-xl bg-success-soft text-success flex items-center justify-center mb-3">
-                        <x-nav-icon name="alert" class="w-4.5 h-4.5" />
-                    </span>
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Resolved (30d)</div>
-                    <div class="text-2xl font-bold text-success tabular-nums">{{ $damageSnapshot['resolved30d'] }}</div>
-                </div>
-            @endif
-        </div>
+            </div>
+        @endif
 
         @if ($totalCustomers !== null || $walkInCustomers !== null || $subscriptionCustomers !== null)
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
-                @if ($totalCustomers !== null)
-                    <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                        <span class="w-9 h-9 rounded-xl bg-accent-soft text-accent-ink flex items-center justify-center mb-3">
-                            <x-nav-icon name="users" class="w-4.5 h-4.5" />
-                        </span>
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Total Customers</div>
-                        <div class="text-2xl font-bold text-ink tabular-nums">{{ $totalCustomers }}</div>
-                    </div>
-                @endif
-                @if ($walkInCustomers !== null)
-                    <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                        <span class="w-9 h-9 rounded-xl bg-pill-bg text-pill-ink flex items-center justify-center mb-3">
-                            <x-nav-icon name="users" class="w-4.5 h-4.5" />
-                        </span>
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Walk-in Customers</div>
-                        <div class="text-2xl font-bold text-ink tabular-nums">{{ $walkInCustomers }}</div>
-                    </div>
-                @endif
-                @if ($subscriptionCustomers !== null)
-                    <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
-                        <span class="w-9 h-9 rounded-xl bg-success-soft text-success flex items-center justify-center mb-3">
-                            <x-nav-icon name="repeat" class="w-4.5 h-4.5" />
-                        </span>
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Subscription Customers</div>
-                        <div class="text-2xl font-bold text-ink tabular-nums">{{ $subscriptionCustomers }}</div>
+            @php
+                $custKnownTotal = ($walkInCustomers ?? 0) + ($subscriptionCustomers ?? 0);
+                $walkInPct = $custKnownTotal > 0 ? round(($walkInCustomers ?? 0) / $custKnownTotal * 100) : 0;
+                $subscriptionPct = $custKnownTotal > 0 ? 100 - $walkInPct : 0;
+            @endphp
+            <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow mb-5">
+                <div class="flex items-center gap-2 mb-3.5">
+                    <x-nav-icon name="users" class="w-4 h-4 text-ink-faint" />
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Customers</div>
+                </div>
+                <div class="grid grid-cols-3 gap-5">
+                    @if ($totalCustomers !== null)
+                        <div>
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Total</div>
+                            <div class="text-lg font-bold text-ink tabular-nums">{{ $totalCustomers }}</div>
+                        </div>
+                    @endif
+                    @if ($walkInCustomers !== null)
+                        <div>
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Walk-in @if ($custKnownTotal > 0)&middot; {{ $walkInPct }}%@endif</div>
+                            <div class="text-lg font-bold text-ink tabular-nums">{{ $walkInCustomers }}</div>
+                        </div>
+                    @endif
+                    @if ($subscriptionCustomers !== null)
+                        <div>
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Subscription @if ($custKnownTotal > 0)&middot; {{ $subscriptionPct }}%@endif</div>
+                            <div class="text-lg font-bold text-accent-ink tabular-nums">{{ $subscriptionCustomers }}</div>
+                        </div>
+                    @endif
+                </div>
+                @if ($walkInCustomers !== null && $subscriptionCustomers !== null && $custKnownTotal > 0)
+                    <div class="flex h-1.5 rounded-full overflow-hidden mt-3.5 bg-surface-2">
+                        <div class="bg-pill-ink" style="width: {{ $walkInPct }}%"></div>
+                        <div class="bg-accent" style="width: {{ $subscriptionPct }}%"></div>
                     </div>
                 @endif
             </div>

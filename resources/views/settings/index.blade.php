@@ -3,7 +3,7 @@
 
     <div x-data="{ tab: 'general' }">
         <div class="flex gap-1 border-b border-line overflow-x-auto mb-6">
-            @foreach (['general' => 'General', 'laundry' => 'Laundry', 'subscription' => 'Subscription', 'payment' => 'Payment', 'notification' => 'Notification', 'order' => 'Order', 'backup' => 'Backup'] as $key => $label)
+            @foreach (['general' => 'General', 'laundry' => 'Laundry', 'subscription' => 'Subscription', 'payment' => 'Payment', 'notification' => 'Notification', 'order' => 'Order', 'receipt' => 'Receipt', 'backup' => 'Backup'] as $key => $label)
                 <button
                     type="button"
                     @click="tab = '{{ $key }}'"
@@ -32,6 +32,22 @@
                     @endif
                     <input id="logo" name="logo" type="file" accept="image/*" class="block w-full text-sm text-ink-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-accent-soft file:text-accent-ink file:text-xs file:font-semibold">
                     <x-input-error :messages="$errors->get('logo')" class="mt-1.5" />
+                </div>
+                <div>
+                    <x-input-label for="phone" value="Phone (optional)" />
+                    <x-text-input id="phone" name="phone" type="text" class="block w-full" value="{{ $settings->get('branding.phone')?->value }}" />
+                    <x-input-error :messages="$errors->get('phone')" class="mt-1.5" />
+                </div>
+                <div>
+                    <x-input-label for="email" value="Email (optional)" />
+                    <x-text-input id="email" name="email" type="email" class="block w-full" value="{{ $settings->get('branding.email')?->value }}" />
+                    <x-input-error :messages="$errors->get('email')" class="mt-1.5" />
+                </div>
+                <div>
+                    <x-input-label for="address" value="Address (optional)" />
+                    <x-text-input id="address" name="address" type="text" class="block w-full" value="{{ $settings->get('branding.address')?->value }}" />
+                    <p class="text-xs text-ink-faint mt-1">Phone, email, and address show on printed receipts alongside the business name and logo.</p>
+                    <x-input-error :messages="$errors->get('address')" class="mt-1.5" />
                 </div>
                 <x-primary-button>Save General settings</x-primary-button>
             </form>
@@ -132,7 +148,36 @@
                     <p class="text-xs text-ink-faint mt-1">Enforced at the Terminal — a discount above this is rejected before the order is created.</p>
                     <x-input-error :messages="$errors->get('max_discount_percent')" class="mt-1.5" />
                 </div>
+
+                <label class="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" name="assignment_enabled" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('order.assignment_enabled')?->value === 'true')>
+                    Enable order assignment
+                </label>
+                <p class="text-xs text-ink-faint">Lets staff with the order-assignment permission assign an order to a specific staff member from the Orders list, purely for tracking -- it never restricts who can actually act on an order. When on, everyone without that permission only ever sees orders assigned to them (never unassigned ones); staff with the permission still see and can assign everything.</p>
+
                 <x-primary-button>Save Order settings</x-primary-button>
+            </form>
+        </div>
+
+        <div x-show="tab === 'receipt'" x-cloak class="bg-surface border border-line rounded-2xl p-6 max-w-xl">
+            <form method="POST" action="{{ route('settings.update') }}" class="space-y-4">
+                @csrf
+                @method('PUT')
+                <input type="hidden" name="group" value="receipt">
+                <label class="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" name="show_logo" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('receipt.show_logo')?->value === 'true')>
+                    Show logo on receipt
+                </label>
+                <p class="text-xs text-ink-faint">Uses the logo uploaded under General. Has no effect if no logo has been uploaded there. Phone, email, and address are also pulled from General.</p>
+
+                <div>
+                    <x-input-label for="footer_message" value="Footer message" />
+                    <x-text-input id="footer_message" name="footer_message" type="text" class="block w-full" value="{{ $settings->get('receipt.footer_message')?->value ?? 'Thank you for your business.' }}" />
+                    <p class="text-xs text-ink-faint mt-1">Shown at the bottom of every printed receipt.</p>
+                    <x-input-error :messages="$errors->get('footer_message')" class="mt-1.5" />
+                </div>
+
+                <x-primary-button>Save Receipt settings</x-primary-button>
             </form>
         </div>
 
