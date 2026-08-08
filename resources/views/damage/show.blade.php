@@ -28,12 +28,16 @@
                     <div class="text-ink-faint text-xs font-mono uppercase mb-1">Stage at report</div>
                     <div class="text-ink">{{ ucfirst($damageRecord->stage_at_report ?? '—') }}</div>
                 </div>
+                <div>
+                    <div class="text-ink-faint text-xs font-mono uppercase mb-1">Reported by</div>
+                    <div class="text-ink">{{ $damageRecord->reportedBy?->name ?? 'Unknown' }} <span class="text-ink-faint font-mono text-xs">· {{ $damageRecord->created_at->format('M j, Y g:ia') }}</span></div>
+                </div>
             </div>
 
             @if ($damageRecord->photo_path)
                 <div class="mb-4">
                     <div class="text-ink-faint text-xs font-mono uppercase mb-2">Photo evidence</div>
-                    <img src="{{ Storage::url($damageRecord->photo_path) }}" alt="Damage photo" class="rounded-xl max-h-64 border border-line">
+                    <img src="{{ route('damage.photo', $damageRecord) }}" alt="Damage photo" class="rounded-xl max-h-64 border border-line">
                 </div>
             @endif
 
@@ -43,6 +47,28 @@
                     <p class="text-ink text-sm">{{ $damageRecord->description }}</p>
                 </div>
             @endif
+        </div>
+
+        <div class="lg:col-span-2 bg-surface border border-line rounded-2xl p-6">
+            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-3">Review History</div>
+            <ul class="space-y-3 text-sm">
+                <li class="flex items-start justify-between gap-3">
+                    <div>
+                        <span class="text-ink">Reported</span>
+                        <span class="text-ink-faint"> by {{ $damageRecord->reportedBy?->name ?? 'Unknown' }}</span>
+                    </div>
+                    <span class="text-ink-faint font-mono text-xs whitespace-nowrap">{{ $damageRecord->created_at->format('M j, Y g:ia') }}</span>
+                </li>
+                @foreach ($damageRecord->statusHistory->sortBy('created_at') as $entry)
+                    <li class="flex items-start justify-between gap-3 pt-3 border-t border-line">
+                        <div>
+                            <span class="text-ink">{{ ucfirst(str_replace('_', ' ', $entry->from_status ?? 'start')) }} → {{ ucfirst(str_replace('_', ' ', $entry->to_status)) }}</span>
+                            <span class="text-ink-faint"> by {{ $entry->changedBy?->name ?? 'Unknown' }}</span>
+                        </div>
+                        <span class="text-ink-faint font-mono text-xs whitespace-nowrap">{{ $entry->created_at->format('M j, Y g:ia') }}</span>
+                    </li>
+                @endforeach
+            </ul>
         </div>
 
         <div class="space-y-5">
@@ -96,6 +122,10 @@
                         <div class="flex justify-between">
                             <dt class="text-ink-muted">Type</dt>
                             <dd class="text-ink">{{ ucfirst(str_replace('_', ' ', $damageRecord->resolution->resolution_type)) }}</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-ink-muted">Resolved by</dt>
+                            <dd class="text-ink">{{ $damageRecord->resolution->resolvedBy?->name ?? 'Unknown' }}</dd>
                         </div>
                         @if ($damageRecord->resolution->amount)
                             <div class="flex justify-between">

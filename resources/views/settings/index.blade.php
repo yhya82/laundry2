@@ -189,8 +189,14 @@
                 <div>
                     <x-input-label for="retention_days" value="Backup retention (days)" />
                     <x-text-input id="retention_days" name="retention_days" type="number" min="1" max="3650" class="block w-full" value="{{ $settings->get('backup.retention_days')?->value }}" />
-                    <p class="text-xs text-ink-faint mt-1">Stored for the backup automation introduced in a later phase — not yet enforced by a running job.</p>
+                    <p class="text-xs text-ink-faint mt-1">Backups older than this are deleted by <code>backup:cleanup</code> (scheduled daily).</p>
                     <x-input-error :messages="$errors->get('retention_days')" class="mt-1.5" />
+                </div>
+                <div>
+                    <x-input-label for="alert_email" value="Alert email" />
+                    <x-text-input id="alert_email" name="alert_email" type="email" class="block w-full" value="{{ $settings->get('backup.alert_email')?->value }}" />
+                    <p class="text-xs text-ink-faint mt-1">Where backup failures and health-check warnings are sent. Leave blank to disable email alerts.</p>
+                    <x-input-error :messages="$errors->get('alert_email')" class="mt-1.5" />
                 </div>
                 <x-primary-button>Save Backup settings</x-primary-button>
             </form>

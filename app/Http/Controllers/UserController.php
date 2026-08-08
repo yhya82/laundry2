@@ -47,6 +47,14 @@ class UserController extends Controller
 
     public function setPassword(Request $request, User $user): RedirectResponse
     {
+        // users.manage is currently Admin-only, so this is a no-op today --
+        // it's here so that if users.manage is ever delegated to a lesser
+        // role, that role still can't take over an Admin account by resetting
+        // its password.
+        if ($user->hasRole('Admin') && ! auth()->user()->hasRole('Admin')) {
+            return back()->withErrors(['user' => 'Only an Admin can reset another Admin\'s password.']);
+        }
+
         $validated = $request->validate([
             'password' => ['required', 'confirmed', Password::defaults()],
         ]);
@@ -105,11 +113,24 @@ class UserController extends Controller
             'roles.*' => ['string', 'exists:roles,name'],
         ]);
 
-        if (empty($validated['roles']) && $user->id === auth()->id()) {
+        $targetRoles = $validated['roles'] ?? [];
+
+        if (empty($targetRoles) && $user->id === auth()->id()) {
             return back()->withErrors(['roles' => 'You cannot remove your own last role.']);
         }
 
-        $user->syncRoles($validated['roles'] ?? []);
+        // Same no-op-today, real-later guard as setPassword() above -- a
+        // users.manage holder on a lesser role shouldn't be able to grant
+        // (to themselves or anyone) a role that carries users.manage.
+        $grantsUserManagement = Role::whereIn('name', $targetRoles)
+            ->whereHas('permissions', fn ($q) => $q->where('name', 'users.manage'))
+            ->exists();
+
+        if ($grantsUserManagement && ! auth()->user()->hasRole('Admin')) {
+            return back()->withErrors(['roles' => 'Only an Admin can grant a role with user-management access.']);
+        }
+
+        $user->syncRoles($targetRoles);
 
         return back()->with('status', "Roles updated for {$user->name}.");
     }
@@ -130,6 +151,13 @@ class UserController extends Controller
 
         if ($role->name === 'Admin' && ! in_array('users.manage', $permissions, true)) {
             return back()->withErrors(['permissions' => 'The Admin role must always keep users.manage, or no one could restore it.']);
+        }
+
+        // Same guard as updateRoles() -- granting users.manage to a role is
+        // handing that role full admin-equivalent power, so it's reserved to
+        // Admins themselves rather than anyone who merely has users.manage.
+        if ($role->name !== 'Admin' && in_array('users.manage', $permissions, true) && ! auth()->user()->hasRole('Admin')) {
+            return back()->withErrors(['permissions' => 'Only an Admin can grant user-management access to a role.']);
         }
 
         $role->syncPermissions($permissions);

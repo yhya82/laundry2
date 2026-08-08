@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DamageRecord extends Model
@@ -48,6 +49,16 @@ class DamageRecord extends Model
     public function resolution(): HasOne
     {
         return $this->hasOne(DamageResolution::class);
+    }
+
+    public function reportedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reported_by');
+    }
+
+    public function statusHistory(): HasMany
+    {
+        return $this->hasMany(DamageStatusHistory::class);
     }
 
     public function canTransitionTo(string $status): bool

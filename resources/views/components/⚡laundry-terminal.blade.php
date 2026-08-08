@@ -24,6 +24,15 @@ new class extends Component
 {
     public ?int $customerId = null;
 
+    /**
+     * True while $newCustomerName/$newCustomerPhone hold a walk-in
+     * customer's details that have been filled in and confirmed via the
+     * modal, but deliberately not yet written to the customers table --
+     * see createCustomer()'s doc comment for why. Never true for a
+     * subscription-type new customer; that path still creates eagerly.
+     */
+    public bool $usingPendingCustomer = false;
+
     public string $customerSearch = '';
 
     public bool $showNewCustomerForm = false;
@@ -276,7 +285,7 @@ new class extends Component
     #[Computed]
     public function customerResults()
     {
-        if ($this->customerId !== null || trim($this->customerSearch) === '') {
+        if ($this->customerId !== null || $this->usingPendingCustomer || trim($this->customerSearch) === '') {
             return collect();
         }
 
@@ -289,9 +298,25 @@ new class extends Component
             ->get();
     }
 
+    /**
+     * A pending walk-in customer (see $usingPendingCustomer) has no id yet,
+     * so this returns an unsaved Customer built from the staged name/phone
+     * instead of querying for one -- every existing ->full_name/->phone/
+     * ->customer_type/->store_credit_balance read elsewhere keeps working
+     * unchanged (an unsaved model's balance is simply null, same as ??0
+     * already treats a real new customer with nothing credited yet).
+     */
     #[Computed]
     public function selectedCustomer()
     {
+        if ($this->usingPendingCustomer) {
+            return new Customer([
+                'full_name' => $this->newCustomerName,
+                'phone' => $this->newCustomerPhone,
+                'customer_type' => 'walk_in',
+            ]);
+        }
+
         return $this->customerId ? Customer::find($this->customerId) : null;
     }
 
@@ -477,6 +502,10 @@ new class extends Component
     public function clearCustomer(): void
     {
         $this->customerId = null;
+        $this->usingPendingCustomer = false;
+        $this->newCustomerName = '';
+        $this->newCustomerPhone = '';
+        $this->newCustomerType = 'walk_in';
         $this->collectionId = null;
         $this->cart = [];
         $this->subscriptionClothes = [];
@@ -511,6 +540,24 @@ new class extends Component
         $this->lastSubmittedOrderId = $order->id;
     }
 
+    /**
+     * A walk-in customer's row is deliberately NOT created here -- only
+     * staged (see $usingPendingCustomer) and actually written inside
+     * submitOrder()'s own transaction, right alongside the order itself, so
+     * a failed/abandoned order never leaves an orphaned customer behind.
+     * This is Terminal-specific: CustomerController::store() (the Customers
+     * page's own "+ New Customer") is a fully independent, standalone path
+     * and is untouched by this -- adding a customer there was never
+     * conditional on an order.
+     *
+     * Subscription-type customers are the one exception and still create
+     * eagerly: picking a plan (addSubscriptionPackage()) creates a real
+     * Subscription -- and schedules its first cycle/collection -- the
+     * moment a package is chosen, well before any order/collection
+     * submission exists to defer into. Deferring that too would mean
+     * deferring subscription creation itself, a much larger change than
+     * asked for here.
+     */
     public function createCustomer(): void
     {
         if ($this->isSubscriptionMode) {
@@ -523,16 +570,23 @@ new class extends Component
             'newCustomerType' => ['required', 'in:walk_in,subscription'],
         ], [], ['newCustomerName' => 'name', 'newCustomerPhone' => 'phone', 'newCustomerType' => 'customer type']);
 
-        $customer = Customer::create([
-            'full_name' => $this->newCustomerName,
-            'phone' => $this->newCustomerPhone,
-            'customer_type' => $this->newCustomerType,
-        ]);
+        if ($this->newCustomerType === 'subscription') {
+            $customer = DB::transaction(fn () => Customer::create([
+                'full_name' => $this->newCustomerName,
+                'phone' => $this->newCustomerPhone,
+                'customer_type' => 'subscription',
+            ]));
 
-        $this->customerId = $customer->id;
-        $this->newCustomerName = '';
-        $this->newCustomerPhone = '';
-        $this->newCustomerType = 'walk_in';
+            $this->customerId = $customer->id;
+            $this->newCustomerName = '';
+            $this->newCustomerPhone = '';
+            $this->newCustomerType = 'walk_in';
+            $this->showNewCustomerForm = false;
+
+            return;
+        }
+
+        $this->usingPendingCustomer = true;
         $this->showNewCustomerForm = false;
     }
 
@@ -815,10 +869,18 @@ new class extends Component
             return $this->submitSubscriptionCollection();
         }
 
+        $this->sanitizeCart();
+
         $maxDiscountPercent = (float) Setting::get('order.max_discount_percent', '100');
 
         $this->validate([
-            'customerId' => ['required', 'exists:customers,id'],
+            'customerId' => $this->usingPendingCustomer ? ['nullable'] : ['required', 'exists:customers,id'],
+            // Re-validated here, not just trusted from createCustomer()'s
+            // earlier pass -- phone uniqueness in particular could have
+            // changed in the meantime (another order creating the same
+            // number), and this is the actual point of commitment.
+            'newCustomerName' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'max:255'],
+            'newCustomerPhone' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/', 'unique:customers,phone'],
             'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
             'discount' => [
                 'numeric', 'min:0',
@@ -837,6 +899,8 @@ new class extends Component
             'paymentMethod' => [$this->amountToCollect > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
         ], [
             'customerId.required' => 'Select or add a customer first.',
+            'newCustomerName.required' => 'Enter a name for the new customer.',
+            'newCustomerPhone.required' => 'Enter a phone number for the new customer.',
             'discountReason.required' => 'A discount needs a reason.',
             'walkInExtraChargeReason.required' => 'An extra charge needs a reason.',
             'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
@@ -858,10 +922,24 @@ new class extends Component
         $chargesWalkInExtra = $this->walkInExtraChargeEnabled && $this->walkInExtraCharge > 0;
 
         try {
-            [$order, $payments] = DB::transaction(function () use ($chargesWalkInExtra) {
+            [$order, $payments, $customerId] = DB::transaction(function () use ($chargesWalkInExtra) {
+                // The whole point of deferring creation in createCustomer():
+                // a pending walk-in customer only ever actually lands in the
+                // customers table here, inside the same transaction as the
+                // order itself -- if anything below throws, this rolls back
+                // right along with it, same as it would for any other
+                // MySQL/QueryException failure in this transaction.
+                $customerId = $this->usingPendingCustomer
+                    ? Customer::create([
+                        'full_name' => $this->newCustomerName,
+                        'phone' => $this->newCustomerPhone,
+                        'customer_type' => 'walk_in',
+                    ])->id
+                    : $this->customerId;
+
                 $order = Order::create([
                     'order_number' => Numbering::nextOrderNumber(),
-                    'customer_id' => $this->customerId,
+                    'customer_id' => $customerId,
                     'user_id' => auth()->id(),
                     'order_source' => 'walk_in',
                     'subtotal' => $this->subtotal,
@@ -881,13 +959,16 @@ new class extends Component
                     'reprint_count' => 0,
                 ]);
 
-                return [$order, $payments];
+                return [$order, $payments, $customerId];
             });
         } catch (QueryException $e) {
             $this->addError('cart', $this->friendlyDatabaseError($e));
 
             return;
         }
+
+        $this->customerId = $customerId;
+        $this->usingPendingCustomer = false;
 
         // Broadcast only after the transaction has actually committed --
         // broadcasting from inside it risks announcing data that a later
@@ -909,6 +990,8 @@ new class extends Component
 
             return;
         }
+
+        $this->sanitizeSubscriptionClothes();
 
         $chargesForCycleOverage = $this->chargeForCycleOverage && $this->cycleOverageCount > 0;
 
@@ -999,6 +1082,70 @@ new class extends Component
         }
 
         $this->resetForNewOrder($order);
+    }
+
+    /**
+     * $cart is an ordinary public Livewire property, so the client can push
+     * an arbitrary syncInput update to any of its values (price, quantity,
+     * even the package id) that bypasses addPackage()/incrementPackage()
+     * entirely. Called before subtotal is first read in submitOrder() --
+     * once read, Livewire's #[Computed] caches it for the rest of the
+     * request, so this has to run first or the tampered value sticks.
+     * Re-derives name/price from the real package row and drops any line
+     * whose package no longer exists; quantity is clamped, never trusted.
+     */
+    protected function sanitizeCart(): void
+    {
+        $packages = LaundryPackage::whereIn('id', collect($this->cart)->pluck('laundry_package_id'))
+            ->get()
+            ->keyBy('id');
+
+        $this->cart = collect($this->cart)
+            ->filter(fn ($line) => $packages->has($line['laundry_package_id']))
+            ->map(function ($line) use ($packages) {
+                $package = $packages[$line['laundry_package_id']];
+
+                $line['name'] = $package->name;
+                $line['price'] = (float) $package->base_price;
+                // Lower bound guards against 0/negative; the upper bound is
+                // a sanity cap, not a business rule -- no real walk-in visit
+                // needs 100+ of the same package line, so anything past that
+                // is tampering (or a stuck click), not a legitimate order.
+                $line['quantity'] = min(100, max(1, (int) $line['quantity']));
+
+                return $line;
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Same tampering exposure as $cart (see sanitizeCart() above), and the
+     * stakes are arguably higher here: quantity feeds cycleOverageCount,
+     * which decides whether a charge is even required at all -- a tampered
+     * negative quantity could zero out an overage that's really there and
+     * skip the charge entirely, not just misprice a line. Called before
+     * cycleOverageCount is first read in submitSubscriptionCollection().
+     * Clothes lines snapshot at price 0 regardless (the cycle's flat price
+     * is what's actually charged), so name/id are re-derived for data
+     * integrity, not because a tampered price could be smuggled through here.
+     */
+    protected function sanitizeSubscriptionClothes(): void
+    {
+        $items = ClothingItem::whereIn('id', collect($this->subscriptionClothes)->pluck('clothing_item_id'))
+            ->get()
+            ->keyBy('id');
+
+        $this->subscriptionClothes = collect($this->subscriptionClothes)
+            ->filter(fn ($line) => $items->has($line['clothing_item_id']))
+            ->map(function ($line) use ($items) {
+                $line['name'] = $items[$line['clothing_item_id']]->name;
+                $line['quantity'] = min(100, max(1, (int) $line['quantity']));
+
+                return $line;
+            })
+            ->values()
+            ->all();
     }
 
     /**

@@ -12,7 +12,17 @@ class AdminUserSeeder extends Seeder
     public function run(): void
     {
         $email = env('ADMIN_SEED_EMAIL', 'admin@laundry.test');
-        $password = env('ADMIN_SEED_PASSWORD', 'password');
+        $password = env('ADMIN_SEED_PASSWORD');
+
+        if (! $password) {
+            if (app()->environment(['local', 'testing'])) {
+                $password = 'password';
+            } else {
+                throw new \RuntimeException(
+                    'ADMIN_SEED_PASSWORD must be set before seeding outside local/testing — refusing to create an admin account with a guessable default password.'
+                );
+            }
+        }
 
         $user = User::updateOrCreate(
             ['email' => $email],

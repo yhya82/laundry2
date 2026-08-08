@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\WashingMachine;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -14,6 +15,24 @@ class WashingMachineController extends Controller
         $washingMachines = WashingMachine::orderBy('name')->get();
 
         return view('catalog.machines.index', compact('washingMachines'));
+    }
+
+    /**
+     * Live busy/idle snapshot for the order page's "Select Washing Machine"
+     * panel -- fetched fresh each time the panel opens rather than trusted
+     * from the order page's own initial render, which can otherwise sit
+     * stale for as long as that page has been open.
+     */
+    public function status(): JsonResponse
+    {
+        $washingMachines = WashingMachine::where('is_active', true)->orderBy('name')->get();
+
+        return response()->json($washingMachines->map(fn (WashingMachine $m) => [
+            'id' => $m->id,
+            'name' => $m->name,
+            'busy' => $m->isBusy(),
+            'currentOrderNumber' => $m->currentOrder()?->order_number,
+        ]));
     }
 
     public function store(Request $request): RedirectResponse

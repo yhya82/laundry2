@@ -34,6 +34,15 @@ class PaymentController extends Controller
      */
     public function record(Request $request, Order $order): RedirectResponse
     {
+        // Mirrors OrderController::ensureOrderAccessible() -- paying an order
+        // is as much "acting on it" as advancing or cancelling it, so it
+        // needs the same assignment boundary.
+        $assignmentEnabled = Setting::get('order.assignment_enabled', 'false') === 'true';
+
+        if ($assignmentEnabled && ! auth()->user()->can('orders.assign') && $order->assigned_to !== auth()->id()) {
+            abort(403, 'This order is not assigned to you.');
+        }
+
         $balanceDue = $order->balanceDue();
 
         if ($balanceDue <= 0) {

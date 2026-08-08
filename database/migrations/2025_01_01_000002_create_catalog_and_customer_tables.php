@@ -24,7 +24,9 @@ return new class extends Migration
             $table->index('customer_type');
         });
 
-        DB::statement("ALTER TABLE customers ADD CONSTRAINT chk_customers_phone_format CHECK (phone REGEXP '^[+0-9][0-9 ()-]{6,19}$')");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE customers ADD CONSTRAINT chk_customers_phone_format CHECK (phone REGEXP '^[+0-9][0-9 ()-]{6,19}$')");
+        }
 
         Schema::create('clothes_categories', function (Blueprint $table) {
             $table->id();

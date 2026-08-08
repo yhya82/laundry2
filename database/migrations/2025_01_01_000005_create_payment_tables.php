@@ -21,11 +21,13 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        DB::statement('ALTER TABLE payments ADD CONSTRAINT chk_payments_credit_applied CHECK (credit_applied <= amount)');
-        DB::statement('ALTER TABLE payments ADD CONSTRAINT chk_payments_exactly_one_target CHECK (
-            (order_id IS NOT NULL AND subscription_id IS NULL)
-            OR (order_id IS NULL AND subscription_id IS NOT NULL)
-        )');
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE payments ADD CONSTRAINT chk_payments_credit_applied CHECK (credit_applied <= amount)');
+            DB::statement('ALTER TABLE payments ADD CONSTRAINT chk_payments_exactly_one_target CHECK (
+                (order_id IS NOT NULL AND subscription_id IS NULL)
+                OR (order_id IS NULL AND subscription_id IS NOT NULL)
+            )');
+        }
 
         Schema::create('refunds', function (Blueprint $table) {
             $table->id();

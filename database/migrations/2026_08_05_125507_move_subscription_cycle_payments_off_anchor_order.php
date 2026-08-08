@@ -17,11 +17,13 @@ return new class extends Migration
                 ->constrained('subscription_cycles')->nullOnDelete();
         });
 
-        DB::statement('ALTER TABLE payments DROP CONSTRAINT chk_payments_exactly_one_target');
-        DB::statement("ALTER TABLE payments ADD CONSTRAINT chk_payments_exactly_one_target CHECK (
-            (order_id IS NOT NULL AND subscription_id IS NULL AND subscription_cycle_id IS NULL)
-            OR (order_id IS NULL AND subscription_id IS NOT NULL AND subscription_cycle_id IS NOT NULL)
-        )");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE payments DROP CONSTRAINT chk_payments_exactly_one_target');
+            DB::statement("ALTER TABLE payments ADD CONSTRAINT chk_payments_exactly_one_target CHECK (
+                (order_id IS NOT NULL AND subscription_id IS NULL AND subscription_cycle_id IS NULL)
+                OR (order_id IS NULL AND subscription_id IS NOT NULL AND subscription_cycle_id IS NOT NULL)
+            )");
+        }
 
         // Backfill: any cycle still using the old anchor-order mechanism gets
         // its price payments moved onto the cycle directly, and the anchor
@@ -71,11 +73,13 @@ return new class extends Migration
             $table->foreignId('anchor_order_id')->nullable()->constrained('orders')->nullOnDelete();
         });
 
-        DB::statement('ALTER TABLE payments DROP CONSTRAINT chk_payments_exactly_one_target');
-        DB::statement("ALTER TABLE payments ADD CONSTRAINT chk_payments_exactly_one_target CHECK (
-            (order_id IS NOT NULL AND subscription_id IS NULL)
-            OR (order_id IS NULL AND subscription_id IS NOT NULL)
-        )");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE payments DROP CONSTRAINT chk_payments_exactly_one_target');
+            DB::statement("ALTER TABLE payments ADD CONSTRAINT chk_payments_exactly_one_target CHECK (
+                (order_id IS NOT NULL AND subscription_id IS NULL)
+                OR (order_id IS NULL AND subscription_id IS NOT NULL)
+            )");
+        }
 
         Schema::table('payments', function (Blueprint $table) {
             $table->dropConstrainedForeignId('subscription_cycle_id');

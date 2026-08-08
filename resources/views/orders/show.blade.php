@@ -157,12 +157,18 @@
                             </form>
                         @else
                             <span
-                                class="w-12 h-12 rounded-full flex items-center justify-center relative"
-                                :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success-soft text-success' : (({{ $i }} === currentIndex && isActive) ? 'bg-accent-soft text-accent-ink ring-2 ring-accent' : 'bg-surface-2 text-ink-faint')"
+                                class="w-12 h-12 rounded-full flex items-center justify-center relative transition-all duration-500 ease-out motion-reduce:transition-none"
+                                :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success-soft text-success' : (({{ $i }} === currentIndex && isActive) ? 'bg-accent-soft text-accent-ink ring-2 ring-accent animate-ring-pulse' : 'bg-surface-2 text-ink-faint')"
                             >
                                 <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
                                 <span
                                     x-show="{{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)"
+                                    x-transition:enter="transition ease-out duration-300 delay-150"
+                                    x-transition:enter-start="opacity-0 scale-50"
+                                    x-transition:enter-end="opacity-100 scale-100"
+                                    x-transition:leave="transition ease-in duration-150"
+                                    x-transition:leave-start="opacity-100 scale-100"
+                                    x-transition:leave-end="opacity-0 scale-50"
                                     class="absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-full bg-success text-white flex items-center justify-center border-2 border-surface"
                                 >
                                     <x-nav-icon name="check" class="w-2.5 h-2.5" />
@@ -171,24 +177,42 @@
                         @endif
 
                         <div
-                            class="text-xs font-semibold mt-2.5"
+                            class="text-xs font-semibold mt-2.5 transition-colors duration-500 ease-out motion-reduce:transition-none"
                             :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'text-ink' : (({{ $i }} === currentIndex && isActive) ? 'text-accent-ink' : 'text-ink-faint')"
                         >
                             {{ $stageLabels[$stage] }}
                         </div>
 
-                        <div class="text-[11px] text-ink-faint font-mono mt-1" x-show="timestamps['{{ $stage }}']" x-text="timestamps['{{ $stage }}']"></div>
+                        <div
+                            class="text-[11px] text-ink-faint font-mono mt-1"
+                            x-show="timestamps['{{ $stage }}']"
+                            x-transition:enter="transition ease-out duration-300 delay-150"
+                            x-transition:enter-start="opacity-0 -translate-y-0.5"
+                            x-transition:enter-end="opacity-100 translate-y-0"
+                            x-text="timestamps['{{ $stage }}']"
+                        ></div>
                         @if (! empty($stageChangedBy[$stage]))
                             <div class="text-[10px] text-ink-faint mt-0.5">by {{ $stageChangedBy[$stage] }}</div>
                         @endif
                         @if ($stage === 'washing' && isset($stageTimestamps['washing']) && $order->washingMachine)
                             <div class="text-[10px] text-ink-faint mt-0.5">{{ $order->washingMachine->name }}</div>
                         @endif
-                        <div class="text-[11px] text-accent-ink font-semibold mt-0.5" x-show="{{ $i }} === currentIndex && isActive">In Progress</div>
+                        <div
+                            class="text-[11px] text-accent-ink font-semibold mt-0.5"
+                            x-show="{{ $i }} === currentIndex && isActive"
+                            x-transition:enter="transition ease-out duration-300 delay-150"
+                            x-transition:enter-start="opacity-0 -translate-y-0.5"
+                            x-transition:enter-end="opacity-100 translate-y-0"
+                        >In Progress</div>
                     </div>
 
                     @unless ($loop->last)
-                        <div class="flex-1 h-0.5 -mt-7" :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success' : 'bg-line'"></div>
+                        <div class="flex-1 h-0.5 -mt-7 rounded-full bg-line overflow-hidden">
+                            <div
+                                class="h-full bg-success transition-all duration-700 ease-in-out motion-reduce:transition-none"
+                                :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'w-full' : 'w-0'"
+                            ></div>
+                        </div>
                     @endunless
                 </div>
             @endforeach
@@ -510,6 +534,16 @@
                         'currentOrderNumber' => $m->currentOrder()?->order_number,
                     ])),
                     get allBusy() { return this.machines.length > 0 && this.machines.every(m => m.busy); },
+                    async refresh() {
+                        // Best-effort -- if this fails, the panel still shows
+                        // the last-known state and submit is still guarded
+                        // server-side, so a network hiccup here never blocks
+                        // the flow, only the freshness of what's displayed.
+                        try {
+                            const res = await fetch(@js(route('washingMachines.status')), { headers: { 'Accept': 'application/json' } });
+                            if (res.ok) this.machines = await res.json();
+                        } catch (e) {}
+                    },
                     init() {
                         window.Echo.channel('orders').listen('.order.status-changed', (e) => {
                             const machine = this.machines.find(m => m.id === e.washingMachineId);
@@ -519,7 +553,7 @@
                         });
                     }
                 }"
-                x-on:open-panel.window="$event.detail === 'select-washing-machine' && (open = true)"
+                x-on:open-panel.window="$event.detail === 'select-washing-machine' && ((open = true), refresh())"
                 x-on:close-panel.window="$event.detail === 'select-washing-machine' && (open = false)"
                 x-on:keydown.escape.window="open = false"
             >

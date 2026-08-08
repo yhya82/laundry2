@@ -18,4 +18,9 @@ class DamageResolution extends Model
     {
         return $this->belongsTo(DamageRecord::class);
     }
+
+    public function resolvedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'resolved_by');
+    }
 }

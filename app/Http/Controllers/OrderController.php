@@ -20,6 +20,21 @@ class OrderController extends Controller
     {
     }
 
+    /**
+     * Same boundary as index()'s scoping, but for any action that reaches an
+     * order directly by ID -- view, advance, cancel, or pay. Without this, a
+     * scoped-out staff member who can't see an unassigned order in their list
+     * could still act on it by guessing/bookmarking the URL.
+     */
+    protected function ensureOrderAccessible(Order $order): void
+    {
+        $assignmentEnabled = Setting::get('order.assignment_enabled', 'false') === 'true';
+
+        if ($assignmentEnabled && ! auth()->user()->can('orders.assign') && $order->assigned_to !== auth()->id()) {
+            abort(403, 'This order is not assigned to you.');
+        }
+    }
+
     public function index(Request $request): View
     {
         $assignmentEnabled = Setting::get('order.assignment_enabled', 'false') === 'true';
@@ -79,12 +94,7 @@ class OrderController extends Controller
     {
         $assignmentEnabled = Setting::get('order.assignment_enabled', 'false') === 'true';
 
-        // Mirrors index()'s scoping -- without this, a scoped staff member
-        // could just bookmark/guess a URL to see an order hidden from their
-        // own list.
-        if ($assignmentEnabled && ! auth()->user()->can('orders.assign') && $order->assigned_to !== auth()->id()) {
-            abort(403, 'This order is not assigned to you.');
-        }
+        $this->ensureOrderAccessible($order);
 
         $order->load(['customer', 'packageLines.clothesLines', 'payments', 'statusHistory.order', 'statusHistory.changedBy', 'damageRecords', 'receipt', 'creator', 'washingMachine', 'assignedTo']);
 
@@ -124,6 +134,8 @@ class OrderController extends Controller
      */
     public function advance(Request $request, Order $order): RedirectResponse
     {
+        $this->ensureOrderAccessible($order);
+
         $next = $order->nextStatus();
 
         if ($next === null) {
@@ -199,6 +211,8 @@ class OrderController extends Controller
 
     public function cancel(Request $request, Order $order): RedirectResponse
     {
+        $this->ensureOrderAccessible($order);
+
         if ($order->isTerminal()) {
             return back()->withErrors(['status' => 'This order is already in a terminal state and cannot be cancelled.']);
         }

@@ -113,8 +113,10 @@ class SettingsController extends Controller
     {
         $validated = $request->validate([
             'retention_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+            'alert_email' => ['nullable', 'email', 'max:255'],
         ]);
 
         Setting::set('backup.retention_days', $validated['retention_days'] ?? null, 'backup', 'integer');
+        Setting::set('backup.alert_email', $validated['alert_email'] ?? null, 'backup');
     }
 }

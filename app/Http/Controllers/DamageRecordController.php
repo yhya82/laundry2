@@ -43,7 +43,12 @@ class DamageRecordController extends Controller
         $data = $request->validated();
 
         if ($request->hasFile('photo')) {
-            $data['photo_path'] = $request->file('photo')->store('damage', 'public');
+            // 'local' (private), not 'public' -- damage photos can be of the
+            // customer's own belongings and shouldn't be reachable by anyone
+            // who merely obtains the URL. Served back out through photo()
+            // below, behind the same damage.view permission as the report
+            // itself.
+            $data['photo_path'] = $request->file('photo')->store('damage', 'local');
         }
 
         $data['reported_by'] = auth()->id();
@@ -64,9 +69,21 @@ class DamageRecordController extends Controller
 
     public function show(DamageRecord $damageRecord): View
     {
-        $damageRecord->load(['order.customer', 'damageType', 'resolution']);
+        $damageRecord->load(['order.customer', 'damageType', 'reportedBy', 'resolution.resolvedBy', 'statusHistory.changedBy']);
 
         return view('damage.show', compact('damageRecord'));
+    }
+
+    /**
+     * Streams the photo from the private disk -- gated by the same
+     * damage.view permission as the report page itself (see route), so it
+     * can't be reached by URL alone the way a public-disk file could.
+     */
+    public function photo(DamageRecord $damageRecord): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        abort_unless($damageRecord->photo_path && Storage::disk('local')->exists($damageRecord->photo_path), 404);
+
+        return Storage::disk('local')->response($damageRecord->photo_path);
     }
 
     /**

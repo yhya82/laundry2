@@ -8,6 +8,7 @@ use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DamageRecordController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\HealthCheckController;
 use App\Http\Controllers\LaundryPackageController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrderController;
@@ -30,6 +31,13 @@ $builtRoutes = ['customers.index', 'catalog.categories', 'catalog.packages', 'ca
 Route::get('/', function () {
     return redirect()->route('dashboard');
 });
+
+// Deliberately public (no auth) -- uptime/monitoring tools hitting this
+// don't have a session. Distinct from Laravel's own built-in '/up' (which
+// only proves the app booted); this one checks the things that can fail
+// without the app itself crashing: DB reachability, pending migrations,
+// queue backlog, disk space.
+Route::get('/health', [HealthCheckController::class, 'index'])->name('health');
 
 Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('auth')->name('dashboard');
 
@@ -110,6 +118,10 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     });
 
     Route::middleware('permission:orders.manage')->group(function () {
+        // Polled by the "Select Washing Machine" panel right as it opens, so
+        // busy/idle reflects the DB at the moment of choice instead of
+        // whatever was true when the order page itself was first loaded.
+        Route::get('/washing-machines/status', [WashingMachineController::class, 'status'])->name('washingMachines.status');
         Route::post('/orders/{order}/advance', [OrderController::class, 'advance'])->name('orders.advance');
         Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
         Route::post('/orders/{order}/payments', [PaymentController::class, 'record'])->name('orders.payments.record');
@@ -157,6 +169,7 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
     Route::middleware('permission:damage.view')->group(function () {
         Route::get('/damage', [DamageRecordController::class, 'index'])->name('damage.index');
         Route::get('/damage/{damageRecord}', [DamageRecordController::class, 'show'])->name('damage.show');
+        Route::get('/damage/{damageRecord}/photo', [DamageRecordController::class, 'photo'])->name('damage.photo');
     });
 
     Route::middleware('permission:damage.report')->group(function () {

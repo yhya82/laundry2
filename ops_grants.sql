@@ -46,6 +46,7 @@ GRANT UPDATE, DELETE ON {{DB_NAME}}.customers TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.customer_complaints TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.damage_records TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.damage_resolutions TO 'laundry_app'@'%';
+-- damage_status_history: SELECT + INSERT only (append-only audit trail, same as order_status_history)
 GRANT UPDATE, DELETE ON {{DB_NAME}}.damage_types TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.expenses TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.expense_categories TO 'laundry_app'@'%';
@@ -71,7 +72,9 @@ GRANT UPDATE, DELETE ON {{DB_NAME}}.sessions TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.settings TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.subscriptions TO 'laundry_app'@'%';
 GRANT UPDATE, DELETE ON {{DB_NAME}}.subscription_packages TO 'laundry_app'@'%';
+GRANT UPDATE ON {{DB_NAME}}.subscription_cycles TO 'laundry_app'@'%'; -- DELETE intentionally withheld (never hard-deleted; closeIfExhausted() only ever updates)
 GRANT UPDATE, DELETE ON {{DB_NAME}}.users TO 'laundry_app'@'%';
+GRANT UPDATE, DELETE ON {{DB_NAME}}.washing_machines TO 'laundry_app'@'%';
 
 -- ============================================================
 -- laundry_readonly -- optional, for a future reporting/BI connection

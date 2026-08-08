@@ -28,10 +28,12 @@ return new class extends Migration
             $table->index(['status', 'created_at']);
         });
 
-        DB::statement("ALTER TABLE orders ADD CONSTRAINT chk_orders_source_collection CHECK (
-            (order_source = 'subscription' AND collection_id IS NOT NULL)
-            OR (order_source = 'walk_in' AND collection_id IS NULL)
-        )");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE orders ADD CONSTRAINT chk_orders_source_collection CHECK (
+                (order_source = 'subscription' AND collection_id IS NOT NULL)
+                OR (order_source = 'walk_in' AND collection_id IS NULL)
+            )");
+        }
 
         Schema::create('order_package_lines', function (Blueprint $table) {
             $table->id();

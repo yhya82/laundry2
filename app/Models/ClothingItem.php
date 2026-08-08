@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ClothingItem extends Model
 {
+    use HasFactory;
+
     protected $fillable = ['clothes_category_id', 'name', 'image_path', 'image_mime', 'image_size'];
 
     public function category(): BelongsTo
