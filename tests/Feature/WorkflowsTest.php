@@ -129,6 +129,20 @@ class WorkflowsTest extends TestCase
         $this->assertSame(1, $subscription->collections()->count());
         $cycle->refresh();
         $this->assertTrue($cycle->isExhausted(), 'The cycle should be exhausted once its only collection is collected.');
+
+        // Renders the Collection History and Billing Cycles tables (and their
+        // mobile card-list counterparts) with at least one real row in each.
+        $this->get(route('subscriptions.show', $subscription))
+            ->assertOk()
+            ->assertSee('Collection History')
+            ->assertSee('Billing Cycles');
+    }
+
+    public function test_dashboard_renders(): void
+    {
+        $this->actingAs($this->admin);
+
+        $this->get(route('dashboard'))->assertOk();
     }
 
     public function test_cancellation_workflow(): void

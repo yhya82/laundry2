@@ -170,7 +170,7 @@
                     <x-nav-icon name="users" class="w-4 h-4 text-ink-faint" />
                     <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Customers</div>
                 </div>
-                <div class="grid grid-cols-3 gap-5">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
                     @if ($totalCustomers !== null)
                         <div>
                             <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Total</div>

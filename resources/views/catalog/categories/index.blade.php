@@ -16,7 +16,9 @@
                         <tr>
                             <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Name</th>
                             <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Items</th>
-                            <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
+                            @can('catalog.manage')
+                                <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
+                            @endcan
                         </tr>
                     </thead>
                     <tbody>
@@ -101,7 +103,9 @@
                         <tr>
                             <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Name</th>
                             <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Category</th>
-                            <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
+                             @can('catalog.manage')
+                                <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
+                            @endcan
                         </tr>
                     </thead>
                     <tbody>

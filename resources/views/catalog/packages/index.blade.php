@@ -20,7 +20,9 @@
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Priority</th>
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Clothes Allowed</th>
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Status</th>
+                                 @can('catalog.manage')
                                 <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
+                                @endcan
                             </tr>
                         </thead>
                         <tbody>
@@ -113,7 +115,9 @@
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Name</th>
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Monthly</th>
                                 <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Allowance</th>
+                                 @can('catalog.manage')
                                 <th class="text-right font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Actions</th>
+                                @endcan
                             </tr>
                         </thead>
                         <tbody>

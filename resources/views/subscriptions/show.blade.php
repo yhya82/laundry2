@@ -163,115 +163,203 @@
 
         <div class="lg:col-span-2 bg-surface border border-line rounded-2xl p-6">
             <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-4">Collection History</div>
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-left">
-                        <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Scheduled</th>
-                        <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Status</th>
-                        <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Collected</th>
-                        <th class="pb-2"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse ($subscription->collections as $collection)
-                        <tr class="border-t border-line">
-                            <td class="py-2.5 font-mono text-xs text-ink">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'Anytime' }}</td>
-                            <td class="py-2.5">
-                                <x-status-pill :status="$collection->status" />
-                                @if ($collection->status === 'cancelled')
-                                    <div class="text-xs text-ink-faint mt-1">
-                                        {{ $collection->cancellation_reason }}
-                                        @if ($collection->combinedInto)
-                                            — combined into {{ $collection->combinedInto->scheduled_date?->format('Y-m-d') ?? 'anytime pickup #'.$collection->combinedInto->id }}
-                                        @endif
-                                    </div>
-                                @endif
-                            </td>
-                            <td class="py-2.5 font-mono text-xs text-ink-faint">{{ $collection->collected_at?->format('Y-m-d H:i') ?? '—' }}</td>
-                            <td class="py-2.5 text-right">
-                                @if ($collection->status === 'scheduled')
-                                    @can('collections.manage')
-                                        <div class="flex items-center justify-end gap-2">
-                                            @if ($subscription->status === 'active')
-                                                <a href="{{ route('collections.collect', $collection) }}" class="inline-flex items-center gap-1 bg-accent-soft text-accent-ink text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-accent hover:text-white transition-colors">
-                                                    <x-nav-icon name="truck" class="w-3 h-3" />
-                                                    Collect
-                                                </a>
-                                                <button type="button" @click="$dispatch('open-panel', 'cancel-{{ $collection->id }}')" class="inline-flex items-center gap-1 bg-critical-soft text-critical text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
-                                                    <x-nav-icon name="x" class="w-3 h-3" />
-                                                    Skip
-                                                </button>
-                                                <form method="POST" action="{{ route('collections.cancel', $collection) }}" onsubmit="return confirm('Cancel this collection outright? No order will be created.')">
-                                                    @csrf
-                                                    <button type="submit" title="Cancel" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
-                                                        <x-nav-icon name="trash" class="w-3 h-3" />
-                                                    </button>
-                                                </form>
-                                            @else
-                                                <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2.5 py-1 rounded-full cursor-not-allowed">
-                                                    <x-nav-icon name="truck" class="w-3 h-3" />
-                                                    Collect
-                                                </span>
-                                                <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2.5 py-1 rounded-full cursor-not-allowed">
-                                                    <x-nav-icon name="x" class="w-3 h-3" />
-                                                    Skip
-                                                </span>
-                                                <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2 py-1 rounded-full cursor-not-allowed">
-                                                    <x-nav-icon name="trash" class="w-3 h-3" />
-                                                </span>
+            <div class="hidden md:block">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left">
+                            <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Scheduled</th>
+                            <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Status</th>
+                            <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Collected</th>
+                            <th class="pb-2"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($subscription->collections as $collection)
+                            <tr class="border-t border-line">
+                                <td class="py-2.5 font-mono text-xs text-ink">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'Anytime' }}</td>
+                                <td class="py-2.5">
+                                    <x-status-pill :status="$collection->status" />
+                                    @if ($collection->status === 'cancelled')
+                                        <div class="text-xs text-ink-faint mt-1">
+                                            {{ $collection->cancellation_reason }}
+                                            @if ($collection->combinedInto)
+                                                — combined into {{ $collection->combinedInto->scheduled_date?->format('Y-m-d') ?? 'anytime pickup #'.$collection->combinedInto->id }}
                                             @endif
                                         </div>
-                                    @endcan
+                                    @endif
+                                </td>
+                                <td class="py-2.5 font-mono text-xs text-ink-faint">{{ $collection->collected_at?->format('Y-m-d H:i') ?? '—' }}</td>
+                                <td class="py-2.5 text-right">
+                                    @if ($collection->status === 'scheduled')
+                                        @can('collections.manage')
+                                            <div class="flex items-center justify-end gap-2">
+                                                @if ($subscription->status === 'active')
+                                                    <a href="{{ route('collections.collect', $collection) }}" class="inline-flex items-center gap-1 bg-accent-soft text-accent-ink text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-accent hover:text-white transition-colors">
+                                                        <x-nav-icon name="truck" class="w-3 h-3" />
+                                                        Collect
+                                                    </a>
+                                                    <button type="button" @click="$dispatch('open-panel', 'cancel-{{ $collection->id }}')" class="inline-flex items-center gap-1 bg-critical-soft text-critical text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
+                                                        <x-nav-icon name="x" class="w-3 h-3" />
+                                                        Skip
+                                                    </button>
+                                                    <form method="POST" action="{{ route('collections.cancel', $collection) }}" onsubmit="return confirm('Cancel this collection outright? No order will be created.')">
+                                                        @csrf
+                                                        <button type="submit" title="Cancel" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
+                                                            <x-nav-icon name="trash" class="w-3 h-3" />
+                                                        </button>
+                                                    </form>
+                                                @else
+                                                    <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2.5 py-1 rounded-full cursor-not-allowed">
+                                                        <x-nav-icon name="truck" class="w-3 h-3" />
+                                                        Collect
+                                                    </span>
+                                                    <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2.5 py-1 rounded-full cursor-not-allowed">
+                                                        <x-nav-icon name="x" class="w-3 h-3" />
+                                                        Skip
+                                                    </span>
+                                                    <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2 py-1 rounded-full cursor-not-allowed">
+                                                        <x-nav-icon name="trash" class="w-3 h-3" />
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        @endcan
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="4" class="py-6 text-center text-ink-faint text-sm">No collections yet.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="md:hidden space-y-3">
+                @forelse ($subscription->collections as $collection)
+                    <div class="border border-line rounded-xl p-3">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="font-mono text-xs text-ink">{{ $collection->scheduled_date?->format('Y-m-d') ?? 'Anytime' }}</span>
+                            <x-status-pill :status="$collection->status" />
+                        </div>
+                        @if ($collection->status === 'cancelled')
+                            <div class="text-xs text-ink-faint mb-1.5">
+                                {{ $collection->cancellation_reason }}
+                                @if ($collection->combinedInto)
+                                    — combined into {{ $collection->combinedInto->scheduled_date?->format('Y-m-d') ?? 'anytime pickup #'.$collection->combinedInto->id }}
                                 @endif
-                            </td>
-                        </tr>
-                    @empty
-                        <tr><td colspan="4" class="py-6 text-center text-ink-faint text-sm">No collections yet.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
+                            </div>
+                        @endif
+                        <div class="text-xs text-ink-faint mb-2">Collected: {{ $collection->collected_at?->format('Y-m-d H:i') ?? '—' }}</div>
+                        @if ($collection->status === 'scheduled')
+                            @can('collections.manage')
+                                <div class="flex items-center gap-2">
+                                    @if ($subscription->status === 'active')
+                                        <a href="{{ route('collections.collect', $collection) }}" class="inline-flex items-center gap-1 bg-accent-soft text-accent-ink text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-accent hover:text-white transition-colors">
+                                            <x-nav-icon name="truck" class="w-3 h-3" />
+                                            Collect
+                                        </a>
+                                        <button type="button" @click="$dispatch('open-panel', 'cancel-{{ $collection->id }}')" class="inline-flex items-center gap-1 bg-critical-soft text-critical text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
+                                            <x-nav-icon name="x" class="w-3 h-3" />
+                                            Skip
+                                        </button>
+                                        <form method="POST" action="{{ route('collections.cancel', $collection) }}" onsubmit="return confirm('Cancel this collection outright? No order will be created.')">
+                                            @csrf
+                                            <button type="submit" title="Cancel" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
+                                                <x-nav-icon name="trash" class="w-3 h-3" />
+                                            </button>
+                                        </form>
+                                    @else
+                                        <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2.5 py-1 rounded-full cursor-not-allowed">
+                                            <x-nav-icon name="truck" class="w-3 h-3" />
+                                            Collect
+                                        </span>
+                                        <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2.5 py-1 rounded-full cursor-not-allowed">
+                                            <x-nav-icon name="x" class="w-3 h-3" />
+                                            Skip
+                                        </span>
+                                        <span title="Subscription is paused" class="inline-flex items-center gap-1 bg-surface-2 text-ink-faint text-xs font-semibold px-2 py-1 rounded-full cursor-not-allowed">
+                                            <x-nav-icon name="trash" class="w-3 h-3" />
+                                        </span>
+                                    @endif
+                                </div>
+                            @endcan
+                        @endif
+                    </div>
+                @empty
+                    <div class="py-6 text-center text-ink-faint text-sm">No collections yet.</div>
+                @endforelse
+            </div>
         </div>
 
         <div class="lg:col-span-3 bg-surface border border-line rounded-2xl p-6">
             <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-4">Billing Cycles</div>
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="text-left">
-                        <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Cycle</th>
-                        <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Price</th>
-                        <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Paid</th>
-                        <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Due</th>
-                        <th class="pb-2"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse ($subscription->cycles as $cycle)
-                        <tr class="border-t border-line">
-                            <td class="py-2.5 font-mono text-xs text-ink">{{ $cycle->starts_on->format('M Y') }}</td>
-                            <td class="py-2.5 font-mono text-xs text-ink-muted">GMD {{ number_format($cycle->monthly_price_snapshot, 2) }}</td>
-                            <td class="py-2.5 font-mono text-xs text-ink-muted">GMD {{ number_format($cycle->amountPaid(), 2) }}</td>
-                            <td class="py-2.5">
-                                @if ($cycle->balanceDue() > 0)
-                                    <span class="font-mono text-xs text-critical font-semibold">GMD {{ number_format($cycle->balanceDue(), 2) }}</span>
-                                @else
-                                    <span class="font-mono text-xs text-success font-semibold">Paid</span>
-                                @endif
-                            </td>
-                            <td class="py-2.5 text-right">
-                                @if ($cycle->balanceDue() > 0)
-                                    @can('orders.manage')
-                                        <button type="button" @click="$dispatch('open-panel', 'record-cycle-payment-{{ $cycle->id }}')" class="inline-flex items-center gap-1 bg-critical-soft text-critical text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
-                                            Pay
-                                        </button>
-                                    @endcan
-                                @endif
-                            </td>
+            <div class="hidden md:block">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left">
+                            <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Cycle</th>
+                            <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Price</th>
+                            <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Paid</th>
+                            <th class="font-mono text-xs uppercase tracking-wide text-ink-faint pb-2">Due</th>
+                            <th class="pb-2"></th>
                         </tr>
-                    @empty
-                        <tr><td colspan="5" class="py-6 text-center text-ink-faint text-sm">No billing cycles yet.</td></tr>
-                    @endforelse
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        @forelse ($subscription->cycles as $cycle)
+                            <tr class="border-t border-line">
+                                <td class="py-2.5 font-mono text-xs text-ink">{{ $cycle->starts_on->format('M Y') }}</td>
+                                <td class="py-2.5 font-mono text-xs text-ink-muted">GMD {{ number_format($cycle->monthly_price_snapshot, 2) }}</td>
+                                <td class="py-2.5 font-mono text-xs text-ink-muted">GMD {{ number_format($cycle->amountPaid(), 2) }}</td>
+                                <td class="py-2.5">
+                                    @if ($cycle->balanceDue() > 0)
+                                        <span class="font-mono text-xs text-critical font-semibold">GMD {{ number_format($cycle->balanceDue(), 2) }}</span>
+                                    @else
+                                        <span class="font-mono text-xs text-success font-semibold">Paid</span>
+                                    @endif
+                                </td>
+                                <td class="py-2.5 text-right">
+                                    @if ($cycle->balanceDue() > 0)
+                                        @can('orders.manage')
+                                            <button type="button" @click="$dispatch('open-panel', 'record-cycle-payment-{{ $cycle->id }}')" class="inline-flex items-center gap-1 bg-critical-soft text-critical text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
+                                                Pay
+                                            </button>
+                                        @endcan
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="5" class="py-6 text-center text-ink-faint text-sm">No billing cycles yet.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="md:hidden space-y-3">
+                @forelse ($subscription->cycles as $cycle)
+                    <div class="border border-line rounded-xl p-3">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-mono text-xs text-ink">{{ $cycle->starts_on->format('M Y') }}</span>
+                            <span class="font-mono text-xs text-ink-muted">GMD {{ number_format($cycle->monthly_price_snapshot, 2) }}</span>
+                        </div>
+                        <div class="flex items-center justify-between mb-2 text-xs">
+                            <span class="text-ink-muted">Paid: GMD {{ number_format($cycle->amountPaid(), 2) }}</span>
+                            @if ($cycle->balanceDue() > 0)
+                                <span class="text-critical font-semibold">GMD {{ number_format($cycle->balanceDue(), 2) }} due</span>
+                            @else
+                                <span class="text-success font-semibold">Paid</span>
+                            @endif
+                        </div>
+                        @if ($cycle->balanceDue() > 0)
+                            @can('orders.manage')
+                                <button type="button" @click="$dispatch('open-panel', 'record-cycle-payment-{{ $cycle->id }}')" class="inline-flex items-center gap-1 bg-critical-soft text-critical text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-critical hover:text-white transition-colors">
+                                    Pay
+                                </button>
+                            @endcan
+                        @endif
+                    </div>
+                @empty
+                    <div class="py-6 text-center text-ink-faint text-sm">No billing cycles yet.</div>
+                @endforelse
+            </div>
         </div>
     </div>
 

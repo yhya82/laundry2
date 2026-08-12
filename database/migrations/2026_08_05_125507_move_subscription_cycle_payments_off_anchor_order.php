@@ -12,10 +12,19 @@ return new class extends Migration
      */
     public function up(): void
     {
+        //Schema::table('payments', function (Blueprint $table) {
+       //     $table->foreignId('subscription_cycle_id')->nullable()->after('subscription_id')
+       //         ->constrained('subscription_cycles')->nullOnDelete();
+       // });
+       if (! Schema::hasColumn('payments', 'subscription_cycle_id')) {
         Schema::table('payments', function (Blueprint $table) {
-            $table->foreignId('subscription_cycle_id')->nullable()->after('subscription_id')
-                ->constrained('subscription_cycles')->nullOnDelete();
-        });
+            $table->foreignId('subscription_cycle_id')
+            ->nullable()
+            ->after('subscription_id')
+            ->constrained('subscription_cycles')
+            ->nullOnDelete();
+   });
+}
 
         if (DB::getDriverName() === 'mysql') {
             DB::statement('ALTER TABLE payments DROP CONSTRAINT chk_payments_exactly_one_target');

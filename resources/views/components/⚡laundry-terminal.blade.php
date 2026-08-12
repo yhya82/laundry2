@@ -1752,7 +1752,8 @@ new class extends Component
                             <select wire:model="paymentMethod" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
                                 <option value="cash">Cash</option>
                                 <option value="card">Card</option>
-                                <option value="mixed">Mixed</option>
+                                <option value="mixed">Wave</option>
+                                
                             </select>
                         </div>
                     @endif
