@@ -27,12 +27,12 @@ return new class extends Migration
 }
 
         if (DB::getDriverName() === 'mysql') {
-            $constraintExists = DB::selectOne("
-            SELECT COUNT(*) AS count
-            FROM information_schema.table_constraints
-            WHERE constraint_schema = DATABASE()
-            AND table_name = 'payments'
-            AND constraint_name = 'chk_payments_exactly_one_target'
+    $constraintExists = DB::selectOne("
+        SELECT COUNT(*) AS count
+        FROM information_schema.table_constraints
+        WHERE constraint_schema = DATABASE()
+          AND table_name = 'payments'
+          AND constraint_name = 'chk_payments_exactly_one_target'
     ");
 
     if ($constraintExists->count > 0) {
@@ -41,12 +41,15 @@ return new class extends Migration
         );
     }
 
-    DB::statement("ALTER TABLE payments ADD CONSTRAINT chk_payments_exactly_one_target CHECK (
-        (order_id IS NOT NULL AND subscription_id IS NULL AND subscription_cycle_id IS NULL)
-        OR (order_id IS NULL AND subscription_id IS NOT NULL AND subscription_cycle_id IS NOT NULL)
-    )");
+    DB::statement("
+        ALTER TABLE payments
+        ADD CONSTRAINT chk_payments_exactly_one_target CHECK (
+            (order_id IS NOT NULL AND subscription_id IS NULL)
+            OR
+            (order_id IS NULL AND subscription_id IS NOT NULL)
+        )
+    ");
 }
-
         // Backfill: any cycle still using the old anchor-order mechanism gets
         // its price payments moved onto the cycle directly, and the anchor
         // order's subtotal zeroed out (subscription orders never carry the
