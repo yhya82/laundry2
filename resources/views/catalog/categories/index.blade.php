@@ -115,7 +115,7 @@
                                     <div class="flex items-center gap-2.5">
                                         <div class="w-8 h-8 rounded-lg bg-surface-2 flex-none overflow-hidden flex items-center justify-center">
                                             @if ($item->image_path)
-                                                <img src="{{ Storage::url($item->image_path) }}" alt="" class="w-full h-full object-cover">
+                                                <img src="{{ Storage::disk('s3')->temporaryUrl($item->image_path, now()->addMinutes(10)) }}" alt="" class="w-full h-full object-cover">
                                             @else
                                                 <span class="text-ink-faint text-xs font-semibold">{{ Str::substr($item->name, 0, 1) }}</span>
                                             @endif

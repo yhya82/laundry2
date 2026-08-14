@@ -28,7 +28,7 @@
                 <div>
                     <x-input-label for="logo" value="Logo (optional)" />
                     @if ($settings->get('branding.logo_path'))
-                        <img src="{{ Storage::url($settings->get('branding.logo_path')->value) }}" alt="" class="w-12 h-12 rounded object-cover mb-2">
+                        <img src="{{ Storage::disk('s3')->temporaryUrl($settings->get('branding.logo_path')->value, now()->addMinutes(10)) }}" alt="" class="w-12 h-12 rounded object-cover mb-2">
                     @endif
                     <input id="logo" name="logo" type="file" accept="image/*" class="block w-full text-sm text-ink-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-accent-soft file:text-accent-ink file:text-xs file:font-semibold">
                     <x-input-error :messages="$errors->get('logo')" class="mt-1.5" />
