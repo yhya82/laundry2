@@ -51,7 +51,7 @@ class SettingsController extends Controller
         Setting::set('branding.address', $validated['address'] ?? null, 'general');
 
         if ($request->hasFile('logo')) {
-            Setting::set('branding.logo_path', $request->file('logo')->store('branding', 'public'), 'general');
+            Setting::set('branding.logo_path', $request->file('logo')->store('branding', 's3'), 'general');
         }
     }
 

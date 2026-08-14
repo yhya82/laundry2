@@ -50,7 +50,7 @@
 
                     <a href="{{ route('dashboard') }}" class="flex items-center gap-2 font-bold text-ink">
                         @if ($logoPath = \App\Models\Setting::get('branding.logo_path'))
-                            <img src="{{ Storage::url($logoPath) }}" alt="" class="w-7 h-7 rounded object-cover">
+                            <img src="{{ Storage::disk('s3')->url($logoPath) }}" alt="" class="w-7 h-7 rounded object-cover">
                         @else
                             <span class="w-7 h-7 rounded bg-accent-soft text-accent-ink flex items-center justify-center text-sm font-bold">
                                 {{ Str::substr(\App\Models\Setting::get('branding.business_name', config('app.name')), 0, 1) }}
