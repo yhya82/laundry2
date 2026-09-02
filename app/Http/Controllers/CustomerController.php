@@ -141,13 +141,18 @@ class CustomerController extends Controller
 
         $subscriptionPackages = SubscriptionPackage::where('is_active', true)->orderBy('name')->get();
 
-        // Whether "Create Order" needs to ask Use Subscription vs Walk-in --
-        // only when there's an active subscription with pickups still left
-        // in its current cycle to potentially use instead. A subscription
-        // whose cycle is exhausted (renewal due) has nothing to choose
-        // between, so it's treated the same as no subscription at all.
-        $hasOpenSubscriptionCycle = $subscriptions->where('status', 'active')
-            ->contains(fn ($s) => $s->cycles->isNotEmpty() && ! $s->cycles->first()->isExhausted());
+        // What "Create Order" should offer: a customer with exactly one
+        // active subscription gets asked Use Subscription vs Walk-in (open
+        // cycle) or Renew vs Walk-in (exhausted cycle); zero or multiple
+        // active subscriptions has nothing single/obvious to pre-offer, so
+        // it falls back to the plain link straight into the Terminal.
+        $activeSubscriptions = $subscriptions->where('status', 'active');
+        $subscriptionOrderState = match (true) {
+            $activeSubscriptions->count() > 1 => 'multiple',
+            $activeSubscriptions->count() === 1 && $activeSubscriptions->first()->cycles->isNotEmpty() && $activeSubscriptions->first()->cycles->first()->isExhausted() => 'exhausted',
+            $activeSubscriptions->count() === 1 => 'open',
+            default => 'none',
+        };
 
         return view('customers.show', compact(
             'customer',
@@ -165,7 +170,7 @@ class CustomerController extends Controller
             'damageRecords',
             'creditTransactions',
             'subscriptionPackages',
-            'hasOpenSubscriptionCycle',
+            'subscriptionOrderState',
         ));
     }
 

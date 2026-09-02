@@ -35,13 +35,20 @@
             };
         </script>
     </head>
-    <body class="font-sans antialiased bg-bg text-ink h-screen overflow-hidden" x-data="{ sidebarOpen: false }">
+    <body
+        class="font-sans antialiased bg-bg text-ink h-screen overflow-hidden"
+        x-data="{ sidebarOpen: false, collapsed: false }"
+        x-init="
+            collapsed = localStorage.getItem('sidebar-collapsed') === 'true';
+            $watch('collapsed', v => localStorage.setItem('sidebar-collapsed', v));
+        "
+    >
         <x-toast />
         <div class="h-full flex flex-col">
 
             <!-- Top nav -->
             <header class="h-16 flex-none border-b border-line bg-surface flex items-center px-4 gap-4">
-                <div class="flex items-center gap-4 lg:w-60 lg:flex-none">
+                <div class="flex items-center gap-4 lg:flex-none transition-all duration-300" :class="collapsed ? 'lg:w-16' : 'lg:w-60'">
                     <button class="lg:hidden text-ink-muted" @click="sidebarOpen = !sidebarOpen" aria-label="Toggle navigation">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -49,15 +56,26 @@
                     </button>
 
                     <a href="{{ route('dashboard') }}" class="flex items-center gap-2 font-bold text-ink">
-                        @if ($logoPath = \App\Models\Setting::get('branding.logo_path'))
-                            <img src="{{ Storage::disk('s3')->url($logoPath) }}" alt="" class="w-7 h-7 rounded object-cover">
+                        @if ($logoUrl = \App\Support\MediaUrl::temporary(\App\Models\Setting::get('branding.logo_path')))
+                            <img src="{{ $logoUrl }}" alt="" class="w-7 h-7 rounded object-cover flex-none">
                         @else
-                            <span class="w-7 h-7 rounded bg-accent-soft text-accent-ink flex items-center justify-center text-sm font-bold">
+                            <span class="w-7 h-7 rounded bg-accent-soft text-accent-ink flex items-center justify-center text-sm font-bold flex-none">
                                 {{ Str::substr(\App\Models\Setting::get('branding.business_name', config('app.name')), 0, 1) }}
                             </span>
                         @endif
-                        <span class="hidden sm:inline">{{ \App\Models\Setting::get('branding.business_name', config('app.name')) }}</span>
+                        <span class="hidden sm:inline" x-show="!collapsed">{{ \App\Models\Setting::get('branding.business_name', config('app.name')) }}</span>
                     </a>
+
+                    <button
+                        type="button"
+                        @click="collapsed = !collapsed"
+                        :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+                        class="hidden lg:flex items-center justify-center ml-auto w-8 h-8 flex-none rounded-lg text-ink-faint hover:bg-surface-2 hover:text-ink"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform" :class="collapsed && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M19 19l-7-7 7-7" />
+                        </svg>
+                    </button>
                 </div>
 
                 @isset($header)
@@ -163,20 +181,31 @@
 
                 <!-- Sidebar -->
                 <aside
-                    class="w-64 flex-none bg-surface border-r border-line overflow-y-auto fixed lg:static inset-y-16 left-0 z-20 transition-transform lg:translate-x-0"
-                    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+                    class="flex-none bg-surface border-r border-line overflow-y-auto fixed lg:static inset-y-16 left-0 z-20 transition-all lg:translate-x-0"
+                    :class="[sidebarOpen ? 'translate-x-0' : '-translate-x-full', collapsed ? 'w-16' : 'w-64']"
                 >
                     <nav class="p-3 flex flex-col gap-1">
                         @foreach (\App\Support\NavItems::all() as $item)
                             @if ($item['permission'] === null || auth()->user()?->can($item['permission']))
                                 @if (isset($item['children']))
-                                    <div x-data="{ open: {{ request()->routeIs('catalog.*') ? 'true' : 'false' }} }">
-                                        <button @click="open = !open" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-ink-muted hover:bg-surface-2">
+                                    <div
+                                        x-data="{ open: {{ request()->routeIs('catalog.*') ? 'true' : 'false' }}, hovered: false }"
+                                        @mouseenter="collapsed && (hovered = true)"
+                                        @mouseleave="hovered = false"
+                                        class="relative"
+                                    >
+                                        <button
+                                            @click="! collapsed && (open = !open)"
+                                            title="{{ $item['label'] }}"
+                                            class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-ink-muted hover:bg-surface-2"
+                                            :class="collapsed && 'justify-center px-0'"
+                                        >
                                             <x-nav-icon :name="$item['icon']" />
-                                            {{ $item['label'] }}
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 ml-auto transition-transform" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                            <span x-show="!collapsed">{{ $item['label'] }}</span>
+                                            <svg x-show="!collapsed" xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 ml-auto transition-transform" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
                                         </button>
-                                        <div x-show="open" class="pl-8 flex flex-col gap-1 mt-1">
+
+                                        <div x-show="!collapsed && open" class="pl-8 flex flex-col gap-1 mt-1">
                                             @foreach ($item['children'] as $child)
                                                 @if (auth()->user()?->can($child['permission']))
                                                     <a href="{{ route($child['route']) }}" class="px-3 py-1.5 rounded-lg text-sm {{ request()->routeIs($child['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
@@ -185,11 +214,27 @@
                                                 @endif
                                             @endforeach
                                         </div>
+
+                                        <div x-show="collapsed && hovered" x-cloak x-transition.opacity class="absolute left-full top-0 ml-2 w-44 bg-surface border border-line rounded-lg shadow-lg py-1.5 z-30">
+                                            <div class="px-3 py-1 text-xs font-mono uppercase tracking-wide text-ink-faint">{{ $item['label'] }}</div>
+                                            @foreach ($item['children'] as $child)
+                                                @if (auth()->user()?->can($child['permission']))
+                                                    <a href="{{ route($child['route']) }}" class="block px-3 py-1.5 text-sm {{ request()->routeIs($child['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
+                                                        {{ $child['label'] }}
+                                                    </a>
+                                                @endif
+                                            @endforeach
+                                        </div>
                                     </div>
                                 @else
-                                    <a href="{{ route($item['route']) }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
+                                    <a
+                                        href="{{ route($item['route']) }}"
+                                        title="{{ $item['label'] }}"
+                                        class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}"
+                                        :class="collapsed && 'justify-center px-0'"
+                                    >
                                         <x-nav-icon :name="$item['icon']" />
-                                        {{ $item['label'] }}
+                                        <span x-show="!collapsed">{{ $item['label'] }}</span>
                                     </a>
                                 @endif
                             @endif
@@ -199,9 +244,14 @@
                         @if ($adminItems->isNotEmpty())
                             <div class="h-px bg-line my-3"></div>
                             @foreach ($adminItems as $item)
-                                <a href="{{ route($item['route']) }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}">
+                                <a
+                                    href="{{ route($item['route']) }}"
+                                    title="{{ $item['label'] }}"
+                                    class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-muted hover:bg-surface-2' }}"
+                                    :class="collapsed && 'justify-center px-0'"
+                                >
                                     <x-nav-icon :name="$item['icon']" />
-                                    {{ $item['label'] }}
+                                    <span x-show="!collapsed">{{ $item['label'] }}</span>
                                 </a>
                             @endforeach
                         @endif

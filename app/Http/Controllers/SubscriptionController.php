@@ -40,9 +40,22 @@ class SubscriptionController extends Controller
             return back()->withErrors(['subscription' => 'New subscription sign-ups are currently disabled in Settings.']);
         }
 
-        $subscription = Subscription::create($request->validated());
+        $subscription = DB::transaction(function () use ($request) {
+            $subscription = Subscription::create($request->validated());
 
-        CollectionScheduler::scheduleFirstCycle($subscription);
+            CollectionScheduler::scheduleFirstCycle($subscription);
+
+            return $subscription;
+        });
+
+        // Set by the Terminal's New Subscription modal so submitting it lands
+        // staff back in the Terminal for this same customer, already on the
+        // newly scheduled first collection -- back() can't be trusted for
+        // this because a customer picked via the Terminal's own search never
+        // put ?customer= in the URL, so there's no referer to fall back to.
+        if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
+            return redirect()->route('orders.create', ['customer' => $redirectCustomerId])->with('status', 'Subscription created.');
+        }
 
         if ($request->boolean('return_to_profile')) {
             return redirect()->route('customers.show', $subscription->customer_id)->with('status', 'Subscription created.');
@@ -170,15 +183,22 @@ class SubscriptionController extends Controller
             'start_date.unique' => 'This subscription already has a cycle starting on that date — pick a different date.',
         ]);
 
-        $subscription->update([
-            'subscription_package_id' => $validated['subscription_package_id'],
-            'collection_type' => $validated['collection_type'],
-            'collections_per_month' => $validated['collections_per_month'],
-            'max_clothes_per_cycle' => $validated['max_clothes_per_cycle'],
-        ]);
-        $subscription->refresh();
+        DB::transaction(function () use ($subscription, $validated) {
+            $subscription->update([
+                'subscription_package_id' => $validated['subscription_package_id'],
+                'collection_type' => $validated['collection_type'],
+                'collections_per_month' => $validated['collections_per_month'],
+                'max_clothes_per_cycle' => $validated['max_clothes_per_cycle'],
+            ]);
+            $subscription->refresh();
 
-        CollectionScheduler::renew($subscription, Carbon::parse($validated['start_date']));
+            CollectionScheduler::renew($subscription, Carbon::parse($validated['start_date']));
+        });
+
+        // Same reasoning as store()'s redirect_customer_id -- see that method.
+        if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
+            return redirect()->route('orders.create', ['customer' => $redirectCustomerId])->with('status', 'Subscription renewed for a new cycle.');
+        }
 
         return back()->with('status', 'Subscription renewed for a new cycle.');
     }

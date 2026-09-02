@@ -10,9 +10,18 @@ use Illuminate\View\View;
 
 class WashingMachineController extends Controller
 {
+    /**
+     * Eager-loads each machine's recent orders (with their customers) in one
+     * pass, so the card grid's detail panels don't each re-query -- the
+     * current order (if any) and wash history are both derived from this
+     * same loaded collection in the view, rather than calling
+     * currentOrder()/isBusy() again per machine.
+     */
     public function index(): View
     {
-        $washingMachines = WashingMachine::orderBy('name')->get();
+        $washingMachines = WashingMachine::with(['orders' => fn ($q) => $q->latest()->limit(9)->with('customer')])
+            ->orderBy('name')
+            ->get();
 
         return view('catalog.machines.index', compact('washingMachines'));
     }

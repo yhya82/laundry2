@@ -114,8 +114,8 @@
                                 <td class="px-4 py-3">
                                     <div class="flex items-center gap-2.5">
                                         <div class="w-8 h-8 rounded-lg bg-surface-2 flex-none overflow-hidden flex items-center justify-center">
-                                            @if ($item->image_path)
-                                                <img src="{{ Storage::disk('s3')->temporaryUrl($item->image_path, now()->addMinutes(10)) }}" alt="" class="w-full h-full object-cover">
+                                            @if ($itemImageUrl = \App\Support\MediaUrl::temporary($item->image_path))
+                                                <img src="{{ $itemImageUrl }}" alt="" class="w-full h-full object-cover">
                                             @else
                                                 <span class="text-ink-faint text-xs font-semibold">{{ Str::substr($item->name, 0, 1) }}</span>
                                             @endif
@@ -153,8 +153,8 @@
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2.5">
                                 <div class="w-8 h-8 rounded-lg bg-surface-2 flex-none overflow-hidden flex items-center justify-center">
-                                    @if ($item->image_path)
-                                        <img src="{{ Storage::url($item->image_path) }}" alt="" class="w-full h-full object-cover">
+                                    @if ($itemImageUrl = \App\Support\MediaUrl::temporary($item->image_path))
+                                        <img src="{{ $itemImageUrl }}" alt="" class="w-full h-full object-cover">
                                     @else
                                         <span class="text-ink-faint text-xs font-semibold">{{ Str::substr($item->name, 0, 1) }}</span>
                                     @endif
@@ -276,8 +276,8 @@
                     </div>
                     <div>
                         <x-input-label for="item_edit_image_{{ $item->id }}" value="Photo (optional)" />
-                        @if ($item->image_path)
-                            <img src="{{ Storage::url($item->image_path) }}" alt="" class="w-16 h-16 rounded-lg object-cover mb-2">
+                        @if ($itemImageUrl = \App\Support\MediaUrl::temporary($item->image_path))
+                            <img src="{{ $itemImageUrl }}" alt="" class="w-16 h-16 rounded-lg object-cover mb-2">
                         @endif
                         <input id="item_edit_image_{{ $item->id }}" name="image" type="file" accept="image/*" class="block w-full text-sm text-ink-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-accent-soft file:text-accent-ink file:text-xs file:font-semibold">
                         <p class="text-xs text-ink-faint mt-1">Leave blank to keep the current photo.</p>

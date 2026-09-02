@@ -1491,8 +1491,8 @@ new class extends Component
                                     @if ($qtyInCart > 0)
                                         <span class="absolute -top-1 -right-1 min-w-[1rem] h-4 px-0.5 rounded-full bg-accent text-white text-[8px] font-bold font-mono flex items-center justify-center shadow">{{ $qtyInCart }}</span>
                                     @endif
-                                    @if ($item->image_path)
-                                        <img src="{{ Storage::url($item->image_path) }}" alt="" class="w-full aspect-square object-cover rounded mb-1">
+                                    @if ($itemImageUrl = \App\Support\MediaUrl::temporary($item->image_path))
+                                        <img src="{{ $itemImageUrl }}" alt="" class="w-full aspect-square object-cover rounded mb-1">
                                     @else
                                         <div class="w-full aspect-square rounded bg-surface flex items-center justify-center mb-1 text-ink-faint text-xs font-semibold">
                                             {{ Str::substr($item->name, 0, 1) }}

@@ -16,8 +16,8 @@
         @forelse ($category->clothingItems as $item)
             <div class="bg-surface border border-line rounded-2xl overflow-hidden">
                 <div class="aspect-square bg-surface-2 flex items-center justify-center">
-                    @if ($item->image_path)
-                        <img src="{{ Storage::disk('s3')->temporaryUrl($item->image_path, now()->addMinutes(10)) }}" alt="{{ $item->name }}" class="w-full h-full object-cover">
+                    @if ($itemImageUrl = \App\Support\MediaUrl::temporary($item->image_path))
+                        <img src="{{ $itemImageUrl }}" alt="{{ $item->name }}" class="w-full h-full object-cover">
                     @else
                         <span class="text-ink-faint text-xs">No image</span>
                     @endif

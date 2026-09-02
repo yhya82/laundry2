@@ -13,8 +13,8 @@
         <div class="min-h-screen flex flex-col items-center justify-center px-4">
             <div class="w-full max-w-sm">
                 <div class="flex flex-col items-center gap-2 mb-8">
-                    @if ($logoPath = \App\Models\Setting::get('branding.logo_path'))
-                        <img src="{{ Storage::url($logoPath) }}" alt="" class="w-14 h-14 rounded-lg object-cover">
+                    @if ($logoUrl = \App\Support\MediaUrl::temporary(\App\Models\Setting::get('branding.logo_path')))
+                        <img src="{{ $logoUrl }}" alt="" class="w-14 h-14 rounded-lg object-cover">
                     @else
                         <div class="w-14 h-14 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center text-2xl font-bold">
                             {{ Str::substr(\App\Models\Setting::get('branding.business_name', config('app.name')), 0, 1) }}

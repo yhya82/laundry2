@@ -62,8 +62,8 @@
     @endphp
 
     <div class="center">
-        @if (\App\Models\Setting::get('receipt.show_logo') === 'true' && \App\Models\Setting::get('branding.logo_path'))
-            <img src="{{ Storage::url(\App\Models\Setting::get('branding.logo_path')) }}" alt="" class="logo">
+        @if (\App\Models\Setting::get('receipt.show_logo') === 'true' && $receiptLogoUrl = \App\Support\MediaUrl::temporary(\App\Models\Setting::get('branding.logo_path')))
+            <img src="{{ $receiptLogoUrl }}" alt="" class="logo">
         @endif
         <div class="business-name">{{ \App\Models\Setting::get('branding.business_name') ?? config('app.name') }}</div>
         @if ($address = \App\Models\Setting::get('branding.address'))

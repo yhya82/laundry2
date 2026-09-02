@@ -25,9 +25,9 @@ class NavItems
                 'children' => [
                     ['label' => 'Categories', 'route' => 'catalog.categories', 'permission' => 'catalog.view'],
                     ['label' => 'Packages', 'route' => 'catalog.packages', 'permission' => 'catalog.view'],
-                    ['label' => 'Machines', 'route' => 'catalog.machines', 'permission' => 'catalog.view'],
                 ],
             ],
+            ['label' => 'Machines', 'route' => 'catalog.machines', 'permission' => 'catalog.view', 'icon' => 'washer'],
             ['label' => 'Payments', 'route' => 'payments.index', 'permission' => 'payments.view', 'icon' => 'wallet'],
             ['label' => 'Expenses', 'route' => 'expenses.index', 'permission' => 'expenses.view', 'icon' => 'receipt'],
             ['label' => 'Damage', 'route' => 'damage.index', 'permission' => 'damage.view', 'icon' => 'alert'],
