@@ -1,4 +1,4 @@
-@props(['subscription', 'packages'])
+@props(['subscription', 'packages', 'name' => null, 'redirectToTerminal' => false])
 
 @php
     // Defaults to today, same as always -- but if this subscription's most
@@ -10,6 +10,12 @@
     $defaultStartDate = ($latestCycleStart && \Carbon\Carbon::parse($latestCycleStart)->gte(now()->startOfDay()))
         ? \Carbon\Carbon::parse($latestCycleStart)->addDay()->format('Y-m-d')
         : now()->format('Y-m-d');
+
+    // Overridable so a second trigger for the same subscription (e.g. the
+    // Terminal's subscription-order-choice-modal) can open its own instance
+    // without colliding with another renew-cycle-modal already listening
+    // for the default event name elsewhere on the same page.
+    $panelName = $name ?? "renew-cycle-{$subscription->id}";
 @endphp
 
 <div
@@ -27,8 +33,8 @@
             }
         },
     }"
-    x-on:open-panel.window="$event.detail === 'renew-cycle-{{ $subscription->id }}' && (open = true)"
-    x-on:close-panel.window="$event.detail === 'renew-cycle-{{ $subscription->id }}' && (open = false)"
+    x-on:open-panel.window="$event.detail === '{{ $panelName }}' && (open = true)"
+    x-on:close-panel.window="$event.detail === '{{ $panelName }}' && (open = false)"
     x-on:keydown.escape.window="open = false"
 >
     <div
@@ -51,6 +57,9 @@
             <form method="POST" action="{{ route('subscriptions.renew', $subscription) }}" class="space-y-4">
                 @csrf
                 <input type="hidden" name="renew_subscription_id" value="{{ $subscription->id }}">
+                @if ($redirectToTerminal)
+                    <input type="hidden" name="redirect_customer_id" value="{{ $subscription->customer_id }}">
+                @endif
 
                 <div>
                     <x-input-label for="renew_package_{{ $subscription->id }}" value="Package" />

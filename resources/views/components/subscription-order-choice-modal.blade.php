@@ -14,7 +14,8 @@
             </div>
             <p class="text-sm text-ink-muted mb-4">
                 @if ($cycleState === 'exhausted')
-                    This customer's current subscription cycle is finished. Renew it, or record a separate walk-in order.
+                    This customer's current subscription cycle is finished.
+                    @if (Auth::user()->can('subscriptions.manage')) Renew it, or record a separate walk-in order. @else A walk-in order can still be recorded separately. @endif
                 @else
                     This customer has a subscription cycle running. How should this order be recorded?
                 @endif
@@ -38,15 +39,14 @@
                             </span>
                         </a>
                     @endif
-                @else
-                    <button type="button" @click="open = false; $dispatch('open-panel', 'renew-cycle-{{ $subscription->id }}')" class="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-line-strong text-sm font-medium text-ink hover:border-accent hover:bg-accent-soft transition-colors w-full text-left">
+                @elseif (Auth::user()->can('subscriptions.manage'))
+                    <button type="button" @click="open = false; $dispatch('open-panel', 'renew-cycle-choice-{{ $subscription->id }}')" class="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-line-strong text-sm font-medium text-ink hover:border-accent hover:bg-accent-soft transition-colors w-full text-left">
                         <span class="w-8 h-8 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="repeat" class="w-4 h-4" /></span>
                         <span class="flex-1">
                             <span class="block">Renew</span>
                             <span class="block text-xs text-ink-faint font-normal">Start a new cycle on their plan</span>
                         </span>
                     </button>
-                    <x-renew-cycle-modal :subscription="$subscription" :packages="$packages" />
                 @endif
 
                 @if ($live)
@@ -70,3 +70,16 @@
         </div>
     </div>
 </div>
+
+@if ($cycleState === 'exhausted' && $subscription && Auth::user()->can('subscriptions.manage'))
+    {{-- Deliberately a sibling of (not nested inside) the choice modal above --
+         nested inside it, the Renew button's "open = false" (closing the
+         choice modal) would apply display:none to that whole subtree and hide
+         this modal's markup right along with it, even though its own local
+         `open` had just flipped true from the same click. A distinct panel
+         name -- not the default "renew-cycle-{id}" -- avoids colliding with
+         another renew-cycle-modal instance already on the same page (the
+         customer profile's Current Cycle card renders its own for the same
+         subscription). --}}
+    <x-renew-cycle-modal :subscription="$subscription" :packages="$packages" name="renew-cycle-choice-{{ $subscription->id }}" :redirect-to-terminal="$live" />
+@endif

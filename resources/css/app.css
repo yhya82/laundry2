@@ -87,3 +87,292 @@ input[type='number']::-webkit-outer-spin-button {
         animation: none;
     }
 }
+
+/* ============================================================
+   WASHING MACHINE GRAPHIC -- used by <x-machine-illustration> on
+   the Machines catalog page (card grid + detail panel). All
+   internal sizes are in `em`, driven by --wm-size on .wm, so the
+   whole unit scales from a single value. Rendered as a plain,
+   non-interactive div (see resources/js/washing-machine.js) --
+   this app supplies its own click target and its own detail panel
+   around it, so there's no built-in click/popover behavior here.
+   ============================================================ */
+.wm {
+    --wm-size: 320px;
+    --enamel-1: #FAFBFC;
+    --enamel-2: #E4E9ED;
+    --enamel-3: #C6CED5;
+    --enamel-4: #A7B1BA;
+    --chrome-hi: #F6F9FB;
+    --chrome-mid: #9BA6B0;
+    --chrome-lo: #39424B;
+    --cavity: #12171C;
+    --water: #4FA3C4;
+    --display-bg: #0C1216;
+    --display-ink: #9FF0E3;
+    --lock: #F2A33C;
+    --ok: #63D6A8;
+    --accent: #3FB6D8;
+
+    font-size: calc(var(--wm-size) / 100);
+    position: relative;
+    width: 100em;
+    height: 146em;
+    display: block;
+    color: var(--chrome-lo);
+}
+
+.wm__floor {
+    position: absolute; left: 50%; bottom: -2em; translate: -50% 0;
+    width: 96em; height: 12em; border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 50%, rgba(6, 10, 14, .55), rgba(6, 10, 14, 0) 70%);
+    filter: blur(.6em);
+}
+
+.wm__body {
+    --body-shadow:
+        0 2em 4em -1em rgba(8, 12, 16, .55),
+        inset 0 .5em .6em -.3em rgba(255, 255, 255, .95),
+        inset 0 -1.4em 2em -1em rgba(30, 40, 50, .30),
+        inset 1.6em 0 2.4em -1.6em rgba(255, 255, 255, .85),
+        inset -2em 0 3em -1.8em rgba(30, 40, 50, .45);
+    position: absolute; inset: 0 0 4em 0;
+    border-radius: 3.5em;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .9) 0 1.5em, rgba(255, 255, 255, 0) 6em),
+        linear-gradient(95deg,
+            var(--enamel-3) 0%, var(--enamel-1) 7%, var(--enamel-1) 42%,
+            var(--enamel-2) 72%, var(--enamel-3) 90%, var(--enamel-4) 100%);
+    box-shadow: var(--body-shadow);
+    overflow: hidden;
+}
+.wm__body::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.5'/></svg>");
+    opacity: .07; mix-blend-mode: overlay;
+}
+.wm__lid {
+    position: absolute; left: 0; right: 0; top: 2.6em; height: .5em;
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0), rgba(60, 72, 84, .30) 12%, rgba(60, 72, 84, .30) 88%, rgba(0, 0, 0, 0));
+    box-shadow: 0 .12em 0 rgba(255, 255, 255, .9);
+}
+
+.wm__drawer {
+    position: absolute; left: 6em; top: 9em; width: 38em; height: 14em;
+    border-radius: 1.6em;
+    background: linear-gradient(180deg, var(--enamel-1), var(--enamel-2) 60%, var(--enamel-3));
+    box-shadow:
+        inset 0 .3em .4em rgba(255, 255, 255, .95),
+        inset 0 -.5em .7em rgba(70, 82, 94, .28),
+        0 .5em 1em -.4em rgba(20, 28, 36, .30);
+}
+.wm__drawer::before {
+    content: ""; position: absolute; left: 50%; translate: -50% 0; bottom: 3.4em;
+    width: 22em; height: 1.6em; border-radius: 1em;
+    background: linear-gradient(180deg, rgba(50, 62, 74, .45), rgba(50, 62, 74, .12));
+    box-shadow: 0 .2em 0 rgba(255, 255, 255, .85);
+}
+.wm__drawer::after {
+    content: ""; position: absolute; left: 50%; translate: -50% 0; top: 3.2em;
+    width: 24em; height: .35em; border-radius: .2em;
+    background: repeating-linear-gradient(90deg, rgba(96, 108, 120, .5) 0 4.4em, transparent 4.4em 8em);
+}
+
+.wm__panel {
+    position: absolute; right: 6em; top: 9em; width: 44em; height: 14em;
+    border-radius: 1.6em;
+    background: linear-gradient(170deg, #39434D, #222A32 55%, #171D23);
+    box-shadow:
+        inset 0 .35em .5em rgba(255, 255, 255, .16),
+        inset 0 -.4em .8em rgba(0, 0, 0, .55),
+        0 .5em 1.1em -.4em rgba(16, 22, 28, .55);
+    display: flex; align-items: center; gap: 1.6em; padding: 0 2em;
+}
+.wm__dial {
+    position: relative; width: 9.6em; height: 9.6em; border-radius: 50%; flex: none;
+    background:
+        radial-gradient(circle at 34% 28%, #FDFEFE, #C3CCD4 42%, #79848E 74%, #4A545E 100%);
+    box-shadow:
+        inset 0 -.5em .8em rgba(0, 0, 0, .45),
+        inset 0 .5em .6em rgba(255, 255, 255, .8),
+        0 .5em .9em -.2em rgba(0, 0, 0, .6);
+    rotate: var(--dial, -38deg);
+    transition: rotate .5s cubic-bezier(.34, 1.4, .5, 1);
+}
+.wm__dial::before {
+    content: ""; position: absolute; left: 50%; top: 1.1em; translate: -50% 0;
+    width: .7em; height: 3.1em; border-radius: .35em;
+    background: linear-gradient(180deg, #2A333B, #59646E);
+}
+.wm__dial::after {
+    content: ""; position: absolute; inset: 2.4em; border-radius: 50%;
+    background: radial-gradient(circle at 38% 30%, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0) 60%);
+}
+.wm__display {
+    flex: 1; height: 8.4em; border-radius: 1em;
+    background: linear-gradient(180deg, #060A0D, var(--display-bg));
+    box-shadow: inset 0 .3em .6em rgba(0, 0, 0, .9), inset 0 -.15em 0 rgba(255, 255, 255, .08);
+    display: flex; flex-direction: column; justify-content: center; gap: .4em;
+    padding: 0 1.4em; overflow: hidden;
+}
+.wm__time {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 4.6em; line-height: 1; font-weight: 600; letter-spacing: .02em;
+    color: var(--display-ink);
+    text-shadow: 0 0 .28em rgba(159, 240, 227, .75), 0 0 .9em rgba(78, 214, 196, .35);
+}
+.wm__program {
+    font-size: 2.5em; line-height: 1; font-weight: 500; letter-spacing: .01em;
+    color: rgba(159, 240, 227, .62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.wm[data-state="off"] .wm__time,
+.wm[data-state="off"] .wm__program { opacity: 0; }
+.wm__keys { display: flex; flex-direction: column; gap: 1.1em; flex: none; }
+.wm__key {
+    width: 4.4em; height: 2.9em; border-radius: .7em;
+    background: linear-gradient(180deg, #5C6772, #333C45);
+    box-shadow: inset 0 .25em .3em rgba(255, 255, 255, .3), 0 .3em .5em rgba(0, 0, 0, .5);
+    position: relative;
+}
+.wm__key i {
+    position: absolute; right: .55em; top: 50%; translate: 0 -50%;
+    width: .85em; height: .85em; border-radius: 50%; background: #1C2228;
+}
+.wm[data-state="off"] .wm__key i { background: #1C2228; }
+.wm:not([data-state="off"]) .wm__key:first-child i {
+    background: var(--ok); box-shadow: 0 0 .8em var(--ok);
+}
+.wm[data-running] .wm__key:last-child i {
+    background: var(--lock); box-shadow: 0 0 .8em var(--lock);
+}
+
+.wm__door {
+    position: absolute; left: 50%; top: 34em; translate: -50% 0;
+    width: 70em; height: 70em; border-radius: 50%;
+    filter: drop-shadow(0 1.2em 1.6em rgba(18, 26, 34, .42));
+}
+.door__arc {
+    position: absolute; inset: -1.4em; border-radius: 50%;
+    background: conic-gradient(from -90deg,
+        var(--accent) calc(var(--p, 0) * 1%), rgba(150, 163, 175, .22) 0);
+    -webkit-mask: radial-gradient(circle, transparent 0 34.2em, #000 34.2em 35.6em, transparent 35.6em);
+    mask: radial-gradient(circle, transparent 0 34.2em, #000 34.2em 35.6em, transparent 35.6em);
+    transition: background .6s linear;
+    opacity: 0;
+}
+.wm[data-running] .door__arc { opacity: 1; }
+.door__ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 205deg,
+        #FBFDFE, #A9B4BE 8%, #F2F6F9 18%, #737E88 30%, #E8EEF3 44%,
+        #59636D 58%, #DDE5EB 70%, #8E99A3 82%, #F7FAFC 92%, #FBFDFE);
+    box-shadow:
+        inset 0 0 0 .35em rgba(255, 255, 255, .55),
+        0 .6em 1.4em -.4em rgba(12, 18, 24, .6);
+}
+.door__gasket {
+    position: absolute; inset: 5.2em; border-radius: 50%;
+    background: radial-gradient(circle at 42% 32%, #454F58, #1B2126 62%, #0E1317);
+    box-shadow: inset 0 .6em 1.2em rgba(0, 0, 0, .85), inset 0 -.4em .8em rgba(255, 255, 255, .10);
+}
+.door__glass {
+    position: absolute; inset: 8.4em; border-radius: 50%;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 46%, #223038 0%, #0F161B 68%, var(--cavity) 100%);
+    box-shadow:
+        inset 0 0 3em 1.2em rgba(0, 0, 0, .75),
+        inset 0 0 0 .5em rgba(255, 255, 255, .06);
+}
+.drum { position: absolute; inset: 0; transform-origin: 50% 50%; animation: none; }
+.drum svg { width: 100%; height: 100%; display: block; }
+.load { position: absolute; inset: 0; transform-origin: 50% 50%; opacity: 0; transition: opacity .5s; }
+.wm:not([data-state="off"]):not([data-state="idle"]) .load { opacity: 1; }
+.load span {
+    position: absolute; border-radius: 45% 55% 52% 48%;
+    filter: blur(.15em);
+    box-shadow: inset 0 -.6em 1em rgba(0, 0, 0, .35);
+}
+.water {
+    position: absolute; left: -20%; right: -20%; bottom: 0;
+    height: var(--level, 0%);
+    background: linear-gradient(180deg, rgba(110, 200, 228, .55), rgba(28, 110, 140, .85));
+    transition: height 1.4s ease;
+    box-shadow: inset 0 .6em 1.4em rgba(255, 255, 255, .28);
+}
+.water i {
+    position: absolute; left: 50%; top: -14em; width: 60em; height: 28em;
+    translate: -50% 0; border-radius: 44%;
+    background: rgba(122, 206, 231, .5);
+    animation: wm-wave 5.5s linear infinite;
+}
+.water i:last-child {
+    background: rgba(70, 166, 199, .45);
+    animation-duration: 8s; animation-direction: reverse; top: -12em;
+}
+@keyframes wm-wave { to { rotate: 360deg; } }
+.suds { position: absolute; inset: 0; opacity: 0; transition: opacity .8s; }
+.suds b {
+    position: absolute; border-radius: 50%;
+    background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, .95), rgba(214, 238, 246, .35) 60%, rgba(180, 220, 234, .12));
+    animation: wm-bubble linear infinite;
+}
+@keyframes wm-bubble {
+    0% { transform: translateY(0) scale(.6); opacity: 0; }
+    15% { opacity: .9; }
+    100% { transform: translateY(-26em) scale(1.15); opacity: 0; }
+}
+.wm[data-state="washing"] .suds { opacity: 1; }
+.door__glass::after {
+    content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+    background:
+        radial-gradient(ellipse 42% 26% at 30% 16%, rgba(255, 255, 255, .42), rgba(255, 255, 255, 0) 70%),
+        radial-gradient(ellipse 18% 10% at 74% 78%, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 70%),
+        linear-gradient(155deg, rgba(255, 255, 255, .14) 0 18%, rgba(255, 255, 255, 0) 42%);
+}
+.door__handle {
+    position: absolute; left: -2.2em; top: 50%; translate: 0 -50%;
+    width: 5em; height: 17em; border-radius: 2.4em;
+    background: linear-gradient(90deg, #EFF3F6, #B9C3CB 45%, #7D8892);
+    box-shadow: inset 0 .3em .5em rgba(255, 255, 255, .9), 0 .5em .9em -.3em rgba(12, 18, 24, .6);
+}
+
+.wm__brand {
+    position: absolute; left: 50%; bottom: 5.4em; translate: -50% 0;
+    font-size: 3em; font-weight: 600; letter-spacing: .22em;
+    color: rgba(88, 100, 112, .55);
+    text-shadow: 0 .04em 0 rgba(255, 255, 255, .9);
+}
+.wm__foot {
+    position: absolute; bottom: 0; width: 14em; height: 4.4em; border-radius: 0 0 1.4em 1.4em;
+    background: linear-gradient(180deg, #8A949E, #4C555E);
+}
+.wm__foot--l { left: 6em; }
+.wm__foot--r { right: 6em; }
+
+.wm[data-state="washing"] .drum,
+.wm[data-state="washing"] .load { animation: wm-tumble 4.6s ease-in-out infinite; }
+.wm[data-state="rinsing"] .drum,
+.wm[data-state="rinsing"] .load { animation: wm-tumble 3.2s ease-in-out infinite; }
+.wm[data-state="spinning"] .drum,
+.wm[data-state="spinning"] .load { animation: wm-spin .42s linear infinite; }
+.wm[data-state="filling"] .drum,
+.wm[data-state="filling"] .load { animation: wm-spin 9s linear infinite; }
+@keyframes wm-tumble {
+    0% { rotate: 0deg; } 34% { rotate: 230deg; } 50% { rotate: 230deg; }
+    84% { rotate: 10deg; } 100% { rotate: 0deg; }
+}
+@keyframes wm-spin { to { rotate: 360deg; } }
+.wm[data-state="spinning"] .wm__body { animation: wm-shake .09s linear infinite; }
+@keyframes wm-shake {
+    0% { translate: 0 0; } 25% { translate: .14em -.1em; } 50% { translate: -.1em .12em; }
+    75% { translate: .1em .1em; } 100% { translate: 0 0; }
+}
+.wm[data-state="done"] .wm__time { animation: wm-blink 1.4s steps(1) infinite; }
+@keyframes wm-blink { 50% { opacity: .25; } }
+
+@media (prefers-reduced-motion: reduce) {
+    .wm * {
+        animation: none !important;
+        transition-duration: .01ms !important;
+    }
+}

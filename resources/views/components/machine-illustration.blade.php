@@ -1,38 +1,64 @@
-@props(['status' => 'idle'])
+@props(['status' => 'idle', 'name' => null, 'size' => 100])
 
 @php
-    // Card/panel artwork only -- distinct from the small flat <x-nav-icon
-    // name="washer"> used in the sidebar and order-stage badges. Color comes
-    // entirely from the wrapping text-* class (set below per status) so it
-    // stays theme-aware in light/dark without per-instance gradient ids.
-    $toneClass = match ($status) {
-        'washing' => 'text-accent-ink',
-        'retired' => 'text-ink-faint',
-        default => 'text-ink-muted',
+    // idle/washing map straight onto the widget's own states; retired reads
+    // best as "off" (display blank, dial parked) -- see resources/js/washing-machine.js
+    // for the full state table this app doesn't otherwise use (filling,
+    // rinsing, spinning, done, error have no equivalent in this app's domain
+    // model, which only ever knows active/retired and busy/idle).
+    $dataState = match ($status) {
+        'washing' => 'washing',
+        'retired' => 'off',
+        default => 'idle',
     };
+    // No real "% through the cycle" concept for a card thumbnail -- a fixed
+    // mid-way value just keeps the progress arc/suds looking alive rather
+    // than implying false precision.
+    $progress = $status === 'washing' ? 50 : 0;
+    $uid = 'wm-'.Str::random(8);
 @endphp
 
-<svg {{ $attributes->merge(['class' => "w-full h-full $toneClass"]) }} viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <!-- isometric body -->
-    <path d="M10 20L32 8l22 12v28L32 60 10 48V20z" fill="currentColor" fill-opacity="0.08" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-    <!-- top face -->
-    <path d="M10 20L32 8l22 12-22 12-22-12z" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-    <!-- right shaded face -->
-    <path d="M32 32l22-12v28L32 60V32z" fill="currentColor" fill-opacity="0.05" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+<div
+    class="wm"
+    id="{{ $uid }}"
+    role="img"
+    style="--wm-size: {{ $size }}px"
+    x-data
+    x-init="window.WashingMachine.mount($el, { state: @js($dataState), id: @js($name), progress: @js($progress) })"
+>
+    <span class="wm__floor"></span>
 
-    <!-- control dots on the top face -->
-    <circle cx="22" cy="17" r="1.4" fill="currentColor"/>
-    <circle cx="27" cy="14.5" r="1.4" fill="currentColor"/>
+    <span class="wm__body">
+        <span class="wm__lid"></span>
+        <span class="wm__drawer"></span>
 
-    <!-- drum / porthole on the front-left face -->
-    <circle cx="21" cy="40" r="9" fill="currentColor" fill-opacity="0.06" stroke="currentColor" stroke-width="1.6"/>
-    <circle cx="21" cy="40" r="5.2" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <span class="wm__panel">
+            <span class="wm__dial"></span>
+            <span class="wm__display">
+                <span class="wm__time">--:--</span>
+                <span class="wm__program">Ready</span>
+            </span>
+            <span class="wm__keys">
+                <span class="wm__key"><i></i></span>
+                <span class="wm__key"><i></i></span>
+            </span>
+        </span>
 
-    @if ($status === 'washing')
-        <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
-            <path d="M18 38.5c0-1.8 1.4-3 3-3s3 1.4 3 3-1.2 3.2-3 3.2">
-                <animateTransform attributeName="transform" type="rotate" from="0 21 40" to="360 21 40" dur="2.2s" repeatCount="indefinite"/>
-            </path>
-        </g>
-    @endif
-</svg>
+        <span class="wm__door">
+            <span class="door__arc"></span>
+            <span class="door__ring"></span>
+            <span class="door__handle"></span>
+            <span class="door__gasket"></span>
+            <span class="door__glass">
+                <span class="drum"></span>
+                <span class="load"></span>
+                <span class="water"><i></i><i></i></span>
+                <span class="suds"></span>
+            </span>
+        </span>
+
+        <span class="wm__brand"></span>
+        <span class="wm__foot wm__foot--l"></span>
+        <span class="wm__foot wm__foot--r"></span>
+    </span>
+</div>

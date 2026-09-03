@@ -23,6 +23,19 @@
             'received' => 'Received', 'sorting' => 'Start Sorting', 'washing' => 'Start Washing',
             'drying' => 'Start Drying', 'ironing' => 'Start Ironing', 'packaging' => 'Start Packaging', 'completed' => 'Completed',
         ];
+        // Timeline-only variants -- the sidebar's big "Advance" button and the
+        // timeline's own advance buttons always talk about the *next* stage
+        // (so $stageLabels above, the "before" form, is always correct for
+        // those); only the per-stage caption under each timeline circle needs
+        // to change once that stage is the current one or already passed.
+        $stageCurrentLabels = [
+            'received' => 'Received', 'sorting' => 'Sorting', 'washing' => 'Washing',
+            'drying' => 'Drying', 'ironing' => 'Ironing', 'packaging' => 'Packaging', 'completed' => 'Completed',
+        ];
+        $stagePastLabels = [
+            'received' => 'Received', 'sorting' => 'Sorted', 'washing' => 'Washed',
+            'drying' => 'Dried', 'ironing' => 'Ironed', 'packaging' => 'Packaged', 'completed' => 'Completed',
+        ];
         $stages = [...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'completed'];
 
         $stageTimestamps = ['received' => $order->created_at];
@@ -117,6 +130,14 @@
             currentIndex: @js($lastReachedIndex),
             isActive: @js($isActiveOrder),
             timestamps: @js(collect($stageTimestamps)->map(fn ($t) => $t->format('M d, g:i A'))),
+            futureLabels: @js($stageLabels),
+            currentLabels: @js($stageCurrentLabels),
+            pastLabels: @js($stagePastLabels),
+            labelFor(i, stage) {
+                if (i < this.currentIndex || (i === this.currentIndex && !this.isActive)) return this.pastLabels[stage];
+                if (i === this.currentIndex && this.isActive) return this.currentLabels[stage];
+                return this.futureLabels[stage];
+            },
             init() {
                 window.Echo.channel('orders').listen('.order.status-changed', (e) => {
                     if (e.orderId !== {{ $order->id }}) return;
@@ -133,6 +154,11 @@
             @foreach ($stages as $i => $stage)
                 @php
                     $canAdvance = $i === $lastReachedIndex + 1 && $isActiveOrder && auth()->user()?->can('orders.manage');
+                    $initialStageLabel = match (true) {
+                        $i < $lastReachedIndex || ($i === $lastReachedIndex && ! $isActiveOrder) => $stagePastLabels[$stage],
+                        $i === $lastReachedIndex && $isActiveOrder => $stageCurrentLabels[$stage],
+                        default => $stageLabels[$stage],
+                    };
                 @endphp
                 <div class="flex items-center {{ $loop->last ? '' : 'flex-1' }}">
                     <div class="flex flex-col items-center text-center w-24 flex-none">
@@ -179,9 +205,8 @@
                         <div
                             class="text-xs font-semibold mt-2.5 transition-colors duration-500 ease-out motion-reduce:transition-none"
                             :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'text-ink' : (({{ $i }} === currentIndex && isActive) ? 'text-accent-ink' : 'text-ink-faint')"
-                        >
-                            {{ $stageLabels[$stage] }}
-                        </div>
+                            x-text="labelFor({{ $i }}, '{{ $stage }}')"
+                        >{{ $initialStageLabel }}</div>
 
                         <div
                             class="text-[11px] text-ink-faint font-mono mt-1"

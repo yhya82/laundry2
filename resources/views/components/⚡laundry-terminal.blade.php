@@ -13,7 +13,6 @@ use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\SubscriptionCycle;
 use App\Models\SubscriptionPackage;
-use App\Support\CollectionScheduler;
 use App\Support\Numbering;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -42,14 +41,6 @@ new class extends Component
     public string $newCustomerPhone = '';
 
     public string $newCustomerType = 'walk_in';
-
-    /**
-     * Only meaningful while newCustomerType is 'subscription' -- carried
-     * through to addSubscriptionPackage() once staff actually pick a plan
-     * for this customer, since a subscription can't be created from this
-     * modal alone (it only creates the Customer row).
-     */
-    public bool $newCustomerNonScheduled = false;
 
     /**
      * @var list<array{laundry_package_id: int, name: string, price: float, quantity: int, clothes: list<array{clothing_item_id: int, name: string, quantity: int}>}>
@@ -166,7 +157,7 @@ new class extends Component
             }
         } elseif ($customerId !== null && Customer::whereKey($customerId)->exists()) {
             $this->customerId = $customerId;
-            $this->maybeEnterExistingSubscription();
+            $this->resolveSubscriptionFromQueryString();
         }
     }
 
@@ -320,29 +311,71 @@ new class extends Component
         return $this->customerId ? Customer::find($this->customerId) : null;
     }
 
-    /**
-     * Before subscription mode is entered, a subscription-type customer picks
-     * from Subscription Packages (starting/reusing their actual subscription);
-     * everyone else picks from Laundry Packages, exactly as today. forceWalkIn
-     * opts a subscription-type customer out of that entirely, for a one-off
-     * order that shouldn't touch their plan. Once subscription mode is
-     * entered there's no package picking left to show at all (see
-     * $subscriptionClothes), so this only ever renders pre-entry.
-     */
     #[Computed]
     public function packages()
     {
-        if (! $this->isSubscriptionMode && ! $this->forceWalkIn && $this->selectedCustomer?->customer_type === 'subscription') {
-            return SubscriptionPackage::where('is_active', true)->orderBy('name')->get();
-        }
-
         return LaundryPackage::where('is_active', true)->orderBy('name')->get();
     }
 
+    /**
+     * Feeds the New Subscription / Renew modals -- never touched by the
+     * plain walk-in package picker above.
+     */
     #[Computed]
-    public function choosingSubscriptionPackage(): bool
+    public function subscriptionPackages()
+    {
+        return SubscriptionPackage::where('is_active', true)->orderBy('name')->get();
+    }
+
+    /**
+     * A subscription-type customer whose subscription state hasn't been
+     * resolved yet (no decision made: not walk-in, not already recording a
+     * collection) needs one of the subscription modals shown instead of the
+     * plain package picker -- see subscriptionOrderState().
+     */
+    #[Computed]
+    public function needsSubscriptionDecision(): bool
     {
         return ! $this->isSubscriptionMode && ! $this->forceWalkIn && $this->selectedCustomer?->customer_type === 'subscription';
+    }
+
+    /**
+     * Same 4-way classification as CustomerController::show()'s
+     * $subscriptionOrderState -- which modal (if any) the Terminal should
+     * show for the selected customer. Only meaningful when
+     * needsSubscriptionDecision is true.
+     */
+    #[Computed]
+    public function subscriptionOrderState(): string
+    {
+        $active = Subscription::where('customer_id', $this->selectedCustomer->id)
+            ->where('status', 'active')
+            ->with(['cycles' => fn ($q) => $q->latest('starts_on')->limit(1)])
+            ->get();
+
+        return match (true) {
+            $active->count() > 1 => 'multiple',
+            $active->count() === 1 && $active->first()->cycles->isNotEmpty() && $active->first()->cycles->first()->isExhausted() => 'exhausted',
+            $active->count() === 1 => 'open',
+            default => 'none',
+        };
+    }
+
+    /**
+     * The single active subscription behind an 'open'/'exhausted'
+     * subscriptionOrderState() -- null for 'none'/'multiple', where there's
+     * no single subscription to hand the choice modal.
+     */
+    #[Computed]
+    public function activeSubscriptionForDecision(): ?Subscription
+    {
+        if (! in_array($this->subscriptionOrderState, ['open', 'exhausted'], true)) {
+            return null;
+        }
+
+        return Subscription::where('customer_id', $this->selectedCustomer->id)
+            ->where('status', 'active')
+            ->first();
     }
 
     #[Computed]
@@ -444,31 +477,24 @@ new class extends Component
 
     public function selectCustomer(int $id): void
     {
-        // Reads collectionId directly rather than the memoized isSubscriptionMode
-        // computed -- same reason as addPackage() below: maybeEnterExistingSubscription()
-        // is exactly what sets collectionId, so reading the computed first would
-        // cache a stale "not in subscription mode yet" for the render that follows.
         if ($this->collectionId !== null) {
             return;
         }
 
         $this->customerId = $id;
         $this->customerSearch = '';
-        $this->newCustomerNonScheduled = false;
-
-        $this->maybeEnterExistingSubscription();
     }
 
     /**
-     * Skips the Plan picker entirely when this customer already has exactly
-     * one active subscription with an open collection -- picking the same
-     * plan again there would just reuse it anyway (see addSubscriptionPackage()),
-     * so there's nothing for staff to actually decide. Multiple active
-     * subscriptions is left alone rather than guessing which one they mean.
-     * forceWalkIn skips this entirely -- staff explicitly chose Walk-in
-     * Order over Use Subscription, so nothing should auto-enter for them.
+     * Only for the mount()-time query-string entry point (?customer= links
+     * from the customer profile's own Use Subscription / Walk-in choice) --
+     * that decision was already made before navigating here, so it's safe to
+     * auto-resolve straight into subscription mode without asking again.
+     * Selecting/creating a customer from inside the Terminal itself never
+     * calls this -- see needsSubscriptionDecision()/subscriptionOrderState(),
+     * which show the same choice modal instead of guessing.
      */
-    protected function maybeEnterExistingSubscription(): void
+    protected function resolveSubscriptionFromQueryString(): void
     {
         if ($this->forceWalkIn) {
             return;
@@ -494,6 +520,32 @@ new class extends Component
     }
 
     /**
+     * Backs the subscription-order-choice-modal's "Use Subscription" button
+     * -- the in-place equivalent of resolveSubscriptionFromQueryString(),
+     * triggered explicitly now instead of guessed automatically.
+     */
+    public function useExistingSubscription(): void
+    {
+        if ($this->selectedCustomer?->customer_type !== 'subscription') {
+            return;
+        }
+
+        $subscription = Subscription::where('customer_id', $this->selectedCustomer->id)
+            ->where('status', 'active')
+            ->first();
+
+        if (! $subscription) {
+            return;
+        }
+
+        $collection = $subscription->collections()->where('status', 'scheduled')->orderBy('scheduled_date')->first();
+
+        if ($collection) {
+            $this->collectionId = $collection->id;
+        }
+    }
+
+    /**
      * Also available (and fully functional, not just visible) mid-subscription
      * -- picking the wrong customer/plan shouldn't strand the cashier, so this
      * unwinds the whole in-progress collection: cart, active line, and the
@@ -511,7 +563,6 @@ new class extends Component
         $this->subscriptionClothes = [];
         $this->activePackageLineIndex = null;
         $this->selectedPackageId = '';
-        $this->newCustomerNonScheduled = false;
         $this->customAmount = null;
         $this->paymentTiming = 'pay_now';
     }
@@ -551,12 +602,11 @@ new class extends Component
      * conditional on an order.
      *
      * Subscription-type customers are the one exception and still create
-     * eagerly: picking a plan (addSubscriptionPackage()) creates a real
-     * Subscription -- and schedules its first cycle/collection -- the
-     * moment a package is chosen, well before any order/collection
-     * submission exists to defer into. Deferring that too would mean
-     * deferring subscription creation itself, a much larger change than
-     * asked for here.
+     * eagerly -- a subscription can't be staged the way a walk-in customer
+     * can, since needsSubscriptionDecision()/subscriptionOrderState() need a
+     * real customer_id to look up. This customer having zero subscriptions
+     * yet is exactly what makes the New Subscription modal show immediately
+     * after -- no Subscription row is created here, only the Customer.
      */
     public function createCustomer(): void
     {
@@ -593,18 +643,6 @@ new class extends Component
     public function addPackage(): void
     {
         if ($this->selectedPackageId === '') {
-            return;
-        }
-
-        // Deliberately reads collectionId directly rather than the memoized
-        // choosingSubscriptionPackage/isSubscriptionMode computeds -- Livewire
-        // caches a computed's result for the rest of the request the moment
-        // it's first read, and addSubscriptionPackage() below is exactly what
-        // changes collectionId, so touching those computeds first would lock
-        // in a stale "not in subscription mode yet" for the render that follows.
-        if (! $this->forceWalkIn && $this->collectionId === null && $this->selectedCustomer?->customer_type === 'subscription') {
-            $this->addSubscriptionPackage();
-
             return;
         }
 
@@ -656,73 +694,6 @@ new class extends Component
         $this->activePackageLineIndex = null;
     }
 
-    /**
-     * Reverses the earlier "subscriptions only ever start from their own
-     * dedicated flow" rule for the Terminal specifically: picking a plan
-     * here starts (or reuses) a real Subscription and its first Collection,
-     * then drops straight into the exact same collection-locked mode the
-     * Collections-page "Collect" action already uses -- nothing downstream
-     * (pricing, allowance, extra charge, submit) needed to change.
-     */
-    protected function addSubscriptionPackage(): void
-    {
-        if (! $this->selectedCustomer) {
-            return;
-        }
-
-        $package = SubscriptionPackage::find($this->selectedPackageId);
-
-        if (! $package) {
-            return;
-        }
-
-        $subscription = Subscription::where('customer_id', $this->selectedCustomer->id)
-            ->where('subscription_package_id', $package->id)
-            ->where('status', 'active')
-            ->first();
-
-        if (! $subscription) {
-            $maxPackages = (int) Setting::get('subscription.max_active_packages_per_customer', '1');
-            $activeCount = Subscription::where('customer_id', $this->selectedCustomer->id)->where('status', 'active')->count();
-
-            if ($maxPackages > 0 && $activeCount >= $maxPackages) {
-                $this->addError('cart', "This customer already has the maximum of {$maxPackages} active package(s).");
-
-                return;
-            }
-
-            $subscription = Subscription::create([
-                'customer_id' => $this->selectedCustomer->id,
-                'subscription_package_id' => $package->id,
-                'status' => 'active',
-                'start_date' => now()->toDateString(),
-                // This quick-start path has no form to override the collection
-                // count/max clothes on, so those just take the package's own
-                // defaults -- staff wanting those customized should use the
-                // dedicated New Subscription form instead. Collection type is
-                // the one exception: it's captured on the New Customer modal
-                // (newCustomerNonScheduled), since it can't be changed later.
-                'collections_per_month' => $package->collections_per_month,
-                'collection_type' => $this->newCustomerNonScheduled ? 'non_scheduled' : 'scheduled',
-                'max_clothes_per_cycle' => $package->max_clothes_per_cycle,
-            ]);
-
-            $this->newCustomerNonScheduled = false;
-
-            CollectionScheduler::scheduleFirstCycle($subscription);
-        }
-
-        $collection = $subscription->collections()->where('status', 'scheduled')->orderBy('scheduled_date')->first();
-
-        if (! $collection) {
-            $this->addError('cart', 'This subscription has no scheduled collection to record against.');
-
-            return;
-        }
-
-        $this->collectionId = $collection->id;
-        $this->selectedPackageId = '';
-    }
 
     public function incrementPackage(int $index): void
     {
@@ -1336,11 +1307,7 @@ new class extends Component
                     </div>
 
                     @if ($newCustomerType === 'subscription')
-                        <label class="flex items-center gap-2 text-sm text-ink">
-                            <input type="checkbox" wire:model="newCustomerNonScheduled" class="rounded border-line-strong text-accent focus:ring-accent">
-                            Non-scheduled collections
-                        </label>
-                        <p class="text-xs text-ink-faint -mt-2">Customer can come in any day, instead of fixed pickup dates. Leave unchecked for Scheduled.</p>
+                        <p class="text-xs text-ink-faint">Scheduled vs. non-scheduled collections is set on the New Subscription form, right after this customer is created.</p>
                     @endif
 
                     <button type="button" wire:click="createCustomer" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90 transition-opacity">Add &amp; select</button>
@@ -1393,6 +1360,20 @@ new class extends Component
                                 Change
                             </button>
                         </div>
+
+                        @if ($this->needsSubscriptionDecision)
+                            @if ($this->subscriptionOrderState === 'none')
+                                <x-new-subscription-modal :customer="$this->selectedCustomer" :packages="$this->subscriptionPackages" :redirect-to-terminal="true" :open="true" />
+                            @elseif ($this->subscriptionOrderState === 'open' || $this->subscriptionOrderState === 'exhausted')
+                                <x-subscription-order-choice-modal
+                                    :customer="$this->selectedCustomer"
+                                    :cycle-state="$this->subscriptionOrderState"
+                                    :subscription="$this->activeSubscriptionForDecision"
+                                    :packages="$this->subscriptionPackages"
+                                    :live="true"
+                                />
+                            @endif
+                        @endif
                     @elseif (! $this->isSubscriptionMode)
                         <div class="flex items-start gap-3">
                             <div class="flex-1 relative">
@@ -1619,29 +1600,24 @@ new class extends Component
             @endif
 
             @unless ($this->isSubscriptionMode)
-                @if ($this->selectedCustomer)
+                @if ($this->selectedCustomer && ! $this->needsSubscriptionDecision)
                     <div>
-                        <label class="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5 block">{{ $this->choosingSubscriptionPackage ? 'Plan' : 'Package' }}</label>
+                        <label class="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5 block">Package</label>
                         <div class="flex gap-2">
                             <select wire:model="selectedPackageId" class="flex-1 min-w-0 bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent transition-shadow">
-                                <option value="">{{ $this->choosingSubscriptionPackage ? 'Select a plan…' : 'Select a package…' }}</option>
+                                <option value="">Select a package…</option>
                                 @foreach ($this->packages as $package)
                                     <option value="{{ $package->id }}">
-                                        {{ $package->name }}
-                                        @if ($this->choosingSubscriptionPackage)
-                                            — GMD {{ number_format($package->monthly_price, 2) }}/mo, {{ $package->clothes_allowance }} items
-                                        @else
-                                            — GMD {{ number_format($package->base_price, 2) }}
-                                        @endif
+                                        {{ $package->name }} — GMD {{ number_format($package->base_price, 2) }}
                                     </option>
                                 @endforeach
                             </select>
                             <button type="button" wire:click="addPackage" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold whitespace-nowrap hover:opacity-90 transition-opacity">
-                                {{ $this->choosingSubscriptionPackage ? 'Start Subscription' : 'Add Package' }}
+                                Add Package
                             </button>
                         </div>
                     </div>
-                @else
+                @elseif (! $this->selectedCustomer)
                     <p class="text-ink-faint text-sm">Select a customer to choose a package.</p>
                 @endif
             @endunless

@@ -21,8 +21,8 @@
                 @click="$dispatch('open-panel', 'machine-{{ $machine->id }}')"
                 class="bg-surface border border-line rounded-2xl p-3 text-left hover:border-accent/50 hover:shadow-sm transition-all"
             >
-                <div class="w-full aspect-square mb-2">
-                    <x-machine-illustration :status="$status" />
+                <div class="flex justify-center mb-2">
+                    <x-machine-illustration :status="$status" :name="$machine->name" :size="72" />
                 </div>
                 <div class="font-medium text-ink text-sm truncate">{{ $machine->name }}</div>
                 <span class="inline-flex items-center font-mono text-[11px] font-semibold px-2 py-0.5 rounded-full mt-1 {{ $pillClass }}">{{ $statusLabel }}</span>
@@ -62,8 +62,8 @@
         @endphp
         <x-slide-panel name="machine-{{ $machine->id }}" title="{{ $machine->name }}">
             <div class="flex items-center gap-4 mb-5">
-                <div class="w-20 h-20 flex-none">
-                    <x-machine-illustration :status="$status" />
+                <div class="flex-none">
+                    <x-machine-illustration :status="$status" :name="$machine->name" :size="92" />
                 </div>
                 <div>
                     <div class="font-semibold text-ink">{{ $machine->name }}</div>
