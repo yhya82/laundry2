@@ -21,6 +21,12 @@ use Livewire\Component;
 
 new class extends Component
 {
+    /**
+     * How many clothing item cards are shown initially / added per
+     * "Load more" click.
+     */
+    const CLOTHES_PAGE_SIZE = 60;
+
     public ?int $customerId = null;
 
     /**
@@ -69,6 +75,17 @@ new class extends Component
     public string $selectedPackageId = '';
 
     public ?int $activeCategoryFilter = null;
+
+    /**
+     * How many of the (possibly category-filtered) clothing items are
+     * currently rendered in the grid -- bumped by loadMoreClothingItems()
+     * instead of paginating, since staff click through this grid
+     * repeatedly while building one order and paging would scatter
+     * already-added items across pages. Reset back to the default
+     * whenever the category filter changes, so switching categories
+     * doesn't carry over an inflated count from a different filter.
+     */
+    public int $clothesVisibleCount = self::CLOTHES_PAGE_SIZE;
 
     public float $discount = 0;
 
@@ -390,7 +407,30 @@ new class extends Component
         return ClothingItem::with('category')
             ->when($this->activeCategoryFilter, fn ($q) => $q->where('clothes_category_id', $this->activeCategoryFilter))
             ->orderBy('name')
+            ->limit($this->clothesVisibleCount)
             ->get();
+    }
+
+    /**
+     * Total count behind the same filter, ignoring $clothesVisibleCount --
+     * lets the view decide whether a "Load more" button is still needed
+     * without fetching every row.
+     */
+    #[Computed]
+    public function filteredClothingItemsTotalCount(): int
+    {
+        return ClothingItem::when($this->activeCategoryFilter, fn ($q) => $q->where('clothes_category_id', $this->activeCategoryFilter))
+            ->count();
+    }
+
+    public function loadMoreClothingItems(): void
+    {
+        $this->clothesVisibleCount += self::CLOTHES_PAGE_SIZE;
+    }
+
+    public function updatedActiveCategoryFilter(): void
+    {
+        $this->clothesVisibleCount = self::CLOTHES_PAGE_SIZE;
     }
 
     /**
@@ -563,6 +603,7 @@ new class extends Component
         $this->subscriptionClothes = [];
         $this->activePackageLineIndex = null;
         $this->selectedPackageId = '';
+        $this->clothesVisibleCount = self::CLOTHES_PAGE_SIZE;
         $this->customAmount = null;
         $this->paymentTiming = 'pay_now';
     }
@@ -1442,11 +1483,43 @@ new class extends Component
 
                 <div class="relative">
                     @if (! $this->isSubscriptionMode && empty($cart))
-                        <div class="absolute inset-0 z-10 bg-surface/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center text-center px-6">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 mx-auto mb-3 text-ink-faint opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 3h6l1 3h3a1 1 0 011 1v2a4 4 0 01-4 4h-.5M9 3H6a1 1 0 00-1 1v2a4 4 0 004 4h.5M9 3l-1 3m7-3l1 3m-8 0h8m-8 0a4 4 0 004 4 4 4 0 004-4M8 21h8a1 1 0 001-1v-6.5a4.5 4.5 0 00-9 0V20a1 1 0 001 1z" />
-                            </svg>
-                            <p class="text-sm font-semibold text-ink">Select a package to add clothes.</p>
+                        @php
+                            $hasCustomer = (bool) $this->selectedCustomer;
+                            $isSubscriptionCustomer = $hasCustomer && ! $this->forceWalkIn && $this->selectedCustomer->customer_type === 'subscription';
+                            $isWalkInCustomer = $hasCustomer && ! $isSubscriptionCustomer;
+                            $terminalSteps = [
+                                ['label' => 'Select or add a customer', 'done' => $hasCustomer, 'applicable' => true],
+                                ['label' => 'Choose customer type', 'done' => $hasCustomer, 'applicable' => true],
+                                ['label' => 'Create, renew or use subscription for a subscription customer', 'done' => $isSubscriptionCustomer && ! $this->needsSubscriptionDecision, 'applicable' => $isSubscriptionCustomer || ! $hasCustomer],
+                                ['label' => 'Select package for a walk-in customer', 'done' => $isWalkInCustomer && ! empty($cart), 'applicable' => $isWalkInCustomer || ! $hasCustomer],
+                                ['label' => 'Add clothes to the laundry cart and checkout', 'done' => false, 'applicable' => true],
+                            ];
+                            $currentTerminalStep = collect($terminalSteps)->filter(fn ($step) => $step['applicable'])->search(fn ($step) => ! $step['done']);
+                        @endphp
+                        <div class="absolute inset-0 z-10 bg-surface/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center text-center px-4">
+                            <ol class="space-y-1.5 text-left max-w-[15rem]">
+                                @foreach ($terminalSteps as $i => $step)
+                                    <li class="flex items-center gap-1.5">
+                                        <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold font-mono flex-none {{ ! $step['applicable'] ? 'bg-surface-2 text-ink-faint/40' : ($step['done'] ? 'bg-success text-white' : ($i === $currentTerminalStep ? 'bg-accent text-white' : 'bg-surface-2 text-ink-faint')) }}">
+                                            @if ($step['applicable'] && $step['done'])
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            @elseif (! $step['applicable'])
+                                                &ndash;
+                                            @else
+                                                {{ $i + 1 }}
+                                            @endif
+                                        </span>
+                                        <span class="text-[11px] leading-tight {{ ! $step['applicable'] ? 'text-ink-faint/40 italic' : ($i === $currentTerminalStep ? 'text-ink font-semibold' : ($step['done'] ? 'text-ink-muted' : 'text-ink-faint')) }}">
+                                            {{ $step['label'] }}
+                                            @if (! $step['applicable'])
+                                                (not applicable)
+                                            @endif
+                                        </span>
+                                    </li>
+                                @endforeach
+                            </ol>
                         </div>
                     @endif
 
@@ -1483,6 +1556,19 @@ new class extends Component
                                     <div class="text-[8px] text-ink-faint truncate leading-tight">{{ $item->category->name ?? '—' }}</div>
                                 </button>
                             @endforeach
+
+                            @if ($this->filteredClothingItemsTotalCount > $this->filteredClothingItems->count())
+                                <button
+                                    type="button"
+                                    wire:click="loadMoreClothingItems"
+                                    wire:loading.attr="disabled"
+                                    wire:target="loadMoreClothingItems"
+                                    class="col-span-full mt-1 py-2 rounded-lg border border-dashed border-line-strong text-xs font-semibold text-ink-muted hover:text-ink hover:border-accent hover:bg-accent-soft transition-colors disabled:opacity-60"
+                                >
+                                    <span wire:loading.remove wire:target="loadMoreClothingItems">Load more ({{ $this->filteredClothingItemsTotalCount - $this->filteredClothingItems->count() }} more)</span>
+                                    <span wire:loading wire:target="loadMoreClothingItems">Loading…</span>
+                                </button>
+                            @endif
                         </div>
                     @endif
                 </div>
@@ -1491,7 +1577,7 @@ new class extends Component
 
         <div class="bg-surface border border-line rounded-2xl shadow-sm p-5 flex flex-col">
             <div class="flex items-center justify-between mb-4">
-                <div class="text-lg font-bold text-ink">Cart</div>
+                <div class="text-lg font-bold text-ink">Laundry Cart</div>
                 @if (! empty($cart) || ! empty($subscriptionClothes))
                     <button type="button" wire:click="clearCart" class="text-xs font-semibold text-critical hover:underline">Clear Cart</button>
                 @endif

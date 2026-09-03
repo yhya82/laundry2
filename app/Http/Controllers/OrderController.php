@@ -9,6 +9,8 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\WashingMachine;
 use App\Services\NotificationDispatcher;
+use App\Support\OrderPaymentRecorder;
+use App\Support\SubscriptionCyclePaymentRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -142,6 +144,10 @@ class OrderController extends Controller
             return back()->withErrors(['status' => 'This order has no further stage to advance to.']);
         }
 
+        if ($next === 'collection') {
+            return $this->advanceToCollection($request, $order);
+        }
+
         $washingMachine = null;
 
         if ($next === 'washing') {
@@ -179,6 +185,60 @@ class OrderController extends Controller
         }
 
         return back()->with('status', "Order moved to " . ucfirst($next) . '.');
+    }
+
+    /**
+     * Records who physically collected the order and, optionally in the same
+     * submit, a payment against whatever's still owed -- both atomically (one
+     * DB::transaction), so a payment failure never leaves the order marked
+     * collected without the money actually recorded. Reuses
+     * OrderPaymentRecorder/SubscriptionCyclePaymentRecorder rather than
+     * duplicating PaymentController's store-credit/overshoot/trigger-race
+     * handling. The payment (if any) goes to the order's own balance if it
+     * has one (e.g. a cycle-overage charge sitting on the order itself),
+     * otherwise the subscription cycle's -- a subscription visit's own
+     * order subtotal is normally 0, the flat fee lives on the cycle instead.
+     */
+    protected function advanceToCollection(Request $request, Order $order): RedirectResponse
+    {
+        $validated = $request->validate([
+            'collected_by_type' => ['required', 'in:customer,other'],
+            'collected_by_name' => ['required_if:collected_by_type,other', 'nullable', 'string', 'max:255'],
+            'collected_by_phone' => ['required_if:collected_by_type,other', 'nullable', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/'],
+            'credit_applied' => ['nullable', 'numeric', 'min:0'],
+            'amount' => ['nullable', 'numeric', 'min:0'],
+            'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
+        ]);
+
+        $hasPayment = $request->float('amount') > 0 || $request->float('credit_applied') > 0;
+        $cycle = $order->subscriptionCycle();
+        $from = $order->status;
+
+        try {
+            DB::transaction(function () use ($order, $validated, $hasPayment, $cycle) {
+                $order->collected_by_type = $validated['collected_by_type'];
+                $order->collected_by_name = $validated['collected_by_type'] === 'other' ? $validated['collected_by_name'] : null;
+                $order->collected_by_phone = $validated['collected_by_type'] === 'other' ? $validated['collected_by_phone'] : null;
+                $order->status = 'collection';
+                $order->save();
+
+                if ($hasPayment) {
+                    if ($order->balanceDue() > 0) {
+                        app(OrderPaymentRecorder::class)->record($order, $validated);
+                    } elseif ($cycle) {
+                        app(SubscriptionCyclePaymentRecorder::class)->record($cycle, $validated);
+                    } else {
+                        throw new \RuntimeException('This order is already fully paid.');
+                    }
+                }
+            });
+        } catch (\RuntimeException $e) {
+            return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
+        }
+
+        OrderStatusChanged::dispatch($order, $from);
+
+        return back()->with('status', 'Order collected.');
     }
 
     /**

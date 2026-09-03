@@ -22,9 +22,10 @@ class Order extends Model
         'drying' => 'ironing',
         'ironing' => 'packaging',
         'packaging' => 'completed',
+        'completed' => 'collection',
     ];
 
-    public const TERMINAL_STATUSES = ['completed', 'cancelled'];
+    public const TERMINAL_STATUSES = ['collection', 'cancelled'];
 
     protected $fillable = [
         'order_number',
@@ -41,6 +42,9 @@ class Order extends Model
         'extra_charge_reason',
         'cycle_overage_charge',
         'cancellation_reason',
+        'collected_by_type',
+        'collected_by_name',
+        'collected_by_phone',
         'notes',
     ];
 
@@ -217,5 +221,19 @@ class Order extends Model
     public function subscriptionCycle(): ?SubscriptionCycle
     {
         return $this->collection?->subscriptionCycle;
+    }
+
+    /**
+     * Who physically picked this order up -- the customer themself (their
+     * own name, not a generic "Customer" label) or the recorded stand-in.
+     * Null until the order actually reaches the collection stage.
+     */
+    public function collectedByDisplayName(): ?string
+    {
+        if ($this->collected_by_type === 'customer') {
+            return $this->customer->full_name;
+        }
+
+        return $this->collected_by_type === 'other' ? $this->collected_by_name : null;
     }
 }

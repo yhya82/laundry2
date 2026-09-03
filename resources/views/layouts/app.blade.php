@@ -18,7 +18,7 @@
                 received: 'neutral', refunded: 'neutral', closed: 'neutral', pending_review: 'neutral', paused: 'neutral', normal: 'neutral',
                 sorting: 'active', washing: 'active', drying: 'active', ironing: 'active', packaging: 'active',
                 under_investigation: 'active', approved: 'active', partially_refunded: 'active', scheduled: 'active', partial: 'active',
-                completed: 'success', resolved: 'success', active: 'success', collected: 'success', paid: 'success',
+                completed: 'success', resolved: 'success', active: 'success', collected: 'success', paid: 'success', collection: 'success',
                 cancelled: 'critical', rejected: 'critical', skipped: 'critical', unpaid: 'critical', high: 'critical',
             };
             window.STATUS_PILL_CLASSES = {
@@ -27,11 +27,14 @@
                 success: 'bg-success-soft text-success',
                 critical: 'bg-critical-soft text-critical',
             };
+            // 'collection' (order status) reads as "Collected" -- mirrors the
+            // $labels override in status-pill.blade.php.
+            window.STATUS_PILL_LABELS = { collection: 'Collected' };
             window.applyStatusPill = function (el, status) {
                 if (! el) return;
                 const tone = window.STATUS_PILL_TONES[status] || 'neutral';
                 el.className = 'inline-flex items-center gap-1.5 font-mono text-xs font-semibold px-2.5 py-1 rounded-full ' + window.STATUS_PILL_CLASSES[tone];
-                el.textContent = status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ');
+                el.textContent = window.STATUS_PILL_LABELS[status] || (status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' '));
             };
         </script>
     </head>

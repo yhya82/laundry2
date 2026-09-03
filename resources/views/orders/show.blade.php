@@ -17,11 +17,12 @@
     @php
         $stageIcons = [
             'received' => 'box', 'sorting' => 'shirt', 'washing' => 'washer',
-            'drying' => 'dryer', 'ironing' => 'iron', 'packaging' => 'gift', 'completed' => 'check',
+            'drying' => 'dryer', 'ironing' => 'iron', 'packaging' => 'gift', 'completed' => 'check', 'collection' => 'truck',
         ];
         $stageLabels = [
             'received' => 'Received', 'sorting' => 'Start Sorting', 'washing' => 'Start Washing',
             'drying' => 'Start Drying', 'ironing' => 'Start Ironing', 'packaging' => 'Start Packaging', 'completed' => 'Completed',
+            'collection' => 'Collection',
         ];
         // Timeline-only variants -- the sidebar's big "Advance" button and the
         // timeline's own advance buttons always talk about the *next* stage
@@ -31,12 +32,14 @@
         $stageCurrentLabels = [
             'received' => 'Received', 'sorting' => 'Sorting', 'washing' => 'Washing',
             'drying' => 'Drying', 'ironing' => 'Ironing', 'packaging' => 'Packaging', 'completed' => 'Completed',
+            'collection' => 'Collected',
         ];
         $stagePastLabels = [
             'received' => 'Received', 'sorting' => 'Sorted', 'washing' => 'Washed',
             'drying' => 'Dried', 'ironing' => 'Ironed', 'packaging' => 'Packaged', 'completed' => 'Completed',
+            'collection' => 'Collected',
         ];
-        $stages = [...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'completed'];
+        $stages = [...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'collection'];
 
         $stageTimestamps = ['received' => $order->created_at];
         // Received has no order_status_history row -- the trigger only fires
@@ -59,6 +62,7 @@
 
         $isActiveOrder = ! $order->isTerminal();
         $nextIsWashing = $order->nextStatus() === 'washing';
+        $nextIsCollection = $order->nextStatus() === 'collection';
         $paymentStatus = $order->combinedPaymentStatus();
         // orderDue is the order's own balance -- the only thing "Record
         // Payment" here actually settles. combinedDue/combinedPaid fold in
@@ -71,9 +75,27 @@
         $orderDue = $order->balanceDue();
         $combinedDue = $orderDue + ($cycle?->balanceDue() ?? 0);
         $combinedPaid = $order->amountPaid() + ($cycle?->amountPaid() ?? 0);
+        // Both Record Payment and Record Collection settle whichever balance
+        // actually has money owed on it -- the order's own (e.g. a
+        // cycle-overage charge) if any, otherwise the cycle's flat fee,
+        // which is where a subscription visit's balance normally lives.
+        // $orderDue alone would hide the payment action entirely for the
+        // common subscription case (see PaymentController::record()'s same
+        // order-then-cycle preference).
+        $payableDue = $orderDue > 0 ? $orderDue : ($cycle?->balanceDue() ?? 0);
         $grandTotal = (float) $order->total_amount + ($cycle->monthly_price_snapshot ?? 0);
-        $statusTones = ['received' => 'neutral', 'sorting' => 'active', 'washing' => 'active', 'drying' => 'active', 'ironing' => 'active', 'packaging' => 'active', 'completed' => 'success', 'cancelled' => 'critical'];
+        // 'completed' reads as still-active (processing done, not yet picked
+        // up) -- 'collection' is the actual "fully done" green now.
+        $statusTones = ['received' => 'neutral', 'sorting' => 'active', 'washing' => 'active', 'drying' => 'active', 'ironing' => 'active', 'packaging' => 'active', 'completed' => 'active', 'collection' => 'success', 'cancelled' => 'critical'];
         $statusToneClasses = ['neutral' => 'bg-pill-bg text-pill-ink', 'active' => 'bg-accent-soft text-accent-ink', 'success' => 'bg-success-soft text-success', 'critical' => 'bg-critical-soft text-critical'];
+
+        // Handling card -- only worth showing once a machine's actually been
+        // assigned (i.e. the order has reached washing at least once).
+        $washStartedAt = $stageTimestamps['washing'] ?? null;
+        $washEndedAt = $stageTimestamps['drying'] ?? null;
+        $machineState = $order->status === 'washing' ? 'washing' : 'idle';
+        $loadCount = $order->packageLines->sum(fn ($line) => $line->clothesLines->sum('quantity'));
+        $washDuration = $washStartedAt && $washEndedAt ? $washStartedAt->diffForHumans($washEndedAt, true) : null;
     @endphp
 
     {{-- Summary hero: who, what stage, and the one number that matters -- answers "what do I need to know" before any card does. --}}
@@ -144,7 +166,7 @@
                     this.status = e.toStatus;
                     const idx = this.stages.indexOf(e.toStatus);
                     if (idx !== -1) this.currentIndex = idx;
-                    this.isActive = ! ['completed', 'cancelled'].includes(e.toStatus);
+                    this.isActive = ! ['collection', 'cancelled'].includes(e.toStatus);
                     this.timestamps[e.toStatus] = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
                 });
             }
@@ -167,6 +189,15 @@
                                 type="button"
                                 title="{{ $stageLabels[$stage] }}"
                                 @click="$dispatch('open-panel', 'select-washing-machine')"
+                                class="w-12 h-12 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
+                            >
+                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
+                            </button>
+                        @elseif ($canAdvance && $stage === 'collection')
+                            <button
+                                type="button"
+                                title="Record Collection"
+                                @click="$dispatch('open-panel', 'record-collection')"
                                 class="w-12 h-12 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
                             >
                                 <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
@@ -217,18 +248,23 @@
                             x-text="timestamps['{{ $stage }}']"
                         ></div>
                         @if (! empty($stageChangedBy[$stage]))
-                            <div class="text-[10px] text-ink-faint mt-0.5">by {{ $stageChangedBy[$stage] }}</div>
+                            <div class="text-[10px] text-ink-faint mt-0.5">{{ $stage === 'collection' ? 'Collected from' : 'by' }} {{ $stageChangedBy[$stage] }}</div>
                         @endif
                         @if ($stage === 'washing' && isset($stageTimestamps['washing']) && $order->washingMachine)
                             <div class="text-[10px] text-ink-faint mt-0.5">{{ $order->washingMachine->name }}</div>
                         @endif
-                        <div
-                            class="text-[11px] text-accent-ink font-semibold mt-0.5"
-                            x-show="{{ $i }} === currentIndex && isActive"
-                            x-transition:enter="transition ease-out duration-300 delay-150"
-                            x-transition:enter-start="opacity-0 -translate-y-0.5"
-                            x-transition:enter-end="opacity-100 translate-y-0"
-                        >In Progress</div>
+                        @if ($stage === 'collection' && $order->status === 'collection')
+                            <div class="text-[10px] text-ink-faint mt-0.5">Collected by {{ $order->collectedByDisplayName() }}</div>
+                        @endif
+                        @unless ($stage === 'completed')
+                            <div
+                                class="text-[11px] text-accent-ink font-semibold mt-0.5"
+                                x-show="{{ $i }} === currentIndex && isActive"
+                                x-transition:enter="transition ease-out duration-300 delay-150"
+                                x-transition:enter-start="opacity-0 -translate-y-0.5"
+                                x-transition:enter-end="opacity-100 translate-y-0"
+                            >In Progress</div>
+                        @endunless
                     </div>
 
                     @unless ($loop->last)
@@ -244,13 +280,69 @@
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <div class="grid grid-cols-1 {{ $order->washingMachine ? 'lg:grid-cols-3' : 'lg:grid-cols-2' }} gap-5 mb-5">
 
-        <div class="lg:col-span-1 space-y-5">
+            @if ($order->washingMachine)
+                <div class="bg-surface border border-line rounded-2xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Handling</div>
+                        <span class="inline-flex items-center font-mono text-xs font-semibold px-2.5 py-1 rounded-full {{ $machineState === 'washing' ? 'bg-accent-soft text-accent-ink' : 'bg-success-soft text-success' }}">{{ $machineState === 'washing' ? 'Running' : 'Finished' }}</span>
+                    </div>
+
+                    <div class="flex justify-center mb-4">
+                        <x-machine-illustration :status="$machineState" :name="$order->washingMachine->name" :size="96" :interactive="true" />
+                    </div>
+
+                    <div class="text-center mb-4">
+                        <div class="font-semibold text-ink text-sm">{{ $order->washingMachine->name }}</div>
+                        <div class="text-xs text-ink-muted mt-0.5">
+                            @if ($machineState === 'washing' && $washStartedAt)
+                                Started {{ $washStartedAt->format('g:i A') }}
+                            @elseif ($washDuration)
+                                Wash finished {{ $washEndedAt->format('g:i A') }} · {{ $washDuration }} cycle
+                            @elseif ($washStartedAt)
+                                Started {{ $washStartedAt->format('g:i A') }}
+                            @endif
+                        </div>
+                    </div>
+
+                    <dl class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <dt class="text-ink-muted">Customer</dt>
+                            <dd class="text-ink font-medium">{{ $order->customer->full_name }}</dd>
+                        </div>
+                        <div class="flex justify-between">
+                            <dt class="text-ink-muted">Machine</dt>
+                            <dd class="text-ink font-mono text-xs">{{ $order->washingMachine->name }}</dd>
+                        </div>
+                        @if (! empty($stageChangedBy['washing']))
+                            <div class="flex justify-between">
+                                <dt class="text-ink-muted">Washed by</dt>
+                                <dd class="text-ink font-mono text-xs">{{ $stageChangedBy['washing'] }}</dd>
+                            </div>
+                        @endif
+                        <div class="flex justify-between">
+                            <dt class="text-ink-muted">Load</dt>
+                            <dd class="text-ink font-mono text-xs">{{ $loadCount }} {{ Str::plural('piece', $loadCount) }}</dd>
+                        </div>
+                        @if ($washDuration)
+                            <div class="flex justify-between">
+                                <dt class="text-ink-muted">Duration</dt>
+                                <dd class="text-ink font-mono text-xs">{{ $washDuration }}</dd>
+                            </div>
+                        @endif
+                    </dl>
+                </div>
+            @endif
+
             <div class="bg-surface border border-line rounded-2xl p-6">
                 <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-4">Order Details</div>
 
                 <div class="space-y-2 text-sm mb-5">
+                    <div class="flex justify-between">
+                        <dt class="text-ink-muted">Customer</dt>
+                        <dd class="text-ink font-medium"><a href="{{ route('customers.show', $order->customer) }}" class="hover:text-accent-ink hover:underline">{{ $order->customer->full_name }}</a></dd>
+                    </div>
                     <div class="flex justify-between">
                         <dt class="text-ink-muted">Source</dt>
                         <dd class="text-ink">{{ $order->order_source === 'walk_in' ? 'Walk-in' : 'Subscription' }}</dd>
@@ -346,6 +438,10 @@
                                 <button type="button" @click="$dispatch('open-panel', 'select-washing-machine')" class="w-full inline-flex items-center justify-center px-4 py-3 bg-accent rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity">
                                     {{ $stageLabels['washing'] }}
                                 </button>
+                            @elseif ($nextIsCollection)
+                                <button type="button" @click="$dispatch('open-panel', 'record-collection')" class="w-full inline-flex items-center justify-center px-4 py-3 bg-accent rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity">
+                                    Record Collection
+                                </button>
                             @else
                                 <form method="POST" action="{{ route('orders.advance', $order) }}">
                                     @csrf
@@ -401,17 +497,17 @@
                     <p class="text-ink-faint text-sm">None reported.</p>
                 @endforelse
             </div>
-        </div>
 
-        <div class="lg:col-span-2 space-y-5">
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
             <div class="bg-surface border border-line rounded-2xl p-6">
                 <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-4">Line Items</div>
                 @foreach ($order->packageLines as $line)
                     <div class="border border-line rounded-xl p-4 mb-3 last:mb-0">
-                        <div class="flex items-center justify-between mb-2">
+                        <div class="mb-2">
                             <span class="font-semibold text-ink">{{ $line->package_name_snapshot }} × {{ $line->quantity }}</span>
-                            <span class="font-mono tabular-nums text-ink">GMD {{ number_format($line->package_price_snapshot * $line->quantity, 2) }}</span>
                         </div>
                         @if ($line->clothesLines->isNotEmpty())
                             <div class="flex flex-wrap gap-1.5">
@@ -455,7 +551,7 @@
                         <x-status-pill :status="$paymentStatus" />
                     </div>
                     @can('orders.manage')
-                        @if ($orderDue > 0)
+                        @if ($payableDue > 0)
                             <x-panel-trigger panel="record-payment">Record Payment</x-panel-trigger>
                         @endif
                     @endcan
@@ -503,40 +599,16 @@
                 </div>
             </div>
 
-        </div>
     </div>
 
     @can('orders.manage')
-        @if ($orderDue > 0)
+        @if ($payableDue > 0)
             <x-slide-panel name="record-payment" title="Record Payment" :error-fields="['amount', 'credit_applied', 'method']">
                 <form method="POST" action="{{ route('orders.payments.record', $order) }}" class="space-y-4">
                     @csrf
-                    <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-ink font-semibold">GMD {{ number_format($orderDue, 2) }}</span></p>
+                    <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-critical font-bold">GMD {{ number_format($payableDue, 2) }}</span>{{ $orderDue <= 0 && $cycle ? ' (subscription cycle)' : '' }}</p>
 
-                    @if ($order->customer->store_credit_balance > 0)
-                        <div>
-                            <x-input-label for="credit_applied" value="Apply store credit" />
-                            <x-text-input id="credit_applied" name="credit_applied" type="number" step="0.01" min="0" max="{{ min($order->customer->store_credit_balance, $orderDue) }}" class="block w-full" />
-                            <p class="text-xs text-ink-faint mt-1">Of GMD {{ number_format($order->customer->store_credit_balance, 2) }} available.</p>
-                            <x-input-error :messages="$errors->get('credit_applied')" class="mt-1.5" />
-                        </div>
-                    @endif
-
-                    <div>
-                        <x-input-label for="record_amount" value="Amount collected (GMD)" />
-                        <x-text-input id="record_amount" name="amount" type="number" step="0.01" min="0" class="block w-full" required />
-                        <x-input-error :messages="$errors->get('amount')" class="mt-1.5" />
-                    </div>
-
-                    <div>
-                        <x-input-label for="record_method" value="Method" />
-                        <select id="record_method" name="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
-                            <option value="cash">Cash</option>
-                            <option value="card">Card</option>
-                            <option value="mixed">Mixed</option>
-                        </select>
-                        <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
-                    </div>
+                    @include('orders._payment-fields', ['prefix' => 'record', 'amountRequired' => true, 'dueOverride' => $payableDue])
 
                     <div class="flex items-center gap-3">
                         <x-primary-button>Record Payment</x-primary-button>
@@ -650,6 +722,60 @@
                     </div>
                 </div>
             </div>
+        @endif
+    @endcan
+
+    @can('orders.manage')
+        @if ($nextIsCollection)
+            <x-slide-panel name="record-collection" title="Record Collection" :error-fields="['collected_by_type', 'collected_by_name', 'collected_by_phone', 'amount', 'credit_applied', 'method']">
+                <div x-data="{ collectedByType: @js(old('collected_by_type', 'customer')) }">
+                    <form method="POST" action="{{ route('orders.advance', $order) }}" class="space-y-4">
+                        @csrf
+
+                        <div>
+                            <x-input-label value="Collected by" />
+                            <div class="flex gap-3 mt-1">
+                                <label class="flex-1 inline-flex items-center justify-center gap-1.5 text-sm text-ink border border-line-strong rounded-lg py-2 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:text-accent-ink transition-colors">
+                                    <input type="radio" name="collected_by_type" value="customer" x-model="collectedByType" class="text-accent focus:ring-accent">
+                                    Customer
+                                </label>
+                                <label class="flex-1 inline-flex items-center justify-center gap-1.5 text-sm text-ink border border-line-strong rounded-lg py-2 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:text-accent-ink transition-colors">
+                                    <input type="radio" name="collected_by_type" value="other" x-model="collectedByType" class="text-accent focus:ring-accent">
+                                    Someone else
+                                </label>
+                            </div>
+                            <x-input-error :messages="$errors->get('collected_by_type')" class="mt-1.5" />
+                        </div>
+
+                        <div x-show="collectedByType === 'other'" x-cloak class="space-y-4">
+                            <div>
+                                <x-input-label for="collected_by_name" value="Name" />
+                                <x-text-input id="collected_by_name" name="collected_by_name" type="text" class="block w-full" value="{{ old('collected_by_name') }}" x-bind:required="collectedByType === 'other'" />
+                                <x-input-error :messages="$errors->get('collected_by_name')" class="mt-1.5" />
+                            </div>
+                            <div>
+                                <x-input-label for="collected_by_phone" value="Phone number" />
+                                <x-text-input id="collected_by_phone" name="collected_by_phone" type="text" class="block w-full" value="{{ old('collected_by_phone') }}" placeholder="+220 555 1234" x-bind:required="collectedByType === 'other'" />
+                                <x-input-error :messages="$errors->get('collected_by_phone')" class="mt-1.5" />
+                            </div>
+                        </div>
+
+                        <div class="border-t border-line pt-4 space-y-4">
+                            @if ($payableDue > 0)
+                                <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-critical font-bold">GMD {{ number_format($payableDue, 2) }}</span> — optional, leave blank to just record pickup.</p>
+                            @else
+                                <p class="text-sm text-ink-muted">Payment: <span class="font-mono text-success font-bold">Paid in full</span></p>
+                            @endif
+                            @include('orders._payment-fields', ['prefix' => 'collect', 'amountRequired' => false, 'dueOverride' => $payableDue])
+                        </div>
+
+                        <div class="flex items-center gap-3">
+                            <x-primary-button>Confirm Collection</x-primary-button>
+                            <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </x-slide-panel>
         @endif
     @endcan
 

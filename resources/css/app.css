@@ -370,6 +370,38 @@ input[type='number']::-webkit-outer-spin-button {
 .wm[data-state="done"] .wm__time { animation: wm-blink 1.4s steps(1) infinite; }
 @keyframes wm-blink { 50% { opacity: .25; } }
 
+/* Only the interactive (order page) variant renders as a real <button> --
+   the Machines catalog cards render a plain <div>, already sitting inside
+   their own clickable card button. */
+.wm[type="button"] {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.wm[type="button"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 .15em var(--color-accent);
+}
+
+/* Click-to-open info popover -- themed against this app's own light/dark
+   tokens, not the mockup's hardcoded light-only palette. */
+.wm__info {
+    position: absolute; left: 50%; top: calc(100% + 10px); translate: -50% -6px;
+    width: 220px; z-index: 9; text-align: left;
+    background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 12px;
+    padding: 14px 15px;
+    box-shadow: 0 16px 34px -12px rgba(0, 0, 0, .28);
+    opacity: 0; visibility: hidden;
+    transition: opacity .2s, translate .2s, visibility .2s;
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+}
+.wm[data-open] .wm__info { opacity: 1; visibility: visible; translate: -50% 0; }
+.wm__info h4 {
+    font-size: 13.5px; font-weight: 600; margin: 0 0 4px; color: var(--color-ink);
+}
+.wm__info p {
+    margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--color-ink-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .wm * {
         animation: none !important;

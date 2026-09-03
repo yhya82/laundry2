@@ -13,8 +13,8 @@
                 <input type="text" name="q" value="{{ request('q') }}" placeholder="Search order number or customer…" class="w-full bg-surface border-line-strong text-ink placeholder:text-ink-faint focus:border-accent focus:ring-accent rounded-lg shadow-sm text-sm">
                 <select name="status" onchange="this.form.submit()" class="bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
                     <option value="">All statuses</option>
-                    @foreach (['received', 'sorting', 'washing', 'drying', 'ironing', 'packaging', 'completed', 'cancelled'] as $status)
-                        <option value="{{ $status }}" @selected(request('status') === $status)>{{ ucfirst($status) }}</option>
+                    @foreach (['received' => 'Received', 'sorting' => 'Sorting', 'washing' => 'Washing', 'drying' => 'Drying', 'ironing' => 'Ironing', 'packaging' => 'Packaging', 'completed' => 'Completed', 'collection' => 'Collected', 'cancelled' => 'Cancelled'] as $status => $label)
+                        <option value="{{ $status }}" @selected(request('status') === $status)>{{ $label }}</option>
                     @endforeach
                 </select>
             </form>

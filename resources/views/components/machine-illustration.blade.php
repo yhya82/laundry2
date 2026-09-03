@@ -1,4 +1,4 @@
-@props(['status' => 'idle', 'name' => null, 'size' => 100])
+@props(['status' => 'idle', 'name' => null, 'size' => 100, 'interactive' => false])
 
 @php
     // idle/washing map straight onto the widget's own states; retired reads
@@ -18,14 +18,33 @@
     $uid = 'wm-'.Str::random(8);
 @endphp
 
-<div
-    class="wm"
-    id="{{ $uid }}"
-    role="img"
-    style="--wm-size: {{ $size }}px"
-    x-data
-    x-init="window.WashingMachine.mount($el, { state: @js($dataState), id: @js($name), progress: @js($progress) })"
->
+@if ($interactive)
+    {{--
+        Click-to-open info popover, same as the original standalone widget --
+        only used where nothing else on the page already owns the click (the
+        order page's Handling card). The Machines catalog cards render this
+        component non-interactively instead, since the whole card there is
+        already its own click target opening a real detail panel -- a second
+        competing click handler on the graphic itself would fire both.
+    --}}
+    <button
+        type="button"
+        class="wm"
+        id="{{ $uid }}"
+        style="--wm-size: {{ $size }}px"
+        x-data
+        x-init="window.WashingMachine.mount($el, { state: @js($dataState), id: @js($name), progress: @js($progress), popover: true })"
+    >
+@else
+    <div
+        class="wm"
+        id="{{ $uid }}"
+        role="img"
+        style="--wm-size: {{ $size }}px"
+        x-data
+        x-init="window.WashingMachine.mount($el, { state: @js($dataState), id: @js($name), progress: @js($progress) })"
+    >
+@endif
     <span class="wm__floor"></span>
 
     <span class="wm__body">
@@ -61,4 +80,12 @@
         <span class="wm__foot wm__foot--l"></span>
         <span class="wm__foot wm__foot--r"></span>
     </span>
-</div>
+
+    @if ($interactive)
+        <span class="wm__info"></span>
+    @endif
+@if ($interactive)
+    </button>
+@else
+    </div>
+@endif

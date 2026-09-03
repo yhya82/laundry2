@@ -1,19 +1,20 @@
-// Renders the .wm washing-machine graphic used on the Machines catalog page
-// (card grid + detail panel). Trimmed from the original standalone widget --
-// this app already has its own click target (the card button) and its own
-// detail panel with real order/customer data, so the widget's built-in
-// click-to-open info popover is dropped entirely; only the visual rendering
-// (drum, load, water, suds, dial, display) is kept.
+// Renders the .wm washing-machine graphic used on both the Machines catalog
+// page (card grid + detail panel, non-interactive) and the order page's
+// Handling card (interactive, click opens a small info popover). Trimmed
+// from the original standalone widget's demo scaffolding -- no Programme/
+// Temperature/Spin fields, since this app has no such data for a real
+// machine/order; the popover only ever shows what's actually true (state +
+// a generic description of what that state means).
 
 const STATES = {
-    off: { label: 'Off', level: 0, water: false },
-    idle: { label: 'Ready', level: 0, water: false },
-    filling: { label: 'Filling', level: 34, water: true },
-    washing: { label: 'Washing', level: 30, water: true },
-    rinsing: { label: 'Rinsing', level: 26, water: true },
-    spinning: { label: 'Spinning', level: 0, water: false },
-    done: { label: 'Cycle complete', level: 0, water: false },
-    error: { label: 'Needs attention', level: 0, water: false },
+    off: { label: 'Off', level: 0, water: false, blurb: 'Machine is powered down.' },
+    idle: { label: 'Ready', level: 0, water: false, blurb: 'Door unlocked. No cycle running.' },
+    filling: { label: 'Filling', level: 34, water: true, blurb: 'Taking on water and dosing detergent.' },
+    washing: { label: 'Washing', level: 30, water: true, blurb: 'Main wash — drum tumbling both ways.' },
+    rinsing: { label: 'Rinsing', level: 26, water: true, blurb: 'Fresh water in, detergent out.' },
+    spinning: { label: 'Spinning', level: 0, water: false, blurb: 'High-speed extraction. Door stays locked.' },
+    done: { label: 'Cycle complete', level: 0, water: false, blurb: 'Door unlocked. Ready to unload.' },
+    error: { label: 'Needs attention', level: 0, water: false, blurb: 'Cycle stopped before finishing.' },
 };
 const RUNNING = ['filling', 'washing', 'rinsing', 'spinning'];
 const CLOTH = ['#D8607A', '#3F7FBF', '#E8C25C', '#5FBF9A', '#C9CFD6', '#8A6FC4'];
@@ -86,10 +87,6 @@ function buildSuds(el) {
 
 const pad = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 
-/**
- * Pure rendering -- no click handling, no info popover (the app supplies its
- * own click target and its own real detail panel around this graphic).
- */
 function mount(target, opts = {}) {
     const root = typeof target === 'string' ? document.querySelector(target) : target;
     if (!root) return null;
@@ -107,6 +104,7 @@ function mount(target, opts = {}) {
         water: root.querySelector('.water'),
         dial: root.querySelector('.wm__dial'),
         door: root.querySelector('.wm__door'),
+        info: root.querySelector('.wm__info'),
     };
 
     const model = {
@@ -134,9 +132,20 @@ function mount(target, opts = {}) {
         el.dial.style.setProperty('--dial', (-38 + Object.keys(STATES).indexOf(model.state) * 26) + 'deg');
 
         root.setAttribute('aria-label', `Washing machine${model.id ? ' ' + model.id : ''}, ${cfg.label}`);
+
+        if (el.info) {
+            el.info.innerHTML = `<h4>${model.id || 'Machine'} — ${cfg.label}</h4><p>${cfg.blurb}</p>`;
+        }
     }
 
     render();
+
+    if (opts.popover) {
+        root.addEventListener('click', () => root.toggleAttribute('data-open'));
+        document.addEventListener('click', e => {
+            if (!root.contains(e.target)) root.removeAttribute('data-open');
+        });
+    }
 
     return {
         set(patch) { Object.assign(model, patch); render(); },
