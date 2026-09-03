@@ -14,16 +14,23 @@
                 this.$refs.maxClothesPerCycle.value = pkg.max_clothes_per_cycle;
             }
         },
+        cancel() {
+            if (! this.open) return;
+            this.open = false;
+            @if ($redirectToTerminal)
+                this.$wire.cancelNewSubscription();
+            @endif
+        },
     }"
     x-on:open-panel.window="$event.detail === 'new-subscription' && (open = true)"
-    x-on:close-panel.window="$event.detail === 'new-subscription' && (open = false)"
-    x-on:keydown.escape.window="open = false"
+    x-on:close-panel.window="$event.detail === 'new-subscription' && cancel()"
+    x-on:keydown.escape.window="cancel()"
 >
     <div
         x-show="open" x-cloak
         class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-40 flex items-center justify-center p-4"
         x-transition.opacity
-        @click.self="open = false"
+        @click.self="cancel()"
     >
         <div
             class="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-md p-6"
@@ -33,7 +40,7 @@
         >
             <div class="flex items-center justify-between mb-4">
                 <h3 class="font-semibold text-ink">New Subscription</h3>
-                <button type="button" @click="open = false" class="text-ink-faint hover:text-ink" aria-label="Close">✕</button>
+                <button type="button" @click="cancel()" class="text-ink-faint hover:text-ink" aria-label="Close">✕</button>
             </div>
 
             <form method="POST" action="{{ route('subscriptions.store') }}" class="space-y-4">
@@ -103,7 +110,7 @@
 
                 <div class="flex items-center gap-3">
                     <x-primary-button>Create subscription</x-primary-button>
-                    <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                    <button type="button" @click="cancel()" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
                 </div>
             </form>
         </div>

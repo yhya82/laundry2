@@ -1,14 +1,6 @@
 <x-app-layout>
     <x-slot name="header">Subscriptions</x-slot>
 
-    <div class="flex items-center justify-end mb-5">
-        @can('subscriptions.manage')
-            <a href="{{ route('subscriptions.create') }}" class="inline-flex items-center justify-center px-5 py-2.5 bg-accent border border-transparent rounded-lg font-semibold text-sm text-white hover:opacity-90">
-                + New Subscription
-            </a>
-        @endcan
-    </div>
-
     <div
         x-data="{
             init() {

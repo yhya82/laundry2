@@ -15,6 +15,12 @@
                 $status = ! $machine->is_active ? 'retired' : ($current ? 'washing' : 'idle');
                 $statusLabel = ['idle' => 'Idle', 'washing' => 'Washing', 'retired' => 'Retired'][$status];
                 $pillClass = ['idle' => 'bg-success-soft text-success', 'washing' => 'bg-accent-soft text-accent-ink', 'retired' => 'bg-pill-bg text-pill-ink'][$status];
+                // Who's doing the washing -- whoever's logged in when the order
+                // moves into "washing" (order_status_history.changed_by), not
+                // orders.assigned_to: that's the separate, optional order-ownership
+                // feature (Setting order.assignment_enabled), usually off, and
+                // often unset even when an order is actively being washed.
+                $washedBy = $current?->statusHistory->where('to_status', 'washing')->sortByDesc('created_at')->first()?->changedBy?->name;
             @endphp
             <button
                 type="button"
@@ -28,6 +34,10 @@
                 <span class="inline-flex items-center font-mono text-[11px] font-semibold px-2 py-0.5 rounded-full mt-1 {{ $pillClass }}">{{ $statusLabel }}</span>
                 @if ($current)
                     <div class="text-xs text-ink-faint mt-1 truncate">{{ $current->order_number }}</div>
+                    <div class="text-xs text-ink-muted mt-0.5 truncate">Customer name: {{ $current->customer->full_name }}</div>
+                    @if ($washedBy)
+                        <div class="text-[11px] text-ink-faint mt-0.5 truncate">Created by: {{ $washedBy }}</div>
+                    @endif
                 @endif
             </button>
         @empty
@@ -59,6 +69,10 @@
             $status = ! $machine->is_active ? 'retired' : ($current ? 'washing' : 'idle');
             $statusLabel = ['idle' => 'Idle', 'washing' => 'Washing', 'retired' => 'Retired'][$status];
             $pillClass = ['idle' => 'bg-success-soft text-success', 'washing' => 'bg-accent-soft text-accent-ink', 'retired' => 'bg-pill-bg text-pill-ink'][$status];
+            // Whoever was logged in when an order moved into "washing" --
+            // see the card grid's own $washedBy above for why this isn't
+            // orders.assigned_to.
+            $washedByName = fn ($order) => $order->statusHistory->where('to_status', 'washing')->sortByDesc('created_at')->first()?->changedBy?->name;
         @endphp
         <x-slide-panel name="machine-{{ $machine->id }}" title="{{ $machine->name }}">
             <div class="flex items-center gap-4 mb-5">
@@ -80,6 +94,9 @@
                             <x-status-pill :status="$current->status" />
                         </div>
                         <div class="text-xs text-ink-muted mt-1">{{ $current->customer->full_name }}</div>
+                        @if ($washedByName($current))
+                            <div class="text-xs text-ink-faint mt-0.5">Created by: {{ $washedByName($current) }}</div>
+                        @endif
                     </a>
                 @else
                     <p class="text-sm text-ink-faint">Not currently washing anything.</p>
@@ -93,6 +110,9 @@
                         <div>
                             <span class="text-sm text-ink">{{ $order->order_number }}</span>
                             <span class="text-xs text-ink-faint block">{{ $order->customer->full_name }}</span>
+                            @if ($washedByName($order))
+                                <span class="text-xs text-ink-faint block">Created by: {{ $washedByName($order) }}</span>
+                            @endif
                         </div>
                         <span class="text-xs text-ink-faint">{{ $order->created_at->diffForHumans() }}</span>
                     </a>

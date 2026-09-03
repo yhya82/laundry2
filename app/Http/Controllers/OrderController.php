@@ -37,51 +37,15 @@ class OrderController extends Controller
         }
     }
 
-    public function index(Request $request): View
+    /**
+     * The actual listing (search, filter, scoping, pagination) lives in the
+     * orders-index Livewire component now, so this only renders the page
+     * shell -- see that component for the query and permission scoping this
+     * used to do here.
+     */
+    public function index(): View
     {
-        $assignmentEnabled = Setting::get('order.assignment_enabled', 'false') === 'true';
-
-        // Everyone without orders.assign sees only their own assigned orders
-        // once this is on, full stop -- no toggle, no opt-out. Deliberately
-        // not orders.manage: that's needed just to process an order (advance,
-        // cancel, record a payment) and plenty of legitimate floor staff
-        // have it without needing to see everyone else's queue too.
-        $scopedToSelf = $assignmentEnabled && ! auth()->user()->can('orders.assign');
-
-        // collection.subscriptionCycle -- combinedPaymentStatus() and
-        // balanceDue() both walk into the cycle for a subscription order;
-        // without this the relation itself lazy-loads fresh per row (its
-        // amountPaid()/balanceDue() are deliberately always-fresh queries
-        // either way, eager-loading payments wouldn't skip those).
-        $orders = Order::with(['customer', 'payments', 'packageLines.laundryPackage', 'receipt', 'assignedTo', 'collection.subscriptionCycle'])
-            ->when($scopedToSelf, fn ($q) => $q->where('assigned_to', auth()->id()))
-            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->get('status')))
-            ->when($request->filled('q'), function ($q) use ($request) {
-                $term = '%'.$request->get('q').'%';
-                $q->where(function ($sub) use ($term) {
-                    $sub->where('order_number', 'like', $term)
-                        ->orWhereHas('customer', fn ($c) => $c->where('full_name', 'like', $term));
-                });
-            })
-            ->orderByDesc(DB::raw("EXISTS (
-                SELECT 1 FROM order_package_lines opl
-                INNER JOIN laundry_packages lp ON lp.id = opl.laundry_package_id
-                WHERE opl.order_id = orders.id AND lp.priority = 'high'
-            )"))
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
-
-        // orders.view, not orders.manage -- the assignable pool has to
-        // include view-only staff, since they're exactly who the "only see
-        // what's assigned to me" scoping above is for. Restricting this to
-        // orders.manage would make that scoping pointless: a view-only
-        // person could never be assigned anything to see in the first place.
-        $assignableStaff = $assignmentEnabled
-            ? User::where('is_active', true)->permission('orders.view')->orderBy('name')->get()
-            : collect();
-
-        return view('orders.index', compact('orders', 'assignmentEnabled', 'assignableStaff', 'scopedToSelf'));
+        return view('orders.index');
     }
 
     public function create(Request $request): View

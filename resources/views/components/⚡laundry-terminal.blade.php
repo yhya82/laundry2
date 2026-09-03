@@ -38,6 +38,17 @@ new class extends Component
      */
     public bool $usingPendingCustomer = false;
 
+    /**
+     * True right after createCustomer() eagerly creates a subscription-type
+     * customer (see that method's doc comment for why it can't be staged
+     * like a walk-in customer), until either a real Subscription gets
+     * created for them or cancelNewSubscription() rolls the customer back.
+     * Never true for a customer arrived at via search -- only for one this
+     * exact Terminal session just inserted moments ago with nothing behind
+     * it yet.
+     */
+    public bool $pendingSubscriptionCustomerCreation = false;
+
     public string $customerSearch = '';
 
     public bool $showNewCustomerForm = false;
@@ -595,6 +606,7 @@ new class extends Component
     {
         $this->customerId = null;
         $this->usingPendingCustomer = false;
+        $this->pendingSubscriptionCustomerCreation = false;
         $this->newCustomerName = '';
         $this->newCustomerPhone = '';
         $this->newCustomerType = 'walk_in';
@@ -606,6 +618,30 @@ new class extends Component
         $this->clothesVisibleCount = self::CLOTHES_PAGE_SIZE;
         $this->customAmount = null;
         $this->paymentTiming = 'pay_now';
+    }
+
+    /**
+     * Cancelling the New Subscription modal right after createCustomer()
+     * eagerly created a subscription-type customer (see
+     * $pendingSubscriptionCustomerCreation) means that customer was never
+     * actually wanted -- roll the eager creation back so it doesn't linger
+     * as a real customer with no subscription and no orders. A customer
+     * reached via search that simply doesn't have a subscription yet
+     * (subscriptionOrderState 'none' on an existing customer) is left
+     * alone; only ever deletes the one this session just inserted.
+     */
+    public function cancelNewSubscription(): void
+    {
+        if ($this->pendingSubscriptionCustomerCreation && $this->customerId) {
+            $customer = Customer::find($this->customerId);
+
+            if ($customer && $customer->subscriptions()->doesntExist() && $customer->orders()->doesntExist()) {
+                $customer->delete();
+            }
+        }
+
+        $this->clearCustomer();
+        $this->customerSearch = '';
     }
 
     /**
@@ -669,6 +705,7 @@ new class extends Component
             ]));
 
             $this->customerId = $customer->id;
+            $this->pendingSubscriptionCustomerCreation = true;
             $this->newCustomerName = '';
             $this->newCustomerPhone = '';
             $this->newCustomerType = 'walk_in';
@@ -1481,7 +1518,7 @@ new class extends Component
                     </div>
                 @endif
 
-                <div class="relative">
+                <div class="relative {{ (! $this->isSubscriptionMode && empty($cart)) ? 'min-h-[22rem]' : '' }}">
                     @if (! $this->isSubscriptionMode && empty($cart))
                         @php
                             $hasCustomer = (bool) $this->selectedCustomer;
@@ -1496,13 +1533,13 @@ new class extends Component
                             ];
                             $currentTerminalStep = collect($terminalSteps)->filter(fn ($step) => $step['applicable'])->search(fn ($step) => ! $step['done']);
                         @endphp
-                        <div class="absolute inset-0 z-10 bg-surface/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center text-center px-4">
-                            <ol class="space-y-1.5 text-left max-w-[15rem]">
+                        <div class="absolute inset-0 z-10 bg-surface/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center text-center px-6">
+                            <ol class="space-y-3 text-left max-w-xs">
                                 @foreach ($terminalSteps as $i => $step)
-                                    <li class="flex items-center gap-1.5">
-                                        <span class="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold font-mono flex-none {{ ! $step['applicable'] ? 'bg-surface-2 text-ink-faint/40' : ($step['done'] ? 'bg-success text-white' : ($i === $currentTerminalStep ? 'bg-accent text-white' : 'bg-surface-2 text-ink-faint')) }}">
+                                    <li class="flex items-center gap-3">
+                                        <span class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold font-mono flex-none {{ ! $step['applicable'] ? 'bg-surface-2 text-ink-faint/40' : ($step['done'] ? 'bg-success text-white' : ($i === $currentTerminalStep ? 'bg-accent text-white' : 'bg-surface-2 text-ink-faint')) }}">
                                             @if ($step['applicable'] && $step['done'])
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                                                     <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
                                                 </svg>
                                             @elseif (! $step['applicable'])
@@ -1511,7 +1548,7 @@ new class extends Component
                                                 {{ $i + 1 }}
                                             @endif
                                         </span>
-                                        <span class="text-[11px] leading-tight {{ ! $step['applicable'] ? 'text-ink-faint/40 italic' : ($i === $currentTerminalStep ? 'text-ink font-semibold' : ($step['done'] ? 'text-ink-muted' : 'text-ink-faint')) }}">
+                                        <span class="text-sm leading-snug {{ ! $step['applicable'] ? 'text-ink-faint/40 italic' : ($i === $currentTerminalStep ? 'text-ink font-semibold' : ($step['done'] ? 'text-ink-muted' : 'text-ink-faint')) }}">
                                             {{ $step['label'] }}
                                             @if (! $step['applicable'])
                                                 (not applicable)

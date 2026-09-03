@@ -11,15 +11,16 @@ use Illuminate\View\View;
 class WashingMachineController extends Controller
 {
     /**
-     * Eager-loads each machine's recent orders (with their customers) in one
-     * pass, so the card grid's detail panels don't each re-query -- the
-     * current order (if any) and wash history are both derived from this
-     * same loaded collection in the view, rather than calling
-     * currentOrder()/isBusy() again per machine.
+     * Eager-loads each machine's recent orders (with their customers and
+     * status history) in one pass, so the card grid's detail panels don't
+     * each re-query -- the current order (if any), wash history, and who
+     * moved an order into "washing" are all derived from this same loaded
+     * collection in the view, rather than calling currentOrder()/isBusy()
+     * or the order's own status history again per machine.
      */
     public function index(): View
     {
-        $washingMachines = WashingMachine::with(['orders' => fn ($q) => $q->latest()->limit(9)->with('customer')])
+        $washingMachines = WashingMachine::with(['orders' => fn ($q) => $q->latest()->limit(9)->with('customer', 'statusHistory.changedBy')])
             ->orderBy('name')
             ->get();
 
