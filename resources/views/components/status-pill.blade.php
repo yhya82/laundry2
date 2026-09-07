@@ -1,4 +1,4 @@
-@props(['status'])
+@props(['status', 'label' => null])
 
 @php
 $tones = [
@@ -19,7 +19,11 @@ $classes = [
 // up) -- reads as "Collected" everywhere it's shown, matching the order
 // timeline's own past-tense labels, not the raw noun form of the value.
 $labels = ['collection' => 'Collected'];
-$label = $labels[$status] ?? ucfirst(str_replace('_', ' ', $status));
+// $label (the prop) lets one call site override the wording -- e.g. the
+// orders list shows a "high" priority order as "Express" without renaming
+// "high" everywhere else this same status value is used (the packages
+// catalog's own priority pill).
+$label = $label ?? $labels[$status] ?? ucfirst(str_replace('_', ' ', $status));
 @endphp
 
 <span {{ $attributes->merge(['class' => "inline-flex items-center gap-1.5 font-mono text-xs font-semibold px-2.5 py-1 rounded-full $classes"]) }}>

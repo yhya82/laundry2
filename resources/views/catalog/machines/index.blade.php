@@ -2,7 +2,7 @@
     <x-slot name="header">Washing Machines</x-slot>
 
     <div class="flex items-center justify-between mb-3">
-        <p class="text-sm text-ink-muted max-w-xl">How many orders can wash at once — one per active machine. Retire a machine (rather than deleting it) if it breaks down; its history stays intact and it stops being offered until reactivated.</p>
+        <p class="text-sm text-ink-muted max-w-xl">An active machine can wash one order at a time. Retire a machine rather than deleting it, if it breaks down its history stays intact and it stops being offered until reactivated.</p>
         @can('catalog.manage')
             <x-panel-trigger panel="machine-create">+ Add Machine</x-panel-trigger>
         @endcan

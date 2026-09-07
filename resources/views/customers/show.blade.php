@@ -6,9 +6,9 @@
         ['label' => $customer->full_name, 'url' => null],
     ]" />
 
-    <div class="relative bg-surface border border-line rounded-2xl p-6 mb-5 shadow-sm">
+    <div class="relative bg-surface border border-line rounded-2xl p-7 mb-5 shadow-sm">
         @can('customers.manage')
-            <button type="button" @click="$dispatch('open-panel', 'customer-edit')" class="absolute top-4 right-4 inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-opacity">
+            <button type="button" @click="$dispatch('open-panel', 'customer-edit')" class="absolute top-3 right-4 inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-opacity">
                 <x-nav-icon name="edit" class="w-3.5 h-3.5" />
                 Edit
             </button>
@@ -90,10 +90,40 @@
             @endforeach
         </div>
 
-        <div x-show="tab === 'overview'" class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div x-show="tab === 'overview'" class="grid grid-cols-1 lg:grid-cols-4 gap-5">
             @php
                 $cycleSubscriptions = $subscriptions->where('status', 'active')->filter(fn ($s) => $s->cycles->isNotEmpty());
             @endphp
+            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="user" class="w-3.5 h-3.5" /></span>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Customer Information</div>
+                </div>
+                <dl class="space-y-3 text-sm">
+                    <div class="flex items-center justify-between gap-3">
+                        <dt class="flex items-center gap-2 text-ink-muted">
+                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="phone" class="w-3 h-3" /></span>
+                            Phone
+                        </dt>
+                        <dd class="font-mono text-ink">{{ $customer->phone }}</dd>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <dt class="flex items-center gap-2 text-ink-muted">
+                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="mail" class="w-3 h-3" /></span>
+                            Email
+                        </dt>
+                        <dd class="text-ink">{{ $customer->email ?: '—' }}</dd>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                        <dt class="flex items-center gap-2 text-ink-muted">
+                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="map-pin" class="w-3 h-3" /></span>
+                            Address
+                        </dt>
+                        <dd class="text-ink text-right">{{ $customer->address ?: '—' }}</dd>
+                    </div>
+                </dl>
+            </div>
+
             @if ($cycleSubscriptions->isNotEmpty())
             <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
                 <div class="flex items-center gap-2 mb-3">
@@ -177,65 +207,6 @@
             </div>
             @endif
 
-            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-2">
-                        <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-3.5 h-3.5" /></span>
-                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Recent Orders</div>
-                    </div>
-                    <button type="button" @click="tab = 'orders'" class="text-xs text-accent-ink hover:underline">View All</button>
-                </div>
-                @forelse ($recentOrders as $order)
-                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
-                        <a href="{{ route('orders.show', $order) }}" class="font-mono text-ink hover:text-accent-ink">{{ $order->order_number }}</a>
-                        <x-status-pill :status="$order->status" />
-                        <span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->total_amount, 2) }}</span>
-                    </div>
-                @empty
-                    <p class="text-ink-faint text-sm">No orders yet.</p>
-                @endforelse
-            </div>
-
-            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div class="flex items-center gap-2 mb-3">
-                    <span class="w-7 h-7 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="zap" class="w-3.5 h-3.5" /></span>
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Quick Actions</div>
-                </div>
-                <div class="flex flex-col gap-1.5">
-                    @can('terminal.use')
-                        @if ($subscriptionOrderState === 'open' || $subscriptionOrderState === 'exhausted')
-                            <button type="button" @click="$dispatch('open-panel', 'new-order-choice')" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors text-left w-full">
-                                <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-4 h-4" /></span>
-                                <span class="flex-1">Create Order</span>
-                                <span class="text-ink-faint">&rarr;</span>
-                            </button>
-
-                            <x-subscription-order-choice-modal
-                                :customer="$customer"
-                                :cycle-state="$subscriptionOrderState"
-                                :subscription="$subscriptions->where('status', 'active')->first()"
-                                :packages="$subscriptionPackages"
-                            />
-                        @else
-                            <a href="{{ route('orders.create', ['customer' => $customer->id]) }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors">
-                                <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-4 h-4" /></span>
-                                <span class="flex-1">Create Order</span>
-                                <span class="text-ink-faint">&rarr;</span>
-                            </a>
-                        @endif
-                    @endcan
-                    @can('subscriptions.manage')
-                        @if ($customer->customer_type === 'subscription')
-                            <button type="button" @click="$dispatch('open-panel', 'new-subscription')" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors text-left">
-                                <span class="w-8 h-8 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="repeat" class="w-4 h-4" /></span>
-                                <span class="flex-1">New Subscription</span>
-                                <span class="text-ink-faint">&rarr;</span>
-                            </button>
-                        @endif
-                    @endcan
-                </div>
-            </div>
-
             @can('subscriptions.manage')
                 @php $manageableSubscriptions = $subscriptions->whereIn('status', ['active', 'paused']); @endphp
                 @if ($manageableSubscriptions->isNotEmpty())
@@ -285,7 +256,93 @@
                 @endif
             @endcan
 
-            <div class="space-y-5">
+            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="w-7 h-7 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="zap" class="w-3.5 h-3.5" /></span>
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Quick Actions</div>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    @can('terminal.use')
+                        @if ($subscriptionOrderState === 'open' || $subscriptionOrderState === 'exhausted')
+                            <button type="button" @click="$dispatch('open-panel', 'new-order-choice')" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors text-left w-full">
+                                <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-4 h-4" /></span>
+                                <span class="flex-1">Create Order</span>
+                                <span class="text-ink-faint">&rarr;</span>
+                            </button>
+
+                            <x-subscription-order-choice-modal
+                                :customer="$customer"
+                                :cycle-state="$subscriptionOrderState"
+                                :subscription="$subscriptions->where('status', 'active')->first()"
+                                :packages="$subscriptionPackages"
+                            />
+                        @else
+                            <a href="{{ route('orders.create', ['customer' => $customer->id]) }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors">
+                                <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-4 h-4" /></span>
+                                <span class="flex-1">Create Order</span>
+                                <span class="text-ink-faint">&rarr;</span>
+                            </a>
+                        @endif
+                    @endcan
+                    @can('subscriptions.manage')
+                        @if ($customer->customer_type === 'subscription')
+                            <button type="button" @click="$dispatch('open-panel', 'new-subscription')" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors text-left">
+                                <span class="w-8 h-8 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="repeat" class="w-4 h-4" /></span>
+                                <span class="flex-1">New Subscription</span>
+                                <span class="text-ink-faint">&rarr;</span>
+                            </button>
+                        @endif
+                    @endcan
+                </div>
+            </div>
+
+            <div class="lg:col-span-2 bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-3.5 h-3.5" /></span>
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Recent Orders</div>
+                    </div>
+                    <button type="button" @click="tab = 'orders'" class="text-xs text-accent-ink hover:underline">View All</button>
+                </div>
+                @forelse ($recentOrders as $order)
+                    @php
+                        // A subscription/cycle order's own total_amount is
+                        // almost always 0 -- its flat fee lives on the cycle
+                        // instead (see Order::subscriptionCycle()), so
+                        // showing that total here would read as "free" when
+                        // it isn't. Show the cycle's real balance instead,
+                        // same "Paid in full" / due styling used on the
+                        // order detail page.
+                        $isCycleOrder = $order->order_source === 'subscription';
+                        $isWalkInOrder = $order->order_source === 'walk_in';
+                        $cycleBalance = $isCycleOrder ? $order->subscriptionCycle()?->balanceDue() : null;
+                    @endphp
+                    <div class="flex items-center justify-between py-2 border-b border-line last:border-0 text-sm">
+                        <a href="{{ route('orders.show', $order) }}" class="font-mono text-ink hover:text-accent-ink">{{ $order->order_number }}</a>
+                        <div class="flex items-center gap-1.5">
+                            <x-status-pill :status="$order->status" />
+                            @if ($isCycleOrder)
+                                <span class="inline-flex items-center font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent-soft text-accent-ink">Subscription</span>
+                            @elseif ($isWalkInOrder)
+                                <span class="inline-flex items-center font-mono text-[10px] font-semibold px-2 py-0.5 rounded-full bg-pill-bg text-pill-ink">Walk-in</span>
+                            @endif
+                        </div>
+                        @if ($isCycleOrder)
+                            @if ($cycleBalance > 0)
+                                <span class="font-mono tabular-nums text-critical font-bold">GMD {{ number_format($cycleBalance, 2) }} due</span>
+                            @else
+                                <span class="font-mono tabular-nums text-success font-semibold">Paid in full</span>
+                            @endif
+                        @else
+                            <span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->total_amount, 2) }}</span>
+                        @endif
+                    </div>
+                @empty
+                    <p class="text-ink-faint text-sm">No orders yet.</p>
+                @endforelse
+            </div>
+
+            <div class="lg:col-span-2 space-y-5">
                 <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-2">
@@ -385,44 +442,14 @@
                 @endif
             </div>
 
-            <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                <div class="flex items-center gap-2 mb-3">
-                    <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="user" class="w-3.5 h-3.5" /></span>
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Customer Information</div>
-                </div>
-                <dl class="space-y-3 text-sm">
-                    <div class="flex items-center justify-between gap-3">
-                        <dt class="flex items-center gap-2 text-ink-muted">
-                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="phone" class="w-3 h-3" /></span>
-                            Phone
-                        </dt>
-                        <dd class="font-mono text-ink">{{ $customer->phone }}</dd>
-                    </div>
-                    <div class="flex items-center justify-between gap-3">
-                        <dt class="flex items-center gap-2 text-ink-muted">
-                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="mail" class="w-3 h-3" /></span>
-                            Email
-                        </dt>
-                        <dd class="text-ink">{{ $customer->email ?: '—' }}</dd>
-                    </div>
-                    <div class="flex items-center justify-between gap-3">
-                        <dt class="flex items-center gap-2 text-ink-muted">
-                            <span class="w-6 h-6 rounded-md bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="map-pin" class="w-3 h-3" /></span>
-                            Address
-                        </dt>
-                        <dd class="text-ink text-right">{{ $customer->address ?: '—' }}</dd>
-                    </div>
-                </dl>
-            </div>
-
             @if ($upcomingCollections->isNotEmpty())
-                <div class="lg:col-span-3 bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                <div class="lg:col-span-4 bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-2">
                             <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="truck" class="w-3.5 h-3.5" /></span>
                             <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Collection Schedule</div>
                         </div>
-                        <a href="{{ route('collections.index') }}" class="text-xs text-accent-ink hover:underline">View All Collections</a>
+                        <a href="{{ route('collections.index', ['customer' => $customer->id]) }}" class="text-xs text-accent-ink hover:underline">View All Collections</a>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         @foreach ($upcomingCollections as $collection)

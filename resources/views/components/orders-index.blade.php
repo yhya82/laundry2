@@ -77,7 +77,7 @@ new class extends Component
             ->orderByDesc(DB::raw("EXISTS (
                 SELECT 1 FROM order_package_lines opl
                 INNER JOIN laundry_packages lp ON lp.id = opl.laundry_package_id
-                WHERE opl.order_id = orders.id AND lp.priority = 'high'
+                WHERE opl.order_id = orders.id AND lp.priority = 'high' AND orders.order_source != 'subscription'
             )"))
             ->latest()
             ->paginate(15);
@@ -142,14 +142,15 @@ new class extends Component
                             // site -- both are live aggregate queries under
                             // the hood, not free attribute reads.
                             $paymentStatus = $order->combinedPaymentStatus();
-                            $due = $order->balanceDue();
+                            $due = $order->combinedBalanceDue();
+                            $isCycleOrder = $order->order_source === 'subscription';
                         @endphp
                         <tr wire:key="order-row-{{ $order->id }}" class="border-t border-line hover:bg-surface-2">
                             <td class="px-4 py-3">
                                 <a href="{{ route('orders.show', $order) }}" class="font-mono font-medium text-ink hover:text-accent-ink">{{ $order->order_number }}</a>
                             </td>
                             <td class="px-4 py-3 text-ink">{{ $order->customer->full_name }}</td>
-                            <td class="px-4 py-3"><x-status-pill :status="$order->priority()" /></td>
+                            <td class="px-4 py-3"><x-status-pill :status="$order->priority()" :label="$order->priority() === 'high' ? 'Express' : null" /></td>
                             <td class="px-4 py-3"><x-status-pill :status="$order->status" data-order-status="{{ $order->id }}" /></td>
                             <td class="px-4 py-3">
                                 <x-status-pill :status="$paymentStatus" />
@@ -157,7 +158,13 @@ new class extends Component
                                     <span class="block text-ink-faint text-xs font-mono mt-0.5">GMD {{ number_format($due, 2) }} due</span>
                                 @endif
                             </td>
-                            <td class="px-4 py-3 font-mono tabular-nums text-ink">GMD {{ number_format($order->total_amount, 2) }}</td>
+                            <td class="px-4 py-3 font-mono tabular-nums text-ink">
+                                @if ($isCycleOrder)
+                                    Subscription
+                                @else
+                                    GMD {{ number_format($order->total_amount, 2) }}
+                                @endif
+                            </td>
                             <td class="px-4 py-3 text-ink-faint font-mono text-xs">{{ $order->created_at->format('Y-m-d H:i') }}</td>
                             @if ($this->assignmentEnabled)
                                 <td class="px-4 py-3">
@@ -210,7 +217,8 @@ new class extends Component
         @forelse ($this->orders as $order)
             @php
                 $paymentStatus = $order->combinedPaymentStatus();
-                $due = $order->balanceDue();
+                $due = $order->combinedBalanceDue();
+                $isCycleOrder = $order->order_source === 'subscription';
             @endphp
             <div wire:key="order-card-{{ $order->id }}" class="bg-surface border border-line rounded-2xl p-4">
                 <a href="{{ route('orders.show', $order) }}" class="block">
@@ -218,7 +226,7 @@ new class extends Component
                         <span class="font-mono font-medium text-ink">{{ $order->order_number }}</span>
                         <div class="flex items-center gap-1.5">
                             @if ($order->priority() === 'high')
-                                <x-status-pill :status="$order->priority()" />
+                                <x-status-pill :status="$order->priority()" label="Express" />
                             @endif
                             <x-status-pill :status="$order->status" data-order-status="{{ $order->id }}" />
                             <x-status-pill :status="$paymentStatus" />
@@ -226,7 +234,7 @@ new class extends Component
                     </div>
                     <div class="flex items-center justify-between text-sm text-ink-muted">
                         <span>{{ $order->customer->full_name }}</span>
-                        <span class="font-mono tabular-nums text-ink">GMD {{ number_format($order->total_amount, 2) }}</span>
+                        <span class="font-mono tabular-nums text-ink">{{ $isCycleOrder ? 'Subscription' : 'GMD '.number_format($order->total_amount, 2) }}</span>
                     </div>
                     @if ($paymentStatus !== 'paid' && $due > 0)
                         <div class="text-critical text-xs font-mono mt-1">GMD {{ number_format($due, 2) }} due</div>

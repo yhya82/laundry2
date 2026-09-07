@@ -13,7 +13,7 @@ return new class extends Migration
             $table->id();
             $table->string('full_name');
             $table->string('phone')->unique();
-            $table->string('email')->nullable();
+            $table->string('email')->nullable(); //might make this unique in the future
             $table->enum('customer_type', ['walk_in', 'subscription'])->default('walk_in');
             $table->decimal('store_credit_balance', 10, 2)->default(0);
             $table->string('address')->nullable();

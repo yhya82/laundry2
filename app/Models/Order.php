@@ -132,10 +132,19 @@ class Order extends Model
 
     /**
      * An order is "high" priority if any of its package lines used a
-     * laundry package flagged high priority in the catalog.
+     * laundry package flagged high priority in the catalog. A subscription
+     * order's one package line is never a real pick -- just an arbitrary
+     * active package used as a placeholder to satisfy
+     * order_package_lines.laundry_package_id (see the Terminal's
+     * createSubscriptionLineItems()) -- so its priority is meaningless and
+     * must not leak into this order's own priority.
      */
     public function priority(): string
     {
+        if ($this->order_source === 'subscription') {
+            return 'normal';
+        }
+
         return $this->packageLines->contains(fn (OrderPackageLine $line) => $line->laundryPackage?->priority === 'high')
             ? 'high'
             : 'normal';
@@ -186,6 +195,17 @@ class Order extends Model
     }
 
     /**
+     * The actual amount still owed across both this order and (if any) its
+     * subscription cycle -- balanceDue() alone is always 0 for a
+     * subscription order, since the flat fee lives on the cycle, not the
+     * order. Walk-in orders (no cycle) fall back to balanceDue() unchanged.
+     */
+    public function combinedBalanceDue(): float
+    {
+        return $this->balanceDue() + ($this->subscriptionCycle()?->balanceDue() ?? 0);
+    }
+
+    /**
      * Same as paymentStatus(), but folds in the subscription cycle's
      * balance too. A subscription order's own subtotal is always 0 -- the
      * flat monthly fee lives on the cycle -- so an order with no
@@ -202,7 +222,7 @@ class Order extends Model
             return $this->paymentStatus();
         }
 
-        $totalDue = $this->balanceDue() + $cycle->balanceDue();
+        $totalDue = $this->combinedBalanceDue();
         $totalPaid = $this->amountPaid() + $cycle->amountPaid();
 
         if ($totalDue <= 0) {

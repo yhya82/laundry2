@@ -62,9 +62,7 @@
                                             <x-nav-icon name="edit" class="w-4 h-4" />
                                         </button>
                                     @endcan
-                                    <a href="{{ route('customers.show', $customer) }}" title="View Profile" class="w-8 h-8 rounded-lg bg-surface-2 text-ink-muted flex items-center justify-center hover:text-ink">
-                                        <x-nav-icon name="arrow-right" class="w-4 h-4" />
-                                    </a>
+                                   
                                     @can('customers.manage')
                                         <form method="POST" action="{{ route('customers.destroy', $customer) }}" onsubmit="return confirm('Delete {{ $customer->full_name }}? This can be restored later if needed.')">
                                             @csrf @method('DELETE')

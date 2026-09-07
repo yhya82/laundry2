@@ -67,7 +67,7 @@ class CustomerController extends Controller
             ->latest('start_date')
             ->get();
 
-        $orders = $customer->orders()->with('payments')->latest()->get();
+        $orders = $customer->orders()->with('payments', 'collection.subscriptionCycle')->latest()->get();
         $recentOrders = $orders->take(5);
 
         // A subscription's flat cycle price is never on any order -- it's

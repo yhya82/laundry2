@@ -1,7 +1,21 @@
 <x-app-layout>
     <x-slot name="header">Collections Schedule</x-slot>
 
+    @if ($customer)
+        <div class="flex items-center gap-3 mb-2">
+            <a href="{{ route('customers.show', $customer) }}" class="inline-flex items-center gap-1.5 text-xs font-semibold text-accent-ink hover:underline">
+                <x-nav-icon name="arrow-right" class="w-3 h-3 rotate-180" />
+                Back to Profile
+            </a>
+            <a href="{{ route('collections.index') }}" class="text-xs text-accent-ink hover:underline">View all collections</a>
+        </div>
+        <div class="text-sm text-ink-muted mb-3">Showing collections for <span class="font-medium text-ink">{{ $customer->full_name }}</span></div>
+    @endif
+
     <form method="GET" class="mb-5 max-w-xs">
+        @if ($customer)
+            <input type="hidden" name="customer" value="{{ $customer->id }}">
+        @endif
         <select name="status" onchange="this.form.submit()" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
             <option value="">All statuses</option>
             @foreach (['scheduled', 'collected', 'skipped', 'cancelled'] as $status)

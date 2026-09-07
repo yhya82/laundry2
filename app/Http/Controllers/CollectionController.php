@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\CollectionStatusChanged;
 use App\Models\Collection;
+use App\Models\Customer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -13,13 +14,22 @@ class CollectionController extends Controller
 {
     public function index(Request $request): View
     {
+        // ?customer= scopes this list to one customer's collections -- used
+        // by the customer profile's "View All Collections" link. The
+        // sidebar's own Collections link never passes it, so that entry
+        // point is unaffected and still shows everything.
+        $customer = $request->filled('customer')
+            ? Customer::find($request->integer('customer'))
+            : null;
+
         $collections = Collection::with(['subscription.customer', 'subscription.subscriptionPackage'])
+            ->when($customer, fn ($q) => $q->whereHas('subscription', fn ($s) => $s->where('customer_id', $customer->id)))
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->get('status')))
             ->orderByRaw('scheduled_date IS NULL, scheduled_date')
             ->paginate(20)
             ->withQueryString();
 
-        return view('collections.index', compact('collections'));
+        return view('collections.index', compact('collections', 'customer'));
     }
 
     /**

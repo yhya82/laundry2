@@ -1344,8 +1344,8 @@ new class extends Component
 
         return match (true) {
             str_contains($message, 'Payment would exceed order total') => 'This payment would exceed the order total. Refresh and try again.',
-            str_contains($message, 'Payment would exceed cycle total') => 'This payment would exceed the subscription cycle total — it may have just been paid elsewhere. Refresh and try again.',
-            str_contains($message, 'Insufficient store credit balance') => 'Insufficient store credit balance — it may have just been redeemed elsewhere. Refresh and try again.',
+            str_contains($message, 'Payment would exceed cycle total') => 'This payment would exceed the subscription cycle total,it may have just been paid elsewhere. Refresh and try again.',
+            str_contains($message, 'Insufficient store credit balance') => 'Insufficient store credit balance , it may have just been redeemed elsewhere. Refresh and try again.',
             default => 'Something went wrong saving this order. No charge was made.',
         };
     }
