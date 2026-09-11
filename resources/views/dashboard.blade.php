@@ -17,6 +17,15 @@
         </div>
     </div>
 
+    {{--
+        queueStages is deliberately separate from pendingStages below:
+        'collection' belongs in the Laundry Queue card (it's the pipeline's
+        final stage) but must not count as pending for the pendingOrders
+        stat, which means still being processed and stops at completed.
+        Comments can't go inside the x-data attribute itself -- a double
+        quote in one breaks the HTML attribute early and leaks raw JS onto
+        the page as visible text.
+    --}}
     <div
         x-data="{
             todayRevenue: @js($todayRevenue),
@@ -25,14 +34,15 @@
             pendingOrders: @js($pendingOrders),
             queueCounts: @js((object) $queueCounts),
             pendingStages: @js(array_keys(\App\Models\Order::STAGE_SEQUENCE)),
+            queueStages: @js([...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'collection']),
             init() {
                 window.Echo.channel('orders').listen('.order.status-changed', (e) => {
                     if (this.queueCounts === null) return;
 
-                    if (e.fromStatus && this.pendingStages.includes(e.fromStatus)) {
+                    if (e.fromStatus && this.queueStages.includes(e.fromStatus)) {
                         this.queueCounts[e.fromStatus] = Math.max(0, (this.queueCounts[e.fromStatus] ?? 0) - 1);
                     }
-                    if (this.pendingStages.includes(e.toStatus)) {
+                    if (this.queueStages.includes(e.toStatus)) {
                         this.queueCounts[e.toStatus] = (this.queueCounts[e.toStatus] ?? 0) + 1;
                     }
 
@@ -112,24 +122,35 @@
                     <x-nav-icon name="clipboard" class="w-4 h-4 text-ink-faint" />
                     <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Laundry Queue</div>
                 </div>
-                <div class="flex items-stretch gap-0 overflow-x-auto pb-1">
-                    @foreach (array_keys(\App\Models\Order::STAGE_SEQUENCE) as $stage)
+                <div class="flex items-stretch flex-wrap gap-y-2">
+                    @foreach ([...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'collection'] as $stage)
                         @if (!$loop->first)
-                            <div class="flex items-center justify-center flex-none w-6 text-line-strong">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><polyline points="9 6 15 12 9 18" /></svg>
+                            <div class="flex items-center justify-center flex-none w-4 text-line-strong">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-3.5 h-3.5"><polyline points="9 6 15 12 9 18" /></svg>
                             </div>
                         @endif
-                        <div
-                            class="flex-1 min-w-[6rem] flex flex-col items-center text-center px-2 py-3.5 rounded-xl transition-colors"
-                            :class="(queueCounts['{{ $stage }}'] ?? 0) > 0 ? 'bg-accent-soft' : 'bg-surface-2'"
+                        @php
+                            // 'completed' and 'collection' both mean the order
+                            // is done (processed, or processed and picked up)
+                            // -- a light green reads as "finished" instead of
+                            // the same in-progress blue as the active stages.
+                            $isDoneStage = in_array($stage, ['completed', 'collection'], true);
+                            $activeBg = $isDoneStage ? 'bg-success-soft' : 'bg-accent-soft';
+                            $activeText = $isDoneStage ? 'text-success' : 'text-accent-ink';
+                            $stageLabel = $stage === 'collection' ? 'Collected' : ucfirst($stage);
+                        @endphp
+                        <a
+                            href="{{ route('orders.index', ['status' => $stage]) }}"
+                            class="flex-1 min-w-0 flex flex-col items-center text-center px-1 py-2.5 rounded-xl transition-colors hover:opacity-80"
+                            :class="(queueCounts['{{ $stage }}'] ?? 0) > 0 ? '{{ $activeBg }}' : 'bg-surface-2'"
                         >
                             <div
-                                class="font-mono text-xl font-bold tabular-nums"
-                                :class="(queueCounts['{{ $stage }}'] ?? 0) > 0 ? 'text-accent-ink' : 'text-ink-faint'"
+                                class="font-mono text-lg font-bold tabular-nums"
+                                :class="(queueCounts['{{ $stage }}'] ?? 0) > 0 ? '{{ $activeText }}' : 'text-ink-faint'"
                                 x-text="queueCounts['{{ $stage }}'] ?? 0"
                             ></div>
-                            <div class="text-xs text-ink-muted mt-0.5 capitalize">{{ $stage }}</div>
-                        </div>
+                            <div class="text-[11px] text-ink-muted mt-0.5 whitespace-nowrap">{{ $stageLabel }}</div>
+                        </a>
                     @endforeach
                 </div>
             </div>

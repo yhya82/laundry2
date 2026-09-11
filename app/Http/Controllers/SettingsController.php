@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Setting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class SettingsController extends Controller
@@ -45,13 +46,37 @@ class SettingsController extends Controller
             'address' => ['nullable', 'string', 'max:255'],
         ]);
 
+        // Uploaded first, before any of the other fields are saved -- store()
+        // doesn't throw when the S3 disk is unreachable (unconfigured bucket/
+        // credentials, an outage), it just returns false, which used to get
+        // saved as the literal path and silently discard the file while
+        // still reporting success. Failing fast here means nothing (not even
+        // the other fields) gets saved on a broken upload, and the person
+        // uploading actually finds out it didn't work.
+        $logoPath = null;
+
+        if ($request->hasFile('logo')) {
+            try {
+                $logoPath = $request->file('logo')->store('branding', 's3');
+            } catch (\Throwable $e) {
+                report($e);
+                $logoPath = false;
+            }
+
+            if (! $logoPath) {
+                throw ValidationException::withMessages([
+                    'logo' => 'Could not upload the logo -- storage is unavailable right now. Nothing was changed; try again once it\'s back.',
+                ]);
+            }
+        }
+
         Setting::set('branding.business_name', $validated['business_name'], 'general');
         Setting::set('branding.phone', $validated['phone'] ?? null, 'general');
         Setting::set('branding.email', $validated['email'] ?? null, 'general');
         Setting::set('branding.address', $validated['address'] ?? null, 'general');
 
-        if ($request->hasFile('logo')) {
-            Setting::set('branding.logo_path', $request->file('logo')->store('branding', 's3'), 'general');
+        if ($logoPath) {
+            Setting::set('branding.logo_path', $logoPath, 'general');
         }
     }
 

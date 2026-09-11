@@ -18,9 +18,13 @@ class DashboardController extends Controller
     {
         $user = auth()->user();
 
+        // 'collection' isn't a STAGE_SEQUENCE key (it's only the value
+        // 'completed' maps to), so it's added on separately here -- the
+        // Laundry Queue card shows it as the pipeline's final stage,
+        // alongside the processing stages STAGE_SEQUENCE's keys cover.
         $queueCounts = $user->can('orders.view')
             ? Order::query()
-                ->whereIn('status', array_keys(Order::STAGE_SEQUENCE))
+                ->whereIn('status', [...array_keys(Order::STAGE_SEQUENCE), 'collection'])
                 ->selectRaw('status, count(*) as total')
                 ->groupBy('status')
                 ->pluck('total', 'status')
