@@ -14,6 +14,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionCycle;
 use App\Models\SubscriptionPackage;
 use App\Support\Numbering;
+use App\Support\PhoneNumber;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -691,6 +692,8 @@ new class extends Component
             return;
         }
 
+        $this->newCustomerPhone = PhoneNumber::normalize($this->newCustomerPhone);
+
         $this->validate([
             'newCustomerName' => ['required', 'string', 'max:255'],
             'newCustomerPhone' => ['required', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/', 'unique:customers,phone'],
@@ -921,6 +924,8 @@ new class extends Component
         $this->sanitizeCart();
 
         $maxDiscountPercent = (float) Setting::get('order.max_discount_percent', '100');
+
+        $this->newCustomerPhone = PhoneNumber::normalize($this->newCustomerPhone);
 
         $this->validate([
             'customerId' => $this->usingPendingCustomer ? ['nullable'] : ['required', 'exists:customers,id'],
@@ -1367,7 +1372,7 @@ new class extends Component
                         @error('newCustomerName') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
-                        <input type="text" wire:model="newCustomerPhone" placeholder="+220 555 1234" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md">
+                        <input type="text" wire:model="newCustomerPhone" placeholder="555 1234" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md">
                         @error('newCustomerPhone') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>

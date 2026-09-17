@@ -13,6 +13,7 @@
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Name</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Email</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Roles</th>
+                    <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Phone</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Status</th>
                 </tr>
             </thead>
@@ -32,6 +33,7 @@
                                 @endforelse
                             </div>
                         </td>
+                        <td class="px-4 py-3 text-ink-muted">{{ str_replace('+220', '+220 ', $user->phone) }}</td>
                         <td class="px-4 py-3">
                             <span class="font-mono text-xs font-semibold px-2 py-0.5 rounded-full {{ $user->is_active ? 'bg-success-soft text-success' : 'bg-pill-bg text-pill-ink' }}">
                                 {{ $user->is_active ? 'Active' : 'Inactive' }}
@@ -123,7 +125,7 @@
         </form>
     @endforeach
 
-    <x-slide-panel name="user-create" title="New User" :error-fields="['name', 'email', 'password', 'roles']">
+    <x-slide-panel name="user-create" title="New User" :error-fields="['name', 'email', 'phone', 'password', 'roles']">
         <form method="POST" action="{{ route('users.store') }}" class="space-y-4">
             @csrf
             <div>
@@ -135,6 +137,11 @@
                 <x-input-label for="email" value="Email" />
                 <x-text-input id="email" name="email" type="email" class="block w-full" value="{{ old('email') }}" autocomplete="off" required />
                 <x-input-error :messages="$errors->get('email')" class="mt-1.5" />
+            </div>
+            <div>
+                <x-input-label for="phone" value="Phone" />
+                <x-text-input id="phone" name="phone" type="text" class="block w-full" value="{{ old('phone') }}" placeholder="555 1234" required />
+                <x-input-error :messages="$errors->get('phone')" class="mt-1.5" />
             </div>
             <div>
                 <x-input-label for="password" value="Password" />

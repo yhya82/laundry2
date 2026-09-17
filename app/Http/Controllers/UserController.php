@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreUserRequest;
 use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\PhoneNumber;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -35,9 +36,12 @@ class UserController extends Controller
 
     public function update(Request $request, User $user): RedirectResponse
     {
+        $request->merge(['phone' => PhoneNumber::normalize($request->input('phone'))]);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'phone' => ['required', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/', Rule::unique('users', 'phone')->ignore($user->id)],
         ]);
 
         $user->update($validated);
@@ -87,6 +91,7 @@ class UserController extends Controller
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
+            'phone' => $validated['phone'],
             'password' => $validated['password'],
         ]);
 

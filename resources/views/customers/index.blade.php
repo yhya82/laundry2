@@ -43,7 +43,7 @@
                                 <a href="{{ route('customers.show', $customer) }}" class="font-medium text-ink hover:text-accent-ink">{{ $customer->full_name }}</a>
                             </td>
                             <td class="px-4 py-3 text-ink-muted font-mono text-xs">{{ $customer->created_at->format('Y-m-d') }}</td>
-                            <td class="px-4 py-3 text-ink-muted font-mono">{{ $customer->phone }}</td>
+                            <td class="px-4 py-3 text-ink-muted font-mono">{{ str_replace('+220', '+220 ', $customer->phone) }}</td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center gap-1.5 font-mono text-xs font-semibold px-2.5 py-1 rounded-full {{ $customer->customer_type === 'subscription' ? 'bg-accent-soft text-accent-ink' : 'bg-pill-bg text-pill-ink' }}">
                                     {{ $customer->customer_type === 'subscription' ? 'Subscription' : 'Walk-in' }}
@@ -97,7 +97,7 @@
                         </span>
                     </div>
                     <div class="flex items-center justify-between text-sm text-ink-muted">
-                        <span class="font-mono">{{ $customer->phone }}</span>
+                        <span class="font-mono">{{ str_replace('+220', '+220 ', $customer->phone) }}</span>
                         <span class="font-mono text-ink tabular-nums">GMD {{ number_format($customer->store_credit_balance, 2) }}</span>
                     </div>
                 </a>
