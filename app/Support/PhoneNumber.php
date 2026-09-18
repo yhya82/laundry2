@@ -3,14 +3,16 @@
 namespace App\Support;
 
 /**
- * Every phone field in this app (customers, users) accepts a bare local
- * number -- staff never need to type the +220 country code themselves.
- * normalize() prepends it if it's missing, so the stored value is always
- * consistent regardless of what was actually typed. Callers run this
- * *before* validation (not just before save), so the uniqueness check
- * compares against the same normalized shape every existing number was
- * stored in -- otherwise "5551234" typed bare would never collide with an
- * existing "+2205551234", even though they're the same number.
+ * Every phone field in this app (customers, users) accepts a bare 9-digit
+ * local number -- staff never need to type the +220 country code
+ * themselves, or worry about spaces/dashes. normalize() strips any
+ * formatting and prepends +220 if it's missing, so the stored value is
+ * always exactly "+220" followed by 9 digits, regardless of what was
+ * actually typed. Callers run this *before* validation (not just before
+ * save), so the uniqueness check compares against the same normalized
+ * shape every existing number was stored in -- otherwise "555 123456"
+ * typed bare would never collide with an existing "+220555123456", even
+ * though they're the same number.
  */
 class PhoneNumber
 {
@@ -18,10 +20,14 @@ class PhoneNumber
     {
         $value = trim((string) $value);
 
-        if ($value === '' || str_starts_with($value, '+')) {
+        if ($value === '') {
             return $value;
         }
 
-        return '+220'.$value;
+        if (str_starts_with($value, '+')) {
+            return '+'.preg_replace('/\D/', '', substr($value, 1));
+        }
+
+        return '+220'.preg_replace('/\D/', '', $value);
     }
 }

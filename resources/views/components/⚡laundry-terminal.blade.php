@@ -696,9 +696,11 @@ new class extends Component
 
         $this->validate([
             'newCustomerName' => ['required', 'string', 'max:255'],
-            'newCustomerPhone' => ['required', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/', 'unique:customers,phone'],
+            'newCustomerPhone' => ['required', 'string', 'regex:/^\+220[0-9]{9}$/', 'unique:customers,phone'],
             'newCustomerType' => ['required', 'in:walk_in,subscription'],
-        ], [], ['newCustomerName' => 'name', 'newCustomerPhone' => 'phone', 'newCustomerType' => 'customer type']);
+        ], [
+            'newCustomerPhone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
+        ], ['newCustomerName' => 'name', 'newCustomerPhone' => 'phone', 'newCustomerType' => 'customer type']);
 
         if ($this->newCustomerType === 'subscription') {
             $customer = DB::transaction(fn () => Customer::create([
@@ -934,7 +936,7 @@ new class extends Component
             // changed in the meantime (another order creating the same
             // number), and this is the actual point of commitment.
             'newCustomerName' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'max:255'],
-            'newCustomerPhone' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/', 'unique:customers,phone'],
+            'newCustomerPhone' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'regex:/^\+220[0-9]{9}$/', 'unique:customers,phone'],
             'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
             'discount' => [
                 'numeric', 'min:0',
@@ -955,6 +957,7 @@ new class extends Component
             'customerId.required' => 'Select or add a customer first.',
             'newCustomerName.required' => 'Enter a name for the new customer.',
             'newCustomerPhone.required' => 'Enter a phone number for the new customer.',
+            'newCustomerPhone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
             'discountReason.required' => 'A discount needs a reason.',
             'walkInExtraChargeReason.required' => 'An extra charge needs a reason.',
             'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
@@ -1372,7 +1375,7 @@ new class extends Component
                         @error('newCustomerName') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
-                        <input type="text" wire:model="newCustomerPhone" placeholder="555 1234" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md">
+                        <input type="text" wire:model="newCustomerPhone" placeholder="555123456" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md">
                         @error('newCustomerPhone') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>

@@ -32,7 +32,7 @@ class StoreCustomerRequest extends FormRequest
             'phone' => [
                 'required',
                 'string',
-                'regex:/^[+0-9][0-9 ()\-]{6,19}$/',
+                'regex:/^\+220[0-9]{9}$/',
                 Rule::unique('customers', 'phone')->ignore($customerId),
             ],
             'email' => ['nullable', 'email', 'max:255'],
@@ -45,7 +45,7 @@ class StoreCustomerRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'phone.regex' => 'Enter a valid phone number (e.g. +220 555 1234).',
+            'phone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
         ];
     }
 }
