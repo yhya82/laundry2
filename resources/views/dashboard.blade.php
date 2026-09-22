@@ -18,10 +18,15 @@
     </div>
 
     {{--
-        queueStages is deliberately separate from pendingStages below:
-        'collection' belongs in the Laundry Queue card (it's the pipeline's
-        final stage) but must not count as pending for the pendingOrders
-        stat, which means still being processed and stops at completed.
+        queueStages and pendingStages are deliberately separate: 'collection'
+        belongs in the Laundry Queue card (it's the pipeline's final stage)
+        but was never part of pendingStages. 'completed' now isn't either --
+        it means processing is done, not that the order is fully resolved
+        (still needs a pickup/collection action), but it read as
+        contradictory sitting under "Pending Orders" once processing had
+        actually finished, so pendingStages stops at 'packaging' -- matches
+        DashboardController's own $pendingOrders query, or the live counter
+        here would drift out of sync with a fresh page load.
         Comments can't go inside the x-data attribute itself -- a double
         quote in one breaks the HTML attribute early and leaks raw JS onto
         the page as visible text.
@@ -33,7 +38,7 @@
             yearRevenue: @js($yearRevenue),
             pendingOrders: @js($pendingOrders),
             queueCounts: @js((object) $queueCounts),
-            pendingStages: @js(array_keys(\App\Models\Order::STAGE_SEQUENCE)),
+            pendingStages: @js(array_values(array_diff(array_keys(\App\Models\Order::STAGE_SEQUENCE), ['completed']))),
             queueStages: @js([...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'collection']),
             init() {
                 window.Echo.channel('orders').listen('.order.status-changed', (e) => {

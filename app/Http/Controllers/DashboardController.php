@@ -46,8 +46,13 @@ class DashboardController extends Controller
             ? Subscription::where('status', 'active')->count()
             : null;
 
+        // 'completed' means processing is done, not that the order is fully
+        // resolved -- still needs a pickup/collection action -- but it reads
+        // as contradictory sitting under "Pending Orders" once processing
+        // has actually finished, so it's excluded here (see dashboard.blade.php's
+        // matching pendingStages, which the live counter uses).
         $pendingOrders = $user->can('orders.view')
-            ? Order::whereIn('status', array_keys(Order::STAGE_SEQUENCE))->count()
+            ? Order::whereIn('status', array_diff(array_keys(Order::STAGE_SEQUENCE), ['completed']))->count()
             : null;
 
         $monthExpenses = $user->can('expenses.view')
