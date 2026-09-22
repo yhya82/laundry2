@@ -62,7 +62,7 @@ class OrderController extends Controller
 
         $this->ensureOrderAccessible($order);
 
-        $order->load(['customer', 'packageLines.clothesLines', 'payments', 'statusHistory.order', 'statusHistory.changedBy', 'damageRecords', 'receipt', 'creator', 'washingMachine', 'assignedTo']);
+        $order->load(['customer', 'packageLines.clothesLines', 'payments', 'statusHistory.order', 'statusHistory.changedBy', 'damageRecords.damageType', 'damageRecords.resolution', 'receipt', 'creator', 'washingMachine', 'assignedTo']);
 
         $damageTypes = DamageType::orderBy('name')->get();
         $washingMachines = WashingMachine::where('is_active', true)->orderBy('name')->get();

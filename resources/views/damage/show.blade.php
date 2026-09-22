@@ -103,14 +103,6 @@
                                 <button type="submit" class="w-full px-4 py-2 bg-critical-soft text-critical rounded-lg text-sm font-semibold">Reject</button>
                             </form>
                         @endif
-
-                        @if ($damageRecord->canTransitionTo('closed'))
-                            <form method="POST" action="{{ route('damage.transition', $damageRecord) }}">
-                                @csrf
-                                <input type="hidden" name="status" value="closed">
-                                <button type="submit" class="w-full px-4 py-2 bg-surface-2 text-ink-muted rounded-lg text-sm font-semibold hover:bg-line">Close</button>
-                            </form>
-                        @endif
                     </div>
                 @endcan
             </div>

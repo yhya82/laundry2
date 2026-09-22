@@ -34,8 +34,8 @@
                     <x-input-error :messages="$errors->get('logo')" class="mt-1.5" />
                 </div>
                 <div>
-                    <x-input-label for="phone" value="Phone (optional)" />
-                    <x-text-input id="phone" name="phone" type="text" class="block w-full" value="{{ $settings->get('branding.phone')?->value }}" />
+                    <x-input-label for="phone" value="Phone" />
+                    <x-text-input id="phone" name="phone" type="text" class="block w-full" value="{{ Str::replaceFirst('+220', '', $settings->get('branding.phone')?->value ?? '') }}" placeholder="555123456" required />
                     <x-input-error :messages="$errors->get('phone')" class="mt-1.5" />
                 </div>
                 <div>
@@ -168,7 +168,11 @@
                     <input type="checkbox" name="show_logo" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('receipt.show_logo')?->value === 'true')>
                     Show logo on receipt
                 </label>
-                <p class="text-xs text-ink-faint">Uses the logo uploaded under General. Has no effect if no logo has been uploaded there. Phone, email, and address are also pulled from General.</p>
+                <label class="flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" name="show_phone" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('receipt.show_phone')?->value === 'true')>
+                    Show phone on receipt
+                </label>
+                <p class="text-xs text-ink-faint">Uses the logo and phone number from General. Has no effect if no logo has been uploaded there. Email and address are also pulled from General.</p>
 
                 <div>
                     <x-input-label for="footer_message" value="Footer message" />

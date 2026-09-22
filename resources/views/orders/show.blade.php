@@ -489,6 +489,9 @@
                                 @if ($damage->item_description)
                                     <span class="block text-xs text-ink-faint truncate">{{ $damage->item_description }}</span>
                                 @endif
+                                @if ($damage->resolution)
+                                    <span class="block text-xs text-success truncate">Resolved: {{ ucfirst(str_replace('_', ' ', $damage->resolution->resolution_type)) }}</span>
+                                @endif
                             </span>
                         </span>
                         <x-status-pill :status="$damage->status" />

@@ -27,22 +27,34 @@ class SettingsTest extends TestCase
         $response = $this->put(route('settings.update'), [
             'group' => 'general',
             'business_name' => 'ABC Laundry',
-            'phone' => '+220 700 0000',
+            'phone' => '700000000',
             'email' => 'hello@abclaundry.test',
             'address' => 'Serrekunda',
         ]);
         $response->assertSessionDoesntHaveErrors();
 
         $this->assertSame('ABC Laundry', Setting::get('branding.business_name'));
-        $this->assertSame('+220 700 0000', Setting::get('branding.phone'));
+        $this->assertSame('+220700000000', Setting::get('branding.phone'));
         $this->assertSame('hello@abclaundry.test', Setting::get('branding.email'));
         $this->assertSame('Serrekunda', Setting::get('branding.address'));
     }
 
     public function test_general_tab_requires_a_business_name(): void
     {
-        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => '']);
+        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => '', 'phone' => '700000000']);
         $response->assertSessionHasErrors('business_name');
+    }
+
+    public function test_general_tab_requires_a_phone_number(): void
+    {
+        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => 'ABC Laundry', 'phone' => '']);
+        $response->assertSessionHasErrors('phone');
+    }
+
+    public function test_general_tab_rejects_a_phone_number_that_isnt_9_digits(): void
+    {
+        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => 'ABC Laundry', 'phone' => '7000000']);
+        $response->assertSessionHasErrors('phone');
     }
 
     public function test_laundry_tab_saves_turnaround_hours(): void
@@ -125,12 +137,27 @@ class SettingsTest extends TestCase
         $response = $this->put(route('settings.update'), [
             'group' => 'receipt',
             'show_logo' => '1',
+            // show_phone omitted -> false
             'footer_message' => 'Thank you for your business!',
         ]);
         $response->assertSessionDoesntHaveErrors();
 
         $this->assertSame('true', Setting::get('receipt.show_logo'));
+        $this->assertSame('false', Setting::get('receipt.show_phone'));
         $this->assertSame('Thank you for your business!', Setting::get('receipt.footer_message'));
+    }
+
+    public function test_receipt_tab_toggles_show_phone_independently_of_show_logo(): void
+    {
+        $response = $this->put(route('settings.update'), [
+            'group' => 'receipt',
+            'show_phone' => '1',
+            // show_logo omitted -> false
+        ]);
+        $response->assertSessionDoesntHaveErrors();
+
+        $this->assertSame('false', Setting::get('receipt.show_logo'));
+        $this->assertSame('true', Setting::get('receipt.show_phone'));
     }
 
     public function test_backup_tab_saves_retention_and_alert_email(): void

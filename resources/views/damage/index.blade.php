@@ -4,7 +4,7 @@
     <form method="GET" class="mb-5 max-w-xs">
         <select name="status" onchange="this.form.submit()" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
             <option value="">All statuses</option>
-            @foreach (['pending_review', 'under_investigation', 'approved', 'rejected', 'resolved', 'closed'] as $status)
+            @foreach (['pending_review', 'under_investigation', 'approved', 'rejected', 'resolved'] as $status)
                 <option value="{{ $status }}" @selected(request('status') === $status)>{{ ucfirst(str_replace('_', ' ', $status)) }}</option>
             @endforeach
         </select>
@@ -16,6 +16,7 @@
                 <tr>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Reported</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Order</th>
+                    <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Reported by</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Customer</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Type</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Status</th>
@@ -28,6 +29,7 @@
                         <td class="px-4 py-3">
                             <a href="{{ route('damage.show', $damage) }}" class="font-mono text-accent-ink hover:underline">{{ $damage->order->order_number }}</a>
                         </td>
+                        <td class="px-4 py-3 text-ink">{{ $damage->reportedBy?->name ?? '—' }}</td>
                         <td class="px-4 py-3 text-ink">{{ $damage->order->customer->full_name }}</td>
                         <td class="px-4 py-3 text-ink-muted">{{ $damage->damageType->name }}</td>
                         <td class="px-4 py-3"><x-status-pill :status="$damage->status" /></td>
@@ -50,7 +52,10 @@
                     <span>{{ $damage->order->customer->full_name }}</span>
                     <span>{{ $damage->damageType->name }}</span>
                 </div>
-                <div class="text-ink-faint font-mono text-xs mt-1">{{ $damage->created_at->format('Y-m-d H:i') }}</div>
+                <div class="flex items-center justify-between text-ink-faint text-xs mt-1">
+                    <span>Reported by {{ $damage->reportedBy?->name ?? '—' }}</span>
+                    <span class="font-mono">{{ $damage->created_at->format('Y-m-d H:i') }}</span>
+                </div>
             </a>
         @empty
             <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No damage reports.</div>

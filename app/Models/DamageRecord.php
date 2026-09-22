@@ -16,14 +16,17 @@ class DamageRecord extends Model
      * here: it's never a manually-chosen target, only a side effect of a
      * damage_resolutions insert (trg_damage_records_resolve_guard enforces
      * this at the DB level; this map just keeps the UI from offering it).
+     * 'resolved' and 'rejected' are both terminal -- there used to be a
+     * 'closed' step after either, but it carried no information a client
+     * couldn't already tell from status + whether a resolution exists, so
+     * it was dropped (see 2026_09_22_000001_remove_closed_from_damage_records_status).
      */
     public const VALID_TRANSITIONS = [
         'pending_review' => ['under_investigation', 'approved', 'rejected'],
         'under_investigation' => ['approved', 'rejected'],
         'approved' => [],
-        'rejected' => ['closed'],
-        'resolved' => ['closed'],
-        'closed' => [],
+        'rejected' => [],
+        'resolved' => [],
     ];
 
     protected $fillable = [

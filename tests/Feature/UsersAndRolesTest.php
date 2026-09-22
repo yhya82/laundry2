@@ -34,6 +34,7 @@ class UsersAndRolesTest extends TestCase
         $response = $this->post(route('users.store'), [
             'name' => 'New Staff',
             'email' => 'newstaff@example.com',
+            'phone' => '555123456',
             'password' => 'a-reasonably-long-password',
             'password_confirmation' => 'a-reasonably-long-password',
             'roles' => ['Laundry'],

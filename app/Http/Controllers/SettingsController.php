@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Setting;
+use App\Support\PhoneNumber;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -38,12 +39,16 @@ class SettingsController extends Controller
 
     protected function saveGeneral(Request $request): void
     {
+        $request->merge(['phone' => PhoneNumber::normalize($request->input('phone'))]);
+
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:255'],
             'logo' => ['nullable', 'image', 'max:2048'],
-            'phone' => ['nullable', 'string', 'max:50'],
+            'phone' => ['required', 'string', 'regex:/^\+220[0-9]{9}$/'],
             'email' => ['nullable', 'email', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
+        ], [
+            'phone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
         ]);
 
         // Uploaded first, before any of the other fields are saved -- store()
@@ -71,7 +76,7 @@ class SettingsController extends Controller
         }
 
         Setting::set('branding.business_name', $validated['business_name'], 'general');
-        Setting::set('branding.phone', $validated['phone'] ?? null, 'general');
+        Setting::set('branding.phone', $validated['phone'], 'general');
         Setting::set('branding.email', $validated['email'] ?? null, 'general');
         Setting::set('branding.address', $validated['address'] ?? null, 'general');
 
@@ -131,6 +136,7 @@ class SettingsController extends Controller
         ]);
 
         Setting::set('receipt.show_logo', $request->boolean('show_logo') ? 'true' : 'false', 'receipt', 'boolean');
+        Setting::set('receipt.show_phone', $request->boolean('show_phone') ? 'true' : 'false', 'receipt', 'boolean');
         Setting::set('receipt.footer_message', $validated['footer_message'] ?? null, 'receipt');
     }
 

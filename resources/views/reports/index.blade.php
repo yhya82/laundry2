@@ -48,7 +48,7 @@
                 <a href="{{ route('reports.export.damage', ['from' => $from, 'to' => $to]) }}" class="text-xs text-accent-ink hover:underline">Export CSV</a>
             </div>
             <div class="space-y-2">
-                @foreach (['pending_review', 'under_investigation', 'approved', 'rejected', 'resolved', 'closed'] as $status)
+                @foreach (['pending_review', 'under_investigation', 'approved', 'rejected', 'resolved'] as $status)
                     <div class="flex justify-between text-sm">
                         <x-status-pill :status="$status" />
                         <span class="font-mono tabular-nums text-ink">{{ $damageByStatus[$status] ?? 0 }}</span>

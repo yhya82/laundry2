@@ -74,6 +74,19 @@ new class extends Component
                         ->orWhereHas('customer', fn ($c) => $c->where('full_name', 'like', $term));
                 });
             })
+            // Status tier first, Express only as the tiebreaker within a
+            // tier -- otherwise a Collected Express order (nothing left to
+            // do) would outrank a Received order (needs to be started),
+            // just for having shipped in an Express package once.
+            // received (0) needs someone to start it -- the most
+            // time-sensitive thing in the queue; collection/cancelled (2)
+            // are done, nothing left to act on; everything else (1) is
+            // actively being worked.
+            ->orderByRaw("CASE
+                WHEN orders.status = 'received' THEN 0
+                WHEN orders.status IN ('collection', 'cancelled') THEN 2
+                ELSE 1
+            END")
             ->orderByDesc(DB::raw("EXISTS (
                 SELECT 1 FROM order_package_lines opl
                 INNER JOIN laundry_packages lp ON lp.id = opl.laundry_package_id

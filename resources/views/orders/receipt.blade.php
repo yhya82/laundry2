@@ -69,7 +69,7 @@
         @if ($address = \App\Models\Setting::get('branding.address'))
             <div class="muted">{{ $address }}</div>
         @endif
-        @if ($phone = \App\Models\Setting::get('branding.phone'))
+        @if (\App\Models\Setting::get('receipt.show_phone') === 'true' && $phone = \App\Models\Setting::get('branding.phone'))
             <div class="muted">{{ $phone }}</div>
         @endif
         @if ($email = \App\Models\Setting::get('branding.email'))

@@ -22,7 +22,7 @@ class DamageRecordController extends Controller
 
     public function index(Request $request): View
     {
-        $damageRecords = DamageRecord::with(['order.customer', 'damageType'])
+        $damageRecords = DamageRecord::with(['order.customer', 'damageType', 'reportedBy'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->get('status')))
             ->latest()
             ->paginate(20)
@@ -88,15 +88,15 @@ class DamageRecordController extends Controller
 
     /**
      * A single endpoint for every review-chain move (Under Investigation /
-     * Approve / Reject / Close) -- 'resolved' is never an accepted target
-     * here, so this can't become the second door into it. The UI only ever
-     * renders buttons for canTransitionTo() targets; this re-checks the same
-     * rule server-side.
+     * Approve / Reject) -- 'resolved' is never an accepted target here, so
+     * this can't become the second door into it. The UI only ever renders
+     * buttons for canTransitionTo() targets; this re-checks the same rule
+     * server-side.
      */
     public function transition(Request $request, DamageRecord $damageRecord): RedirectResponse
     {
         $validated = $request->validate([
-            'status' => ['required', 'in:under_investigation,approved,rejected,closed'],
+            'status' => ['required', 'in:under_investigation,approved,rejected'],
         ]);
 
         if (! $damageRecord->canTransitionTo($validated['status'])) {

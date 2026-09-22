@@ -326,14 +326,14 @@ class TerminalEdgeCasesTest extends TestCase
 
         $component = Livewire::test('laundry-terminal')
             ->set('newCustomerName', 'Pending Customer')
-            ->set('newCustomerPhone', '+2207001234')
+            ->set('newCustomerPhone', '+220700123456')
             ->set('newCustomerType', 'walk_in')
             ->call('createCustomer');
 
         $component->assertHasNoErrors();
         $component->assertSet('usingPendingCustomer', true);
         // Deciding on a customer must not write them to the DB until the order actually commits.
-        $this->assertDatabaseMissing('customers', ['phone' => '+2207001234']);
+        $this->assertDatabaseMissing('customers', ['phone' => '+220700123456']);
 
         $component->set('selectedPackageId', (string) $package->id)
             ->call('addPackage')
@@ -341,7 +341,7 @@ class TerminalEdgeCasesTest extends TestCase
             ->call('submitOrder')
             ->assertHasNoErrors();
 
-        $customer = Customer::where('phone', '+2207001234')->first();
+        $customer = Customer::where('phone', '+220700123456')->first();
         $this->assertNotNull($customer, 'The customer should exist now that the order actually went through.');
         $this->assertSame('Pending Customer', $customer->full_name);
 
@@ -353,21 +353,21 @@ class TerminalEdgeCasesTest extends TestCase
     {
         Livewire::test('laundry-terminal')
             ->set('newCustomerName', 'Abandoned Customer')
-            ->set('newCustomerPhone', '+2207005678')
+            ->set('newCustomerPhone', '+220700567856')
             ->set('newCustomerType', 'walk_in')
             ->call('createCustomer')
             ->assertSet('usingPendingCustomer', true);
         // ...and then the staff member just never adds a package or submits --
         // the request ends here, same as closing the browser tab.
 
-        $this->assertDatabaseMissing('customers', ['phone' => '+2207005678']);
+        $this->assertDatabaseMissing('customers', ['phone' => '+220700567856']);
     }
 
     public function test_a_pending_customer_is_not_created_when_order_submission_fails_validation(): void
     {
         $component = Livewire::test('laundry-terminal')
             ->set('newCustomerName', 'Blocked Customer')
-            ->set('newCustomerPhone', '+2207009999')
+            ->set('newCustomerPhone', '+220700999956')
             ->set('newCustomerType', 'walk_in')
             ->call('createCustomer')
             ->assertSet('usingPendingCustomer', true);
@@ -378,7 +378,7 @@ class TerminalEdgeCasesTest extends TestCase
             ->call('submitOrder')
             ->assertHasErrors('cart');
 
-        $this->assertDatabaseMissing('customers', ['phone' => '+2207009999']);
+        $this->assertDatabaseMissing('customers', ['phone' => '+220700999956']);
         $this->assertNull(Order::where('order_number', 'like', 'ORD-%')->first());
     }
 
@@ -386,7 +386,7 @@ class TerminalEdgeCasesTest extends TestCase
     {
         $component = Livewire::test('laundry-terminal')
             ->set('newCustomerName', 'Discarded Customer')
-            ->set('newCustomerPhone', '+2207001111')
+            ->set('newCustomerPhone', '+220700111156')
             ->set('newCustomerType', 'walk_in')
             ->call('createCustomer')
             ->assertSet('usingPendingCustomer', true);
@@ -406,12 +406,12 @@ class TerminalEdgeCasesTest extends TestCase
         // order/collection submission exists to defer into.
         $component = Livewire::test('laundry-terminal')
             ->set('newCustomerName', 'Immediate Sub Customer')
-            ->set('newCustomerPhone', '+2207002222')
+            ->set('newCustomerPhone', '+220700222256')
             ->set('newCustomerType', 'subscription')
             ->call('createCustomer');
 
         $component->assertHasNoErrors();
         $component->assertSet('usingPendingCustomer', false);
-        $this->assertDatabaseHas('customers', ['phone' => '+2207002222', 'customer_type' => 'subscription']);
+        $this->assertDatabaseHas('customers', ['phone' => '+220700222256', 'customer_type' => 'subscription']);
     }
 }
