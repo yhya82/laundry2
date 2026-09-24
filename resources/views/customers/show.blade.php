@@ -142,7 +142,6 @@
                         $clothesOver = $clothesUsed > $cycle->max_clothes_snapshot;
                         $clothesPct = min(100, round($clothesUsed / max(1, $cycle->max_clothes_snapshot) * 100));
                         $collectionsPct = $total > 0 ? min(100, round($completed / $total * 100)) : 0;
-                        $collectionTypeEditable = $cycleCollections->where('status', 'collected')->isEmpty();
                     @endphp
                     <div class="py-3 first:pt-0 border-t border-line first:border-0 last:pb-0">
                         <div class="flex items-center justify-between mb-1">
@@ -152,24 +151,7 @@
                             @endif
                         </div>
 
-                        @can('subscriptions.manage')
-                            @if ($collectionTypeEditable)
-                                <form method="POST" action="{{ route('subscriptions.collection-type.update', $subscription) }}" class="flex items-center gap-2 mb-2.5">
-                                    @csrf
-                                    @method('PUT')
-                                    <select name="collection_type" class="bg-surface border-line-strong text-ink rounded-lg shadow-sm text-xs focus:border-accent focus:ring-accent py-1">
-                                        <option value="scheduled" @selected($subscription->collection_type === 'scheduled')>Scheduled</option>
-                                        <option value="non_scheduled" @selected($subscription->collection_type === 'non_scheduled')>Non-scheduled</option>
-                                    </select>
-                                    <button type="submit" class="text-xs font-semibold text-accent-ink hover:underline">Save</button>
-                                </form>
-                                @error('collection_type') <p class="text-critical text-xs mb-2.5">{{ $message }}</p> @enderror
-                            @else
-                                <div class="text-xs text-ink-faint mb-2.5">{{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}</div>
-                            @endif
-                        @else
-                            <div class="text-xs text-ink-faint mb-2.5">{{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}</div>
-                        @endcan
+                        <div class="text-xs text-ink-faint mb-2.5">{{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}</div>
 
                         @can('subscriptions.manage')
                             @if ($cycle->isExhausted())
@@ -210,12 +192,29 @@
             @endif
 
             @can('subscriptions.manage')
-                @php $manageableSubscriptions = $subscriptions->whereIn('status', ['active', 'paused']); @endphp
+                @php
+                    $manageableSubscriptions = $subscriptions->whereIn('status', ['active', 'paused']);
+                    $editableManageableSubscription = $manageableSubscriptions->first(function ($s) {
+                        $cycle = $s->cycles->first();
+
+                        return ! $cycle || $s->collections->where('subscription_cycle_id', $cycle->id)->where('status', 'collected')->isEmpty();
+                    });
+                @endphp
                 @if ($manageableSubscriptions->isNotEmpty())
                     <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                        <div class="flex items-center gap-2 mb-3">
-                            <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="gear" class="w-3.5 h-3.5" /></span>
-                            <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Manage Subscription</div>
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="gear" class="w-3.5 h-3.5" /></span>
+                                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Manage Subscription</div>
+                            </div>
+                            @can('subscriptions.manage')
+                                @if ($editableManageableSubscription)
+                                    <button type="button" @click="$dispatch('open-panel', 'edit-subscription-{{ $editableManageableSubscription->id }}')" class="inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-opacity">
+                                        <x-nav-icon name="edit" class="w-3.5 h-3.5" />
+                                        Edit
+                                    </button>
+                                @endif
+                            @endcan
                         </div>
                         @foreach ($manageableSubscriptions as $subscription)
                             <div class="py-2.5 border-b border-line last:border-0">
@@ -224,7 +223,7 @@
                                         <div class="text-ink text-sm">{{ $subscription->subscriptionPackage->name }}</div>
                                         <x-status-pill :status="$subscription->status" />
                                     </div>
-                                    <a href="{{ route('subscriptions.show', $subscription) }}" class="text-accent-ink text-xs hover:underline">View</a>
+                                    <a href="{{ route('subscriptions.show', $subscription) }}" class="inline-flex items-center gap-1 text-xs font-semibold text-accent-ink bg-accent-soft hover:bg-accent-soft/70 px-2.5 py-1 rounded-lg transition-colors">View <span aria-hidden="true">&rarr;</span></a>
                                 </div>
                                 <div class="flex items-center gap-2">
                                     @if ($subscription->status === 'active')
@@ -244,7 +243,8 @@
                                             </button>
                                         </form>
                                     @endif
-                                    <form method="POST" action="{{ route('subscriptions.cancel', $subscription) }}" class="flex-1" onsubmit="return confirm('Cancel this subscription? This cannot be undone.')">
+                                    @php $cancelBalanceDue = $subscription->cycles->first()?->balanceDue() ?? 0; @endphp
+                                    <form method="POST" action="{{ route('subscriptions.cancel', $subscription) }}" class="flex-1" onsubmit="return confirm('{{ $cancelBalanceDue > 0 ? 'This subscription still has GMD '.number_format($cancelBalanceDue, 2).' outstanding. Cancel anyway? This cannot be undone.' : 'Cancel this subscription? This cannot be undone.' }}')">
                                         @csrf
                                         <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-critical text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
                                             <x-nav-icon name="x" class="w-3 h-3" />
@@ -304,7 +304,7 @@
                         <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="clipboard" class="w-3.5 h-3.5" /></span>
                         <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Recent Orders</div>
                     </div>
-                    <button type="button" @click="tab = 'orders'" class="text-xs text-accent-ink hover:underline">View All</button>
+                    <button type="button" @click="tab = 'orders'" class="inline-flex items-center gap-1 text-xs font-semibold text-accent-ink bg-accent-soft hover:bg-accent-soft/70 px-2.5 py-1 rounded-lg transition-colors">View All <span aria-hidden="true">&rarr;</span></button>
                 </div>
                 @forelse ($recentOrders as $order)
                     @php
@@ -351,7 +351,7 @@
                             <span class="w-7 h-7 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none"><x-nav-icon name="wallet" class="w-3.5 h-3.5" /></span>
                             <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Payment Summary</div>
                         </div>
-                        <button type="button" @click="tab = 'payments'" class="text-xs text-accent-ink hover:underline">View All</button>
+                        <button type="button" @click="tab = 'payments'" class="inline-flex items-center gap-1 text-xs font-semibold text-accent-ink bg-accent-soft hover:bg-accent-soft/70 px-2.5 py-1 rounded-lg transition-colors">View All <span aria-hidden="true">&rarr;</span></button>
                     </div>
                     <dl class="space-y-2 text-sm">
                         <div class="flex justify-between">
@@ -402,7 +402,12 @@
                                 @foreach ($unpaidCycles as $cycle)
                                     <div class="flex items-center justify-between gap-2 text-sm">
                                         <div class="min-w-0">
-                                            <span class="text-ink truncate block">{{ $cycle->subscription->subscriptionPackage->name }}</span>
+                                            <span class="flex items-center gap-1.5">
+                                                <span class="text-ink truncate">{{ $cycle->subscription->subscriptionPackage->name }}</span>
+                                                @if ($cycle->subscription->status === 'cancelled')
+                                                    <x-status-pill status="cancelled" />
+                                                @endif
+                                            </span>
                                             <span class="text-xs text-ink-faint">{{ $cycle->starts_on->format('M Y') }} subscription fee</span>
                                         </div>
                                         <div class="flex items-center gap-2 flex-none">
@@ -451,7 +456,7 @@
                             <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none"><x-nav-icon name="truck" class="w-3.5 h-3.5" /></span>
                             <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Collection Schedule</div>
                         </div>
-                        <a href="{{ route('collections.index', ['customer' => $customer->id]) }}" class="text-xs text-accent-ink hover:underline">View All Collections</a>
+                        <a href="{{ route('collections.index', ['customer' => $customer->id]) }}" class="inline-flex items-center gap-1 text-xs font-semibold text-accent-ink bg-accent-soft hover:bg-accent-soft/70 px-2.5 py-1 rounded-lg transition-colors">View All Collections <span aria-hidden="true">&rarr;</span></a>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         @foreach ($upcomingCollections as $collection)
@@ -525,7 +530,7 @@
                                 @endif
                             </td>
                             <td class="px-4 py-3 font-mono text-xs text-ink-faint">{{ $subscription->start_date->format('Y-m-d') }}</td>
-                            <td class="px-4 py-3 text-right"><a href="{{ route('subscriptions.show', $subscription) }}" class="text-accent-ink text-xs hover:underline">View</a></td>
+                            <td class="px-4 py-3 text-right"><a href="{{ route('subscriptions.show', $subscription) }}" class="inline-flex items-center gap-1 text-xs font-semibold text-accent-ink bg-accent-soft hover:bg-accent-soft/70 px-2.5 py-1 rounded-lg transition-colors">View <span aria-hidden="true">&rarr;</span></a></td>
                         </tr>
                     @empty
                         <tr><td colspan="5" class="px-4 py-10 text-center text-ink-faint text-sm">No packages yet.</td></tr>
@@ -930,6 +935,10 @@
         @can('subscriptions.manage')
             @if ($customer->customer_type === 'subscription')
                 <x-new-subscription-modal :customer="$customer" :packages="$subscriptionPackages" />
+            @endif
+
+            @if ($editableManageableSubscription ?? null)
+                <x-new-subscription-modal :customer="$customer" :packages="$subscriptionPackages" :subscription="$editableManageableSubscription" />
             @endif
         @endcan
 

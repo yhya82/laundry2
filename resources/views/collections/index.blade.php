@@ -18,8 +18,8 @@
         @endif
         <select name="status" onchange="this.form.submit()" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
             <option value="">All statuses</option>
-            @foreach (['scheduled', 'collected', 'skipped', 'cancelled'] as $status)
-                <option value="{{ $status }}" @selected(request('status') === $status)>{{ ucfirst($status) }}</option>
+            @foreach (['scheduled', 'collected', 'cancelled', 'subscription_cancelled'] as $status)
+                <option value="{{ $status }}" @selected(request('status') === $status)>{{ ucfirst(str_replace('_', ' ', $status)) }}</option>
             @endforeach
         </select>
     </form>

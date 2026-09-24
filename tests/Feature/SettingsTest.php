@@ -67,7 +67,7 @@ class SettingsTest extends TestCase
         $this->assertSame('48', Setting::get('laundry.default_turnaround_hours'));
     }
 
-    public function test_subscription_tab_saves_all_four_fields_including_unchecked_booleans(): void
+    public function test_subscription_tab_saves_all_three_fields_including_unchecked_booleans(): void
     {
         // Omitting the checkboxes entirely (as an unchecked HTML checkbox
         // does) must save them as false, not leave the previous value.
@@ -75,7 +75,6 @@ class SettingsTest extends TestCase
 
         $response = $this->put(route('settings.update'), [
             'group' => 'subscription',
-            'max_active_packages_per_customer' => 2,
             // allow_new_signups, charge_for_cycle_overage, walkin_extra_charge_enabled all omitted
         ]);
         $response->assertSessionDoesntHaveErrors();
@@ -83,7 +82,6 @@ class SettingsTest extends TestCase
         $this->assertSame('false', Setting::get('subscription.allow_new_signups'));
         $this->assertSame('false', Setting::get('subscription.charge_for_cycle_overage'));
         $this->assertSame('false', Setting::get('subscription.walkin_extra_charge_enabled'));
-        $this->assertSame('2', Setting::get('subscription.max_active_packages_per_customer'));
     }
 
     public function test_payment_tab_toggles_store_credit(): void

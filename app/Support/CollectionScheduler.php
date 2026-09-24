@@ -63,9 +63,12 @@ class CollectionScheduler
 
     /**
      * Creates the cycle record and hands off to generateCollections() for
-     * its whole batch of collections.
+     * its whole batch of collections. Public (not protected) so
+     * SubscriptionController::update() can also call it directly, to
+     * rebuild a not-yet-started cycle from scratch after an edit that
+     * changes start_date or collections_per_month.
      */
-    protected static function scheduleCycle(Subscription $subscription, Carbon $startsOn): void
+    public static function scheduleCycle(Subscription $subscription, Carbon $startsOn): void
     {
         $cycle = $subscription->cycles()->create([
             'starts_on' => $startsOn->toDateString(),

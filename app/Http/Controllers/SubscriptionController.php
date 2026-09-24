@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Events\SubscriptionStatusChanged;
 use App\Http\Requests\StoreSubscriptionRequest;
+use App\Http\Requests\UpdateSubscriptionRequest;
 use App\Models\Customer;
 use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\SubscriptionPackage;
 use App\Support\CollectionScheduler;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,13 +42,17 @@ class SubscriptionController extends Controller
             return back()->withErrors(['subscription' => 'New subscription sign-ups are currently disabled in Settings.']);
         }
 
-        $subscription = DB::transaction(function () use ($request) {
-            $subscription = Subscription::create($request->validated());
+        try {
+            $subscription = DB::transaction(function () use ($request) {
+                $subscription = Subscription::create($request->validated());
 
-            CollectionScheduler::scheduleFirstCycle($subscription);
+                CollectionScheduler::scheduleFirstCycle($subscription);
 
-            return $subscription;
-        });
+                return $subscription;
+            });
+        } catch (QueryException $e) {
+            return back()->withInput()->withErrors(['customer_id' => 'Cancel the existing subscription before creating a new one.']);
+        }
 
         // Set by the Terminal's New Subscription modal so submitting it lands
         // staff back in the Terminal for this same customer, already on the
@@ -62,6 +68,79 @@ class SubscriptionController extends Controller
         }
 
         return redirect()->route('subscriptions.show', $subscription)->with('status', 'Subscription created.');
+    }
+
+    /**
+     * Only allowed while the current cycle has no collected visit yet.
+     * Covers package, end date, collections_per_month, collection_type and
+     * max_clothes_per_cycle -- this replaces the old standalone
+     * updateCollectionType() action entirely, folding collection-type
+     * changes into this same single edit instead of two separate places to
+     * change a subscription (same guard, same delete+regenerate approach
+     * that action used for collections).
+     *
+     * start_date is deliberately NOT editable here -- subscriptions.start_date
+     * is the historical anchor of the subscription's first cycle only; once
+     * it's renewed even once, the current cycle's own starts_on has already
+     * moved past that date, so there's no single "start date" left that's
+     * safe to edit through this form without silently drifting the two out
+     * of sync (a change to the current cycle's starts_on if it needed to be
+     * moved would belong on the cycle itself, not the subscription).
+     *
+     * Since nothing's been collected yet, the current cycle is still
+     * "fresh" -- rather than patching individual snapshot fields, a change
+     * to collections_per_month or collection_type regenerates the cycle's
+     * collections from scratch, anchored on the cycle's own existing
+     * starts_on (the cycle row itself is only ever UPDATEd, never
+     * deleted+recreated: the app's DB user has no DELETE privilege on
+     * subscription_cycles, only on collections). A change to just the
+     * package or max_clothes_per_cycle alone refreshes the cycle's
+     * snapshots in place, since there's no schedule to regenerate for those.
+     */
+    public function update(UpdateSubscriptionRequest $request, Subscription $subscription): RedirectResponse
+    {
+        $validated = $request->validated();
+        $currentCycle = $subscription->cycles()->latest('starts_on')->first();
+
+        if ($currentCycle && $currentCycle->collections()->where('status', 'collected')->exists()) {
+            return back()->withErrors(['subscription' => 'This subscription already has a collected visit — it can no longer be edited.']);
+        }
+
+        $needsReschedule = $validated['collections_per_month'] !== $subscription->collections_per_month
+            || $validated['collection_type'] !== $subscription->collection_type;
+
+        DB::transaction(function () use ($subscription, $currentCycle, $validated, $needsReschedule) {
+            $subscription->update($validated);
+
+            if (! $currentCycle) {
+                CollectionScheduler::scheduleCycle($subscription, Carbon::parse($subscription->start_date));
+
+                return;
+            }
+
+            if ($needsReschedule) {
+                $startsOn = Carbon::parse($currentCycle->starts_on);
+
+                $currentCycle->collections()->delete();
+
+                $currentCycle->update([
+                    'ends_on' => null,
+                    'monthly_price_snapshot' => $subscription->subscriptionPackage->monthly_price,
+                    'max_clothes_snapshot' => $validated['max_clothes_per_cycle'],
+                ]);
+
+                CollectionScheduler::generateCollections($subscription, $currentCycle, $subscription->collection_type, $startsOn, max(1, $validated['collections_per_month']));
+
+                return;
+            }
+
+            $currentCycle->update([
+                'monthly_price_snapshot' => $subscription->subscriptionPackage->monthly_price,
+                'max_clothes_snapshot' => $validated['max_clothes_per_cycle'],
+            ]);
+        });
+
+        return back()->with('status', 'Subscription updated.');
     }
 
     public function show(Subscription $subscription): View
@@ -117,7 +196,11 @@ class SubscriptionController extends Controller
             return back()->withErrors(['subscription' => 'Only a paused subscription can be resumed.']);
         }
 
-        $subscription->update(['status' => 'active']);
+        try {
+            $subscription->update(['status' => 'active']);
+        } catch (QueryException $e) {
+            return back()->withErrors(['subscription' => 'This customer has another subscription that\'s active or paused — cancel it before resuming this one.']);
+        }
 
         if (! $subscription->collections()->where('status', 'scheduled')->exists()) {
             CollectionScheduler::scheduleNextCycle($subscription, now());
@@ -141,7 +224,7 @@ class SubscriptionController extends Controller
 
         $subscription->update(['status' => 'cancelled']);
 
-        $subscription->collections()->where('status', 'scheduled')->update(['status' => 'skipped']);
+        $subscription->collections()->where('status', 'scheduled')->update(['status' => 'subscription_cancelled']);
 
         $subscription->cycles()->whereNull('ends_on')->get()->each->closeIfExhausted();
 
@@ -203,47 +286,4 @@ class SubscriptionController extends Controller
         return back()->with('status', 'Subscription renewed for a new cycle.');
     }
 
-    /**
-     * Lets staff flip Scheduled <-> Non-scheduled on the current cycle
-     * directly, rather than waiting for a full Renew. Only ever touches the
-     * cycle's still-open ('scheduled') collections -- anything already
-     * cancelled stays untouched as history, and the moment even one has
-     * actually been collected, this locks entirely (see the guard below).
-     */
-    public function updateCollectionType(Request $request, Subscription $subscription): RedirectResponse
-    {
-        $validated = $request->validate([
-            'collection_type' => ['required', 'in:scheduled,non_scheduled'],
-        ]);
-
-        $currentCycle = $subscription->cycles()->latest('starts_on')->first();
-
-        if (! $currentCycle) {
-            return back()->withErrors(['collection_type' => 'This subscription has no current cycle.']);
-        }
-
-        if ($currentCycle->collections()->where('status', 'collected')->exists()) {
-            return back()->withErrors(['collection_type' => 'This cycle already has a collected visit — collection type can no longer be changed for it.']);
-        }
-
-        if ($validated['collection_type'] === $subscription->collection_type) {
-            return back()->with('status', 'Collection type unchanged.');
-        }
-
-        DB::transaction(function () use ($subscription, $currentCycle, $validated) {
-            $subscription->update(['collection_type' => $validated['collection_type']]);
-
-            $openCount = $currentCycle->collections()->where('status', 'scheduled')->count();
-
-            if ($openCount === 0) {
-                return;
-            }
-
-            $currentCycle->collections()->where('status', 'scheduled')->delete();
-
-            CollectionScheduler::generateCollections($subscription, $currentCycle, $validated['collection_type'], now(), $openCount);
-        });
-
-        return back()->with('status', 'Collection type updated.');
-    }
 }

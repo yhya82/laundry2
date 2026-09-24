@@ -7,6 +7,7 @@ use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\SubscriptionCycle;
 use App\Models\SubscriptionPackage;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -82,13 +83,22 @@ class CustomerController extends Controller
             ->sortBy('starts_on')
             ->values();
 
-        $stats['balanceDue'] = $orders->sum(fn ($order) => $order->balanceDue())
+        // A cancelled order's own balanceDue() can be genuinely nonzero now
+        // (see the model) -- it's excluded from this total specifically,
+        // since that service was never rendered and isn't real, actionable
+        // debt the way an ordinary unpaid order or unpaid cycle is.
+        $stats['balanceDue'] = $orders->filter(fn ($order) => $order->status !== 'cancelled')->sum(fn ($order) => $order->balanceDue())
             + $unpaidCycles->sum(fn ($cycle) => $cycle->balanceDue());
 
         // Every order still owing something, oldest first -- each gets its
         // own quick-pay action on the profile rather than steering staff
-        // toward settling only the single oldest one.
-        $unpaidOrders = $orders->filter(fn ($order) => $order->balanceDue() > 0)->sortBy('created_at')->values();
+        // toward settling only the single oldest one. Cancelled orders are
+        // excluded here specifically -- they can have a true, nonzero
+        // balanceDue() now (see the model), but that service was never
+        // rendered, so no quick-pay action is offered for it (matches
+        // PaymentController::record()'s own guard); the top-of-page
+        // Balance Due stat still adds it in, so the amount itself isn't hidden.
+        $unpaidOrders = $orders->filter(fn ($order) => $order->status !== 'cancelled' && $order->balanceDue() > 0)->sortBy('created_at')->values();
 
         $lastPayment = $customer->paymentsQuery()->latest()->first();
         $payments = $customer->paymentsQuery()->with(['order', 'subscription'])->latest()->get();
@@ -107,14 +117,23 @@ class CustomerController extends Controller
         // instead of dropping out of the list. Any subscription somehow
         // still without a cycle (legacy, predating this feature) falls back
         // to the old "just show the next scheduled one" behavior.
-        $latestCycleIds = SubscriptionCycle::whereIn('subscription_id', $subscriptionIds)
+        //
+        // Scoped to non-cancelled subscriptions only (not $subscriptionIds,
+        // which is every subscription the customer has ever had) -- a
+        // customer can have more than one subscription in their history now
+        // (cancel one, start another), and a cancelled subscription's own
+        // last cycle has nothing left to collect, so it shouldn't keep
+        // showing "regardless of status" here the way a live one does.
+        $liveSubscriptionIds = $customer->subscriptions()->where('status', '!=', 'cancelled')->pluck('id');
+
+        $latestCycleIds = SubscriptionCycle::whereIn('subscription_id', $liveSubscriptionIds)
             ->orderByDesc('starts_on')
             ->get()
             ->unique('subscription_id')
             ->pluck('id');
 
-        $subscriptionsWithoutCycles = $subscriptionIds->diff(
-            SubscriptionCycle::whereIn('subscription_id', $subscriptionIds)->pluck('subscription_id')
+        $subscriptionsWithoutCycles = $liveSubscriptionIds->diff(
+            SubscriptionCycle::whereIn('subscription_id', $liveSubscriptionIds)->pluck('subscription_id')
         );
 
         $upcomingCollections = Collection::with('subscription.subscriptionPackage')
@@ -181,7 +200,11 @@ class CustomerController extends Controller
 
     public function update(StoreCustomerRequest $request, Customer $customer): RedirectResponse
     {
-        $customer->update($request->validated());
+        try {
+            $customer->update($request->validated());
+        } catch (QueryException $e) {
+            return back()->withInput()->withErrors(['customer_type' => 'Cancel the existing subscription before changing the customer type.']);
+        }
 
         return redirect()->route('customers.show', $customer)->with('status', 'Customer updated.');
     }

@@ -146,7 +146,7 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::post('/subscriptions/{subscription}/resume', [SubscriptionController::class, 'resume'])->name('subscriptions.resume');
         Route::post('/subscriptions/{subscription}/cancel', [SubscriptionController::class, 'cancel'])->name('subscriptions.cancel');
         Route::post('/subscriptions/{subscription}/renew', [SubscriptionController::class, 'renew'])->name('subscriptions.renew');
-        Route::put('/subscriptions/{subscription}/collection-type', [SubscriptionController::class, 'updateCollectionType'])->name('subscriptions.collection-type.update');
+        Route::put('/subscriptions/{subscription}', [SubscriptionController::class, 'update'])->name('subscriptions.update');
     });
 
     Route::middleware('permission:subscriptions.view')->group(function () {

@@ -73,7 +73,10 @@
         // whether the order is "paid" at all.
         $cycle = $order->subscriptionCycle();
         $orderDue = $order->balanceDue();
-        $combinedDue = $orderDue + ($cycle?->balanceDue() ?? 0);
+        // combinedBalanceDue() (not $orderDue + cycle inline) so a cancelled
+        // order's own share correctly drops out of this hero stat -- that
+        // service was never rendered, so it isn't real, actionable debt.
+        $combinedDue = $order->combinedBalanceDue();
         $combinedPaid = $order->amountPaid() + ($cycle?->amountPaid() ?? 0);
         // Both Record Payment and Record Collection settle whichever balance
         // actually has money owed on it -- the order's own (e.g. a
@@ -82,7 +85,15 @@
         // $orderDue alone would hide the payment action entirely for the
         // common subscription case (see PaymentController::record()'s same
         // order-then-cycle preference).
-        $payableDue = $orderDue > 0 ? $orderDue : ($cycle?->balanceDue() ?? 0);
+        //
+        // A cancelled order's own balance is deliberately excluded here --
+        // $orderDue/$combinedDue above still show its true (no longer
+        // collectible) amount in the hero, but $payableDue specifically
+        // drives whether a Record Payment action is offered, and that
+        // service was never rendered (see PaymentController::record()'s
+        // matching guard) -- the cycle's own balance, if any, still falls
+        // through normally since it's independent, still-collectible money.
+        $payableDue = ($orderDue > 0 && $order->status !== 'cancelled') ? $orderDue : ($cycle?->balanceDue() ?? 0);
         $grandTotal = (float) $order->total_amount + ($cycle->monthly_price_snapshot ?? 0);
         // 'completed' reads as still-active (processing done, not yet picked
         // up) -- 'collection' is the actual "fully done" green now.
@@ -765,11 +776,11 @@
 
                         <div class="border-t border-line pt-4 space-y-4">
                             @if ($payableDue > 0)
-                                <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-critical font-bold">GMD {{ number_format($payableDue, 2) }}</span> — optional, leave blank to just record pickup.</p>
+                                <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-critical font-bold">GMD {{ number_format($payableDue, 2) }}</span> — pay in full to collect.</p>
+                                @include('orders._payment-fields', ['prefix' => 'collect', 'amountRequired' => true, 'dueOverride' => $payableDue, 'prefillAmount' => $payableDue])
                             @else
                                 <p class="text-sm text-ink-muted">Payment: <span class="font-mono text-success font-bold">Paid in full</span></p>
                             @endif
-                            @include('orders._payment-fields', ['prefix' => 'collect', 'amountRequired' => false, 'dueOverride' => $payableDue])
                         </div>
 
                         <div class="flex items-center gap-3">

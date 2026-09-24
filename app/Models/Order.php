@@ -168,22 +168,25 @@ class Order extends Model
     }
 
     /**
-     * Cancelled orders are never "awaiting payment" regardless of the math
-     * -- there's no future collection expected once an order is cancelled.
+     * The true remaining amount, even once cancelled -- a partially-paid
+     * order that gets cancelled still only had part of it collected, and
+     * silently zeroing this out made it read as fully "paid" (see
+     * paymentStatus() below) despite money never actually being settled.
+     * Callers that offer to *collect* the remainder (Record Payment,
+     * PaymentController::record()) are the ones responsible for refusing a
+     * cancelled order specifically -- that service was never rendered, so
+     * it's shown as the true balance but isn't payable through the normal
+     * flow, unlike an ordinary unpaid order.
      */
     public function balanceDue(): float
     {
-        if ($this->status === 'cancelled') {
-            return 0.0;
-        }
-
         return max(0, round($this->total_amount - $this->amountPaid(), 2));
     }
 
     /**
-     * 'paid'/'partial'/'unpaid' -- for cancelled orders balanceDue() is
-     * always 0, so this naturally resolves to 'paid' if something was
-     * collected before cancellation, or 'unpaid' if nothing ever was.
+     * 'paid'/'partial'/'unpaid' -- reflects the true balanceDue() now, so a
+     * cancelled order that was only partially paid correctly reads
+     * 'partial', not 'paid'.
      */
     public function paymentStatus(): string
     {
@@ -199,10 +202,18 @@ class Order extends Model
      * subscription cycle -- balanceDue() alone is always 0 for a
      * subscription order, since the flat fee lives on the cycle, not the
      * order. Walk-in orders (no cycle) fall back to balanceDue() unchanged.
+     *
+     * This order's own share drops out entirely once cancelled -- that
+     * service was never rendered, so it isn't real, actionable debt (see
+     * balanceDue()'s own docblock). The cycle's share, if any, is
+     * independent money for service already rendered elsewhere in the same
+     * cycle, so it still counts regardless of this one order's status.
      */
     public function combinedBalanceDue(): float
     {
-        return $this->balanceDue() + ($this->subscriptionCycle()?->balanceDue() ?? 0);
+        $ownShare = $this->status !== 'cancelled' ? $this->balanceDue() : 0;
+
+        return $ownShare + ($this->subscriptionCycle()?->balanceDue() ?? 0);
     }
 
     /**

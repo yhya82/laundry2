@@ -152,25 +152,46 @@ class OrderController extends Controller
     }
 
     /**
-     * Records who physically collected the order and, optionally in the same
-     * submit, a payment against whatever's still owed -- both atomically (one
+     * Records who physically collected the order and, in the same submit, a
+     * payment against whatever's still owed -- both atomically (one
      * DB::transaction), so a payment failure never leaves the order marked
      * collected without the money actually recorded. Reuses
      * OrderPaymentRecorder/SubscriptionCyclePaymentRecorder rather than
      * duplicating PaymentController's store-credit/overshoot/trigger-race
-     * handling. The payment (if any) goes to the order's own balance if it
-     * has one (e.g. a cycle-overage charge sitting on the order itself),
-     * otherwise the subscription cycle's -- a subscription visit's own
-     * order subtotal is normally 0, the flat fee lives on the cycle instead.
+     * handling. The payment goes to the order's own balance if it has one
+     * (e.g. a cycle-overage charge sitting on the order itself), otherwise
+     * the subscription cycle's -- a subscription visit's own order subtotal
+     * is normally 0, the flat fee lives on the cycle instead.
+     *
+     * Payment is no longer optional here -- whatever's owed (order's own
+     * balance, else the cycle's) must be paid in full to collect; only an
+     * already-fully-paid order skips the payment step entirely. Same
+     * order-then-cycle preference as $payableDue in orders/show.blade.php.
      */
     protected function advanceToCollection(Request $request, Order $order): RedirectResponse
     {
+        $payableDue = $order->balanceDue() > 0 ? $order->balanceDue() : ($order->subscriptionCycle()?->balanceDue() ?? 0);
+
         $validated = $request->validate([
             'collected_by_type' => ['required', 'in:customer,other'],
             'collected_by_name' => ['required_if:collected_by_type,other', 'nullable', 'string', 'max:255'],
             'collected_by_phone' => ['required_if:collected_by_type,other', 'nullable', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/'],
             'credit_applied' => ['nullable', 'numeric', 'min:0'],
-            'amount' => ['nullable', 'numeric', 'min:0'],
+            'amount' => [
+                $payableDue > 0 ? 'required' : 'nullable',
+                'numeric', 'min:0',
+                function ($attribute, $value, $fail) use ($request, $payableDue) {
+                    if ($payableDue <= 0) {
+                        return;
+                    }
+
+                    $totalCovered = round($request->float('credit_applied') + (float) $value, 2);
+
+                    if ($totalCovered < $payableDue) {
+                        $fail('The full balance due (GMD '.number_format($payableDue, 2).') must be paid to record collection.');
+                    }
+                },
+            ],
             'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
             'method_note' => ['required_if:method,other', 'nullable', 'string', 'max:255'],
         ]);

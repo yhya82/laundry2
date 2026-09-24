@@ -3,8 +3,6 @@
 namespace App\Http\Requests;
 
 use App\Models\Customer;
-use App\Models\Setting;
-use App\Models\Subscription;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -33,8 +31,13 @@ class StoreSubscriptionRequest extends FormRequest
     }
 
     /**
-     * Mirrors the DB trigger (trg_subscriptions_customer_type_guard) at the
-     * form layer -- same principle as StoreCustomerRequest's phone check.
+     * Mirrors the DB triggers (trg_subscriptions_customer_type_guard,
+     * trg_subscriptions_one_active_guard_insert) at the form layer -- same
+     * principle as StoreCustomerRequest's phone check. The one-active-per-
+     * customer check itself isn't duplicated here -- the trigger is the
+     * sole source of truth for it (see store()'s try/catch), since an
+     * app-level-only copy previously missed SubscriptionController::resume(),
+     * which can also produce a second active subscription via UPDATE.
      */
     public function withValidator(Validator $validator): void
     {
@@ -51,18 +54,6 @@ class StoreSubscriptionRequest extends FormRequest
 
             if ($customer->customer_type !== 'subscription') {
                 $validator->errors()->add('customer_id', 'This customer is not set to Customer type: Subscription. Edit their profile first.');
-
-                return;
-            }
-
-            $maxPackages = (int) Setting::get('subscription.max_active_packages_per_customer', '1');
-
-            if ($maxPackages > 0) {
-                $activeCount = Subscription::where('customer_id', $customer->id)->where('status', 'active')->count();
-
-                if ($activeCount >= $maxPackages) {
-                    $validator->errors()->add('customer_id', "This customer already has the maximum of {$maxPackages} active package(s).");
-                }
             }
         });
     }

@@ -6,7 +6,7 @@ $tones = [
     'sorting' => 'active', 'washing' => 'active', 'drying' => 'active', 'ironing' => 'active', 'packaging' => 'active',
     'under_investigation' => 'active', 'approved' => 'active', 'partially_refunded' => 'active', 'scheduled' => 'active', 'partial' => 'active',
     'completed' => 'success', 'resolved' => 'success', 'active' => 'success', 'collected' => 'success', 'paid' => 'success', 'collection' => 'success',
-    'cancelled' => 'critical', 'rejected' => 'critical', 'skipped' => 'critical', 'unpaid' => 'critical', 'high' => 'critical',
+    'cancelled' => 'critical', 'rejected' => 'critical', 'subscription_cancelled' => 'critical', 'unpaid' => 'critical', 'high' => 'critical',
 ];
 $tone = $tones[$status] ?? 'neutral';
 $classes = [

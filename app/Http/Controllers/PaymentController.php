@@ -57,12 +57,20 @@ class PaymentController extends Controller
         ]);
 
         try {
-            if ($order->balanceDue() > 0) {
+            // A cancelled order's own remaining balance is never directly
+            // payable here -- that service was never rendered, so there's
+            // nothing to collect on (see Order::balanceDue()'s docblock).
+            // The cycle's own balance (if any) is unaffected -- it's
+            // independent money for service already rendered elsewhere in
+            // the same cycle, so that fallback stays exactly as it was.
+            if ($order->status !== 'cancelled' && $order->balanceDue() > 0) {
                 $recorder->record($order, $validated);
             } elseif ($cycle = $order->subscriptionCycle()) {
                 $cycleRecorder->record($cycle, $validated);
             } else {
-                throw new \RuntimeException('This order is already fully paid.');
+                throw new \RuntimeException($order->status === 'cancelled'
+                    ? 'This order was cancelled — its balance is no longer collectible.'
+                    : 'This order is already fully paid.');
             }
         } catch (\RuntimeException $e) {
             return back()->withInput()->withErrors(['amount' => $e->getMessage()]);

@@ -96,13 +96,8 @@ class SettingsController extends Controller
 
     protected function saveSubscription(Request $request): void
     {
-        $validated = $request->validate([
-            'max_active_packages_per_customer' => ['nullable', 'integer', 'min:1'],
-        ]);
-
         Setting::set('subscription.allow_new_signups', $request->boolean('allow_new_signups') ? 'true' : 'false', 'subscription', 'boolean');
         Setting::set('subscription.charge_for_cycle_overage', $request->boolean('charge_for_cycle_overage') ? 'true' : 'false', 'subscription', 'boolean');
-        Setting::set('subscription.max_active_packages_per_customer', $validated['max_active_packages_per_customer'] ?? null, 'subscription', 'integer');
         Setting::set('subscription.walkin_extra_charge_enabled', $request->boolean('walkin_extra_charge_enabled') ? 'true' : 'false', 'subscription', 'boolean');
     }
 

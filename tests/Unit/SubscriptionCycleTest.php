@@ -49,7 +49,7 @@ class SubscriptionCycleTest extends TestCase
     {
         $cycle = $this->makeCycle();
         $cycle->collections()->create(['subscription_id' => $cycle->subscription_id, 'status' => 'collected']);
-        $cycle->collections()->create(['subscription_id' => $cycle->subscription_id, 'status' => 'skipped']);
+        $cycle->collections()->create(['subscription_id' => $cycle->subscription_id, 'status' => 'subscription_cancelled']);
 
         $this->assertTrue($cycle->isExhausted(), 'No collections left in "scheduled" -- the cycle should read as exhausted.');
     }

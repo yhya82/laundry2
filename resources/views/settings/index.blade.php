@@ -85,13 +85,6 @@
                 </label>
                 <p class="text-xs text-ink-faint">The Terminal always shows a per-visit item count for context, but only this cycle-wide limit is ever billable. When off, the Terminal just shows a warning with the amount over instead of requiring a charge.</p>
 
-                <div>
-                    <x-input-label for="max_active_packages_per_customer" value="Max active packages per customer" />
-                    <x-text-input id="max_active_packages_per_customer" name="max_active_packages_per_customer" type="number" min="1" class="block w-full" value="{{ $settings->get('subscription.max_active_packages_per_customer')?->value ?? 1 }}" />
-                    <p class="text-xs text-ink-faint mt-1">Blocks creating a new subscription for a customer once they're at this many active ones. Leave blank for unlimited. Doesn't affect anyone already over it.</p>
-                    <x-input-error :messages="$errors->get('max_active_packages_per_customer')" class="mt-1.5" />
-                </div>
-
                 <label class="flex items-center gap-2 text-sm text-ink">
                     <input type="checkbox" name="walkin_extra_charge_enabled" value="1" class="rounded border-line-strong text-accent focus:ring-accent" @checked($settings->get('subscription.walkin_extra_charge_enabled')?->value === 'true')>
                     Allow an extra charge on walk-in orders

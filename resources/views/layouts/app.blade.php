@@ -19,7 +19,7 @@
                 sorting: 'active', washing: 'active', drying: 'active', ironing: 'active', packaging: 'active',
                 under_investigation: 'active', approved: 'active', partially_refunded: 'active', scheduled: 'active', partial: 'active',
                 completed: 'success', resolved: 'success', active: 'success', collected: 'success', paid: 'success', collection: 'success',
-                cancelled: 'critical', rejected: 'critical', skipped: 'critical', unpaid: 'critical', high: 'critical',
+                cancelled: 'critical', rejected: 'critical', subscription_cancelled: 'critical', unpaid: 'critical', high: 'critical',
             };
             window.STATUS_PILL_CLASSES = {
                 neutral: 'bg-pill-bg text-pill-ink',

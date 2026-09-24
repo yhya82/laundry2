@@ -5,13 +5,18 @@
     can be on the page at once.
 
     Expects: $order, $orderDue, $prefix (string). $amountRequired (bool,
-    default false) -- Record Payment requires an amount; Record Collection's
-    payment is optional (pickup can be recorded with nothing owed changing hands).
+    default false) -- Record Payment requires an amount; Record Collection
+    also requires one now (the full balance must be paid to collect -- see
+    OrderController::advanceToCollection()), so it's only ever included
+    there when $payableDue > 0 in the first place.
     $dueOverride (float, default null) -- Record Collection may be settling
     the subscription cycle's balance instead of the order's own (a
     subscription order's flat fee lives on the cycle, not the order, so
     $orderDue alone is usually 0 there); when set, this is the balance the
     credit-applied cap is measured against instead of $orderDue.
+    $prefillAmount (float, default null) -- Record Collection pre-fills the
+    amount field with the full balance due, since partial/deferred payment
+    is no longer allowed there.
 --}}
 @php
     $amountRequired = $amountRequired ?? false;
@@ -28,7 +33,7 @@
 
 <div>
     <x-input-label for="{{ $prefix }}_amount" value="Amount collected (GMD)" />
-    <x-text-input id="{{ $prefix }}_amount" name="amount" type="number" step="0.01" min="0" class="block w-full" :required="$amountRequired" />
+    <x-text-input id="{{ $prefix }}_amount" name="amount" type="number" step="0.01" min="0" class="block w-full" value="{{ old('amount', isset($prefillAmount) ? number_format($prefillAmount, 2, '.', '') : '') }}" :required="$amountRequired" />
     <x-input-error :messages="$errors->get('amount')" class="mt-1.5" />
 </div>
 

@@ -55,7 +55,10 @@
         $cycle = $order->subscriptionCycle();
         $grandTotal = (float) $order->total_amount + ($cycle->monthly_price_snapshot ?? 0);
         $combinedPaid = $order->amountPaid() + ($cycle?->amountPaid() ?? 0);
-        $combinedDue = $order->balanceDue() + ($cycle?->balanceDue() ?? 0);
+        // combinedBalanceDue() (not $order->balanceDue() + cycle inline) so
+        // a cancelled order's own share doesn't print as still owed -- that
+        // service was never rendered, so it isn't real, actionable debt.
+        $combinedDue = $order->combinedBalanceDue();
         $allPayments = $cycle
             ? $order->payments->concat($cycle->payments)->where('status', '!=', 'refunded')->sortBy('created_at')
             : $order->payments->where('status', '!=', 'refunded');

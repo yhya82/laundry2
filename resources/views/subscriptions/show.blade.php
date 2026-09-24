@@ -10,7 +10,17 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div class="space-y-5">
         <div class="bg-surface border border-line rounded-2xl p-6">
-            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-4">Subscription</div>
+            <div class="flex items-center justify-between mb-4">
+                <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Subscription</div>
+                @can('subscriptions.manage')
+                    @if ($cycleCollectionsCompleted === 0)
+                        <button type="button" @click="$dispatch('open-panel', 'edit-subscription-{{ $subscription->id }}')" class="inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-opacity">
+                            <x-nav-icon name="edit" class="w-3.5 h-3.5" />
+                            Edit
+                        </button>
+                    @endif
+                @endcan
+            </div>
             <dl class="space-y-3 text-sm">
                 <div class="flex justify-between">
                     <dt class="text-ink-muted">Customer</dt>
@@ -70,7 +80,8 @@
                                 </button>
                             </form>
                         @endif
-                        <form method="POST" action="{{ route('subscriptions.cancel', $subscription) }}" class="flex-1" onsubmit="return confirm('Cancel this subscription? This cannot be undone.')">
+                        @php $cancelBalanceDue = $subscription->cycles->sum(fn ($c) => $c->balanceDue()); @endphp
+                        <form method="POST" action="{{ route('subscriptions.cancel', $subscription) }}" class="flex-1" onsubmit="return confirm('{{ $cancelBalanceDue > 0 ? 'This subscription still has GMD '.number_format($cancelBalanceDue, 2).' outstanding. Cancel anyway? This cannot be undone.' : 'Cancel this subscription? This cannot be undone.' }}')">
                             @csrf
                             <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-critical text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
                                 <x-nav-icon name="x" class="w-3.5 h-3.5" />
@@ -95,26 +106,9 @@
                     <div class="flex justify-between items-center">
                         <dt class="text-ink-muted">Collection type</dt>
                         <dd class="text-ink">
-                            @can('subscriptions.manage')
-                                @if ($cycleCollectionsCompleted === 0)
-                                    <form method="POST" action="{{ route('subscriptions.collection-type.update', $subscription) }}" class="flex items-center gap-2">
-                                        @csrf
-                                        @method('PUT')
-                                        <select name="collection_type" class="bg-surface border-line-strong text-ink rounded-lg shadow-sm text-xs focus:border-accent focus:ring-accent py-1">
-                                            <option value="scheduled" @selected($subscription->collection_type === 'scheduled')>Scheduled</option>
-                                            <option value="non_scheduled" @selected($subscription->collection_type === 'non_scheduled')>Non-scheduled</option>
-                                        </select>
-                                        <button type="submit" class="text-xs font-semibold text-accent-ink hover:underline">Save</button>
-                                    </form>
-                                @else
-                                    {{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}
-                                @endif
-                            @else
-                                {{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}
-                            @endcan
+                            {{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}
                         </dd>
                     </div>
-                    @error('collection_type') <p class="text-critical text-xs text-right">{{ $message }}</p> @enderror
                     <div class="flex justify-between">
                         <dt class="text-ink-muted">Collections</dt>
                         <dd class="font-mono tabular-nums text-ink">{{ $cycleCollectionsCompleted }} completed of {{ $cycleCollectionsTotal }} planned</dd>
@@ -479,5 +473,11 @@
                 </x-slide-panel>
             @endif
         @endforeach
+    @endcan
+
+    @can('subscriptions.manage')
+        @if ($cycleCollectionsCompleted === 0 && $subscription->customer)
+            <x-new-subscription-modal :customer="$subscription->customer" :packages="$packages" :subscription="$subscription" />
+        @endif
     @endcan
 </x-app-layout>

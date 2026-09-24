@@ -34,8 +34,15 @@ class OrderTest extends TestCase
 
     public function test_terminal_statuses_have_no_next_status(): void
     {
+        // 'completed' isn't terminal anymore -- it's mid-pipeline once the
+        // Collection stage exists (processing done, still needs pickup), so
+        // it still has a next status ('collection'). 'collection' itself is
+        // the actual terminal state now.
         $order = new Order();
         $order->status = 'completed';
+        $this->assertSame('collection', $order->nextStatus());
+
+        $order->status = 'collection';
         $this->assertNull($order->nextStatus());
 
         $order->status = 'cancelled';
@@ -46,11 +53,14 @@ class OrderTest extends TestCase
     {
         $order = new Order();
 
-        $order->status = 'completed';
+        $order->status = 'collection';
         $this->assertTrue($order->isTerminal());
 
         $order->status = 'cancelled';
         $this->assertTrue($order->isTerminal());
+
+        $order->status = 'completed';
+        $this->assertFalse($order->isTerminal());
 
         $order->status = 'received';
         $this->assertFalse($order->isTerminal());
@@ -86,7 +96,7 @@ class OrderTest extends TestCase
         $this->assertSame('paid', $order->paymentStatus());
     }
 
-    public function test_a_cancelled_order_always_has_zero_balance_due_regardless_of_payments(): void
+    public function test_a_cancelled_order_still_shows_its_true_balance_due(): void
     {
         $order = Order::create([
             'order_number' => 'UT-2',
@@ -94,16 +104,24 @@ class OrderTest extends TestCase
             'order_source' => 'walk_in',
             'subtotal' => 100,
         ]);
+        $order->refresh();
 
-        // status isn't mass-assignable, so this goes in as the DB default
-        // ('received') -- moved to 'cancelled' via raw SQL since the app
-        // itself only ever does this through OrderController::cancel(),
+        $order->payments()->create(['amount' => 40, 'method' => 'cash']);
+        $order = Order::find($order->id);
+
+        // status isn't mass-assignable, so this goes in as raw SQL -- the
+        // app itself only ever does this through OrderController::cancel(),
         // already covered end-to-end in WorkflowsTest.
         \Illuminate\Support\Facades\DB::statement("UPDATE orders SET status = 'cancelled' WHERE id = {$order->id}");
         $order = Order::find($order->id);
 
-        $this->assertEquals(0.0, $order->balanceDue(), 'A cancelled order should never show a balance due, even unpaid.');
-        // amountPaid() still reports the real (zero) figure -- only balanceDue()'s interpretation changes.
-        $this->assertSame('unpaid', $order->paymentStatus(), 'Nothing was ever paid, so it should read unpaid, not paid, once cancelled.');
+        // balanceDue() used to be forced to 0 once cancelled, which made a
+        // partially-paid cancelled order silently read as "paid" -- it now
+        // reflects the real, uncollected 60 instead, and paymentStatus()
+        // correctly follows as 'partial'. balanceDue() being true again
+        // doesn't reopen it for payment though -- see PaymentController::
+        // record()'s own guard against paying a cancelled order's balance.
+        $this->assertEquals(60.0, $order->balanceDue(), 'A cancelled order should show its real remaining balance, not a forced zero.');
+        $this->assertSame('partial', $order->paymentStatus(), 'Only part of it was ever paid, so it should read partial, not paid, once cancelled.');
     }
 }
