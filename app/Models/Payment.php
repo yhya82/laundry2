@@ -15,6 +15,7 @@ class Payment extends Model
         'amount',
         'credit_applied',
         'method',
+        'method_note',
         'received_by',
     ];
 
@@ -49,5 +50,20 @@ class Payment extends Model
     public function remainingRefundable(): float
     {
         return max(0, round($this->amount - $this->refunds()->sum('amount'), 2));
+    }
+
+    /**
+     * Centralizes the "cash" / "store credit" display formatting used
+     * across receipts, order/customer payment history, etc. -- for
+     * 'other', appends the staff-entered note so it's not just a bare,
+     * unexplained label wherever it's shown.
+     */
+    public function methodLabel(): string
+    {
+        $label = ucfirst(str_replace('_', ' ', $this->method));
+
+        return $this->method === 'other' && $this->method_note
+            ? "{$label} — {$this->method_note}"
+            : $label;
     }
 }

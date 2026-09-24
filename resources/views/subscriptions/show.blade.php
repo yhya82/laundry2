@@ -394,16 +394,32 @@
                             @endif
                         </div>
 
-                        <div>
-                            <x-input-label for="subcyclecp_method_{{ $cycle->id }}" value="Method" />
-                            <select id="subcyclecp_method_{{ $cycle->id }}" name="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
-                                <option value="cash">Cash</option>
-                                <option value="card">Card</option>
-                                <option value="mixed">Mixed</option>
-                            </select>
-                            @if ((int) old('subscription_cycle_id') === $cycle->id)
-                                <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
-                            @endif
+                        @php
+                            $cycleOldMethod = old('subscription_cycle_id') == $cycle->id && in_array(old('method'), ['cash', 'wave', 'aps', 'other'], true)
+                                ? old('method')
+                                : 'cash';
+                        @endphp
+                        <div x-data="{ method: '{{ $cycleOldMethod }}' }">
+                            <div>
+                                <x-input-label for="subcyclecp_method_{{ $cycle->id }}" value="Method" />
+                                <select id="subcyclecp_method_{{ $cycle->id }}" name="method" x-model="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+                                    <option value="cash">Cash</option>
+                                    <option value="wave">Wave</option>
+                                    <option value="aps">APS</option>
+                                    <option value="other">Other</option>
+                                </select>
+                                @if ((int) old('subscription_cycle_id') === $cycle->id)
+                                    <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
+                                @endif
+                            </div>
+
+                            <div x-show="method === 'other'" x-cloak class="mt-4">
+                                <x-input-label for="subcyclecp_method_note_{{ $cycle->id }}" value="Specify payment method" />
+                                <x-text-input id="subcyclecp_method_note_{{ $cycle->id }}" name="method_note" type="text" class="block w-full" />
+                                @if ((int) old('subscription_cycle_id') === $cycle->id)
+                                    <x-input-error :messages="$errors->get('method_note')" class="mt-1.5" />
+                                @endif
+                            </div>
                         </div>
 
                         <div class="flex items-center gap-3">

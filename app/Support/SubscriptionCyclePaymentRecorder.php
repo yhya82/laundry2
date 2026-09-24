@@ -61,6 +61,7 @@ class SubscriptionCyclePaymentRecorder
                     'amount' => $totalCovered,
                     'credit_applied' => $creditApplied,
                     'method' => $creditApplied >= $totalCovered ? 'store_credit' : $input['method'],
+                    'method_note' => $creditApplied >= $totalCovered ? null : ($input['method_note'] ?? null),
                     'received_by' => auth()->id(),
                 ]);
             });

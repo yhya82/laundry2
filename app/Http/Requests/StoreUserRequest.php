@@ -23,7 +23,7 @@ class StoreUserRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'phone' => ['required', 'string', 'regex:/^\+220[0-9]{9}$/', 'unique:users,phone'],
+            'phone' => ['required', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:users,phone'],
             'password' => ['required', 'confirmed', Password::defaults()],
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => ['string', 'exists:roles,name'],
@@ -33,7 +33,7 @@ class StoreUserRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'phone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
+            'phone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
         ];
     }
 }

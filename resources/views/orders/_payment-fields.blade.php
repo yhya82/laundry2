@@ -32,12 +32,21 @@
     <x-input-error :messages="$errors->get('amount')" class="mt-1.5" />
 </div>
 
-<div>
-    <x-input-label for="{{ $prefix }}_method" value="Method" />
-    <select id="{{ $prefix }}_method" name="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
-        <option value="cash">Cash</option>
-        <option value="card">Card</option>
-        <option value="mixed">Mixed</option>
-    </select>
-    <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
+<div x-data="{ method: 'cash' }">
+    <div>
+        <x-input-label for="{{ $prefix }}_method" value="Method" />
+        <select id="{{ $prefix }}_method" name="method" x-model="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+            <option value="cash">Cash</option>
+            <option value="wave">Wave</option>
+            <option value="aps">APS</option>
+            <option value="other">Other</option>
+        </select>
+        <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
+    </div>
+
+    <div x-show="method === 'other'" x-cloak class="mt-4">
+        <x-input-label for="{{ $prefix }}_method_note" value="Specify payment method" />
+        <x-text-input id="{{ $prefix }}_method_note" name="method_note" type="text" class="block w-full" />
+        <x-input-error :messages="$errors->get('method_note')" class="mt-1.5" />
+    </div>
 </div>

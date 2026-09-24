@@ -36,7 +36,7 @@
                                 <span class="text-ink-faint">Subscription</span>
                             @endif
                         </td>
-                        <td class="px-4 py-3 text-ink-muted">{{ ucfirst(str_replace('_', ' ', $payment->method)) }}</td>
+                        <td class="px-4 py-3 text-ink-muted">{{ $payment->methodLabel() }}</td>
                         <td class="px-4 py-3 font-mono tabular-nums text-ink">
                             GMD {{ number_format($payment->amount, 2) }}
                             @if ($payment->credit_applied > 0)
@@ -66,7 +66,7 @@
                         @else
                             <span class="text-ink-faint">Subscription</span>
                         @endif
-                        · {{ ucfirst(str_replace('_', ' ', $payment->method)) }}
+                        · {{ $payment->methodLabel() }}
                     </span>
                     <span class="font-mono tabular-nums text-ink">GMD {{ number_format($payment->amount, 2) }}</span>
                 </div>

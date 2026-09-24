@@ -44,11 +44,11 @@ class SettingsController extends Controller
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:255'],
             'logo' => ['nullable', 'image', 'max:2048'],
-            'phone' => ['required', 'string', 'regex:/^\+220[0-9]{9}$/'],
+            'phone' => ['required', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/'],
             'email' => ['nullable', 'email', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
         ], [
-            'phone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
+            'phone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
         ]);
 
         // Uploaded first, before any of the other fields are saved -- store()

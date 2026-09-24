@@ -125,7 +125,7 @@
     <hr>
 
     @forelse ($allPayments as $payment)
-        <div class="row"><span>Paid ({{ ucfirst(str_replace('_', ' ', $payment->method)) }})</span><span>GMD {{ number_format($payment->amount, 2) }}</span></div>
+        <div class="row"><span>Paid ({{ $payment->methodLabel() }})</span><span>GMD {{ number_format($payment->amount, 2) }}</span></div>
     @empty
         <div class="muted">No payment recorded.</div>
     @endforelse

@@ -580,7 +580,7 @@
 
                 @forelse ($order->payments as $payment)
                     <div class="flex items-center justify-between py-2.5 border-b border-line last:border-0 text-sm">
-                        <span class="text-ink-muted">{{ ucfirst(str_replace('_', ' ', $payment->method)) }}</span>
+                        <span class="text-ink-muted">{{ $payment->methodLabel() }}</span>
                         <x-status-pill :status="$payment->status" />
                         <span class="font-mono tabular-nums text-ink">GMD {{ number_format($payment->amount, 2) }}</span>
                     </div>

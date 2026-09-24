@@ -128,6 +128,8 @@ new class extends Component
 
     public string $paymentMethod = 'cash';
 
+    public string $paymentMethodNote = '';
+
     public string $notes = '';
 
     /**
@@ -665,6 +667,7 @@ new class extends Component
         $this->cycleOverageCharge = 0;
         $this->creditToApply = 0;
         $this->paymentMethod = 'cash';
+        $this->paymentMethodNote = '';
         $this->notes = '';
         $this->lastSubmittedOrderId = $order->id;
     }
@@ -696,10 +699,10 @@ new class extends Component
 
         $this->validate([
             'newCustomerName' => ['required', 'string', 'max:255'],
-            'newCustomerPhone' => ['required', 'string', 'regex:/^\+220[0-9]{9}$/', 'unique:customers,phone'],
+            'newCustomerPhone' => ['required', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:customers,phone'],
             'newCustomerType' => ['required', 'in:walk_in,subscription'],
         ], [
-            'newCustomerPhone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
+            'newCustomerPhone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
         ], ['newCustomerName' => 'name', 'newCustomerPhone' => 'phone', 'newCustomerType' => 'customer type']);
 
         if ($this->newCustomerType === 'subscription') {
@@ -936,7 +939,7 @@ new class extends Component
             // changed in the meantime (another order creating the same
             // number), and this is the actual point of commitment.
             'newCustomerName' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'max:255'],
-            'newCustomerPhone' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'regex:/^\+220[0-9]{9}$/', 'unique:customers,phone'],
+            'newCustomerPhone' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:customers,phone'],
             'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
             'discount' => [
                 'numeric', 'min:0',
@@ -952,16 +955,18 @@ new class extends Component
             'customAmount' => $this->paymentTiming === 'pay_now' && $this->remainingDue > 0
                 ? ['required', 'numeric', 'min:0.01', 'max:'.$this->remainingDue]
                 : ['nullable', 'numeric', 'min:0'],
-            'paymentMethod' => [$this->amountToCollect > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
+            'paymentMethod' => [$this->amountToCollect > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
+            'paymentMethodNote' => [$this->paymentMethod === 'other' ? 'required' : 'nullable', 'string', 'max:255'],
         ], [
             'customerId.required' => 'Select or add a customer first.',
             'newCustomerName.required' => 'Enter a name for the new customer.',
             'newCustomerPhone.required' => 'Enter a phone number for the new customer.',
-            'newCustomerPhone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
+            'newCustomerPhone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
             'discountReason.required' => 'A discount needs a reason.',
             'walkInExtraChargeReason.required' => 'An extra charge needs a reason.',
             'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
             'customAmount.required' => 'Enter an amount to collect, or switch to Pay on Pickup.',
+            'paymentMethodNote.required' => 'Specify what "Other" payment method was used.',
             'customAmount.min' => 'Amount must be greater than 0.',
             'customAmount.max' => 'Cannot collect more than the remaining due.',
         ]);
@@ -1061,13 +1066,15 @@ new class extends Component
             'customAmount' => $this->paymentTiming === 'pay_now' && $this->remainingDue > 0
                 ? ['required', 'numeric', 'min:0.01', 'max:'.$this->remainingDue]
                 : ['nullable', 'numeric', 'min:0'],
-            'paymentMethod' => [$this->amountToCollect > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
+            'paymentMethod' => [$this->amountToCollect > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
+            'paymentMethodNote' => [$this->paymentMethod === 'other' ? 'required' : 'nullable', 'string', 'max:255'],
         ], [
             'cycleOverageCharge.required' => 'This cycle is over its max clothes limit — enter the overage charge.',
             'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
             'customAmount.required' => 'Enter an amount to collect, or switch to Pay on Pickup.',
             'customAmount.min' => 'Amount must be greater than 0.',
             'customAmount.max' => 'Cannot collect more than the remaining due.',
+            'paymentMethodNote.required' => 'Specify what "Other" payment method was used.',
         ]);
 
         if (empty($this->subscriptionClothes)) {
@@ -1327,6 +1334,7 @@ new class extends Component
                     'amount' => $paymentAmount,
                     'credit_applied' => $creditApplied,
                     'method' => $creditApplied >= $paymentAmount ? 'store_credit' : $this->paymentMethod,
+                    'method_note' => $creditApplied >= $paymentAmount ? null : ($this->paymentMethod === 'other' ? $this->paymentMethodNote : null),
                     'received_by' => auth()->id(),
                 ];
 
@@ -1856,13 +1864,20 @@ new class extends Component
                     @if ($this->amountToCollect > 0)
                         <div>
                             <label class="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5 block">Payment Method</label>
-                            <select wire:model="paymentMethod" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+                            <select wire:model.live="paymentMethod" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
                                 <option value="cash">Cash</option>
-                                <option value="card">Card</option>
-                                <option value="mixed">Wave</option>
-                                
+                                <option value="wave">Wave</option>
+                                <option value="aps">APS</option>
+                                <option value="other">Other</option>
                             </select>
                         </div>
+
+                        @if ($paymentMethod === 'other')
+                            <div>
+                                <input type="text" wire:model="paymentMethodNote" placeholder="Specify payment method" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm">
+                            </div>
+                            @error('paymentMethodNote') <p class="text-critical text-xs">{{ $message }}</p> @enderror
+                        @endif
                     @endif
                 @else
                     <p class="text-sm text-ink-muted">Full balance of GMD {{ number_format($this->remainingDue, 2) }} will be due on pickup.</p>

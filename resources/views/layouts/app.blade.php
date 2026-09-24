@@ -40,18 +40,27 @@
     </head>
     <body
         class="font-sans antialiased bg-bg text-ink h-screen overflow-hidden"
-        x-data="{ sidebarOpen: false, collapsed: false }"
+        x-data="{
+            sidebarOpen: false,
+            collapsed: false,
+            isLgUp: false,
+            get effectiveCollapsed() { return this.collapsed && this.isLgUp; },
+        }"
         x-init="
             collapsed = localStorage.getItem('sidebar-collapsed') === 'true';
             $watch('collapsed', v => localStorage.setItem('sidebar-collapsed', v));
+
+            let lgQuery = window.matchMedia('(min-width: 1024px)');
+            isLgUp = lgQuery.matches;
+            lgQuery.addEventListener('change', e => isLgUp = e.matches);
         "
     >
         <x-toast />
         <div class="h-full flex flex-col">
 
             <!-- Top nav -->
-            <header class="h-16 flex-none border-b border-line bg-surface flex items-center px-4 gap-4">
-                <div class="flex items-center gap-4 lg:flex-none transition-all duration-300 h-16 -ml-4 pl-4 bg-[#0b1e3f] text-white" :class="collapsed ? 'lg:w-16' : 'lg:w-60'">
+            <header class="h-16 flex-none bg-surface flex items-center px-4 gap-4">
+                <div class="flex items-center gap-4 lg:flex-none transition-all duration-300 h-16 -ml-4 pl-4 bg-[#0b1e3f] text-white" :class="collapsed ? 'lg:w-16' : 'lg:w-64'">
                     <button class="lg:hidden text-white/75 hover:text-white" @click="sidebarOpen = !sidebarOpen" aria-label="Toggle navigation">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -66,30 +75,31 @@
                                 {{ Str::substr(\App\Models\Setting::get('branding.business_name', config('app.name')), 0, 1) }}
                             </span>
                         @endif
-                        <span class="hidden sm:inline" x-show="!collapsed">{{ \App\Models\Setting::get('branding.business_name', config('app.name')) }}</span>
+                        <span class="hidden sm:inline" x-show="!effectiveCollapsed">{{ \App\Models\Setting::get('branding.business_name', config('app.name')) }}</span>
                     </a>
                 </div>
 
-                @isset($header)
-                    <div class="hidden sm:flex items-center gap-3">
-                        <button
-                            type="button"
-                            @click="collapsed = !collapsed"
-                            :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-                            class="hidden lg:flex items-center justify-center w-8 h-8 flex-none rounded-lg text-ink-faint hover:bg-surface-2 hover:text-ink"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform" :class="collapsed && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M19 19l-7-7 7-7" />
-                            </svg>
-                        </button>
-                        <h1 class="text-base font-semibold text-ink">{{ $header }}</h1>
-                        @isset($headerActions)
-                            {{ $headerActions }}
-                        @endisset
-                    </div>
-                @endisset
+                <div class="flex-1 h-16 border-b border-line flex items-center gap-4">
+                    @isset($header)
+                        <div class="hidden sm:flex items-center gap-3">
+                            <button
+                                type="button"
+                                @click="collapsed = !collapsed"
+                                :aria-label="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+                                class="hidden lg:flex items-center justify-center w-8 h-8 flex-none rounded-lg text-ink-faint hover:bg-surface-2 hover:text-ink"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transition-transform" :class="collapsed && 'rotate-180'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M19 19l-7-7 7-7" />
+                                </svg>
+                            </button>
+                            <h1 class="text-base font-semibold text-ink">{{ $header }}</h1>
+                            @isset($headerActions)
+                                {{ $headerActions }}
+                            @endisset
+                        </div>
+                    @endisset
 
-                <div class="ml-auto flex items-center gap-3">
+                    <div class="ml-auto flex items-center gap-3">
                     <div
                         class="relative"
                         x-data="{
@@ -176,6 +186,7 @@
                             </form>
                         </x-slot>
                     </x-dropdown>
+                    </div>
                 </div>
             </header>
 
@@ -183,8 +194,8 @@
 
                 <!-- Sidebar -->
                 <aside
-                    class="flex-none bg-[#0b1e3f] border-r border-white/10 overflow-y-auto fixed lg:static inset-y-16 left-0 z-20 transition-all lg:translate-x-0"
-                    :class="[sidebarOpen ? 'translate-x-0' : '-translate-x-full', collapsed ? 'w-16' : 'w-64']"
+                    class="flex-none w-64 bg-[#0b1e3f] border-r border-white/10 overflow-y-auto fixed lg:static inset-y-16 left-0 z-20 transition-all lg:translate-x-0"
+                    :class="[sidebarOpen ? 'translate-x-0' : '-translate-x-full', collapsed ? 'lg:w-16' : 'lg:w-64']"
                 >
                     <nav class="p-3 flex flex-col gap-1">
                         @foreach (\App\Support\NavItems::all() as $item)
@@ -192,22 +203,22 @@
                                 @if (isset($item['children']))
                                     <div
                                         x-data="{ open: {{ request()->routeIs('catalog.*') ? 'true' : 'false' }}, hovered: false }"
-                                        @mouseenter="collapsed && (hovered = true)"
+                                        @mouseenter="effectiveCollapsed && (hovered = true)"
                                         @mouseleave="hovered = false"
                                         class="relative"
                                     >
                                         <button
-                                            @click="! collapsed && (open = !open)"
+                                            @click="! effectiveCollapsed && (open = !open)"
                                             title="{{ $item['label'] }}"
                                             class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white"
-                                            :class="collapsed && 'justify-center px-0'"
+                                            :class="effectiveCollapsed && 'justify-center px-0'"
                                         >
                                             <x-nav-icon :name="$item['icon']" />
-                                            <span x-show="!collapsed">{{ $item['label'] }}</span>
-                                            <svg x-show="!collapsed" xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 ml-auto transition-transform" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                            <span x-show="!effectiveCollapsed">{{ $item['label'] }}</span>
+                                            <svg x-show="!effectiveCollapsed" xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 ml-auto transition-transform" :class="open && 'rotate-90'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
                                         </button>
 
-                                        <div x-show="!collapsed && open" class="pl-8 flex flex-col gap-1 mt-1">
+                                        <div x-show="!effectiveCollapsed && open" class="pl-8 flex flex-col gap-1 mt-1">
                                             @foreach ($item['children'] as $child)
                                                 @if (auth()->user()?->can($child['permission']))
                                                     <a href="{{ route($child['route']) }}" class="px-3 py-1.5 rounded-lg text-sm {{ request()->routeIs($child['route']) ? 'bg-white text-[#0b1e3f] font-semibold' : 'text-white/75 hover:bg-white/10 hover:text-white' }}">
@@ -217,7 +228,7 @@
                                             @endforeach
                                         </div>
 
-                                        <div x-show="collapsed && hovered" x-cloak x-transition.opacity class="absolute left-full top-0 ml-2 w-44 bg-surface border border-line rounded-lg shadow-lg py-1.5 z-30">
+                                        <div x-show="effectiveCollapsed && hovered" x-cloak x-transition.opacity class="absolute left-full top-0 ml-2 w-44 bg-surface border border-line rounded-lg shadow-lg py-1.5 z-30">
                                             <div class="px-3 py-1 text-xs font-mono uppercase tracking-wide text-ink-faint">{{ $item['label'] }}</div>
                                             @foreach ($item['children'] as $child)
                                                 @if (auth()->user()?->can($child['permission']))
@@ -233,10 +244,10 @@
                                         href="{{ route($item['route']) }}"
                                         title="{{ $item['label'] }}"
                                         class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-white text-[#0b1e3f] font-semibold' : 'text-white/75 hover:bg-white/10 hover:text-white' }}"
-                                        :class="collapsed && 'justify-center px-0'"
+                                        :class="effectiveCollapsed && 'justify-center px-0'"
                                     >
                                         <x-nav-icon :name="$item['icon']" />
-                                        <span x-show="!collapsed">{{ $item['label'] }}</span>
+                                        <span x-show="!effectiveCollapsed">{{ $item['label'] }}</span>
                                     </a>
                                 @endif
                             @endif
@@ -250,10 +261,10 @@
                                     href="{{ route($item['route']) }}"
                                     title="{{ $item['label'] }}"
                                     class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium {{ request()->routeIs($item['route']) ? 'bg-white text-[#0b1e3f] font-semibold' : 'text-white/75 hover:bg-white/10 hover:text-white' }}"
-                                    :class="collapsed && 'justify-center px-0'"
+                                    :class="effectiveCollapsed && 'justify-center px-0'"
                                 >
                                     <x-nav-icon :name="$item['icon']" />
-                                    <span x-show="!collapsed">{{ $item['label'] }}</span>
+                                    <span x-show="!effectiveCollapsed">{{ $item['label'] }}</span>
                                 </a>
                             @endforeach
                         @endif

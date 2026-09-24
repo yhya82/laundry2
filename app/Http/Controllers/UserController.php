@@ -41,9 +41,9 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
-            'phone' => ['required', 'string', 'regex:/^\+220[0-9]{9}$/', Rule::unique('users', 'phone')->ignore($user->id)],
+            'phone' => ['required', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', Rule::unique('users', 'phone')->ignore($user->id)],
         ], [
-            'phone.regex' => 'Enter a valid 9-digit phone number (e.g. 555123456).',
+            'phone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
         ]);
 
         $user->update($validated);

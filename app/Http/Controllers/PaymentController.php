@@ -52,7 +52,8 @@ class PaymentController extends Controller
         $validated = $request->validate([
             'credit_applied' => ['nullable', 'numeric', 'min:0'],
             'amount' => ['required', 'numeric', 'min:0'],
-            'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
+            'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
+            'method_note' => ['required_if:method,other', 'nullable', 'string', 'max:255'],
         ]);
 
         try {
@@ -80,7 +81,8 @@ class PaymentController extends Controller
         $validated = $request->validate([
             'credit_applied' => ['nullable', 'numeric', 'min:0'],
             'amount' => ['required', 'numeric', 'min:0'],
-            'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
+            'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
+            'method_note' => ['required_if:method,other', 'nullable', 'string', 'max:255'],
         ]);
 
         try {

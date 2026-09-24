@@ -51,9 +51,9 @@ class SettingsTest extends TestCase
         $response->assertSessionHasErrors('phone');
     }
 
-    public function test_general_tab_rejects_a_phone_number_that_isnt_9_digits(): void
+    public function test_general_tab_rejects_a_phone_number_thats_not_7_or_9_digits(): void
     {
-        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => 'ABC Laundry', 'phone' => '7000000']);
+        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => 'ABC Laundry', 'phone' => '70000000']);
         $response->assertSessionHasErrors('phone');
     }
 

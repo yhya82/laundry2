@@ -171,7 +171,8 @@ class OrderController extends Controller
             'collected_by_phone' => ['required_if:collected_by_type,other', 'nullable', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/'],
             'credit_applied' => ['nullable', 'numeric', 'min:0'],
             'amount' => ['nullable', 'numeric', 'min:0'],
-            'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,card,mixed'],
+            'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
+            'method_note' => ['required_if:method,other', 'nullable', 'string', 'max:255'],
         ]);
 
         $hasPayment = $request->float('amount') > 0 || $request->float('credit_applied') > 0;

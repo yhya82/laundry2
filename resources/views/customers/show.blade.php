@@ -6,14 +6,7 @@
         ['label' => $customer->full_name, 'url' => null],
     ]" />
 
-    <div class="relative bg-surface border border-line rounded-2xl p-7 mb-5 shadow-sm">
-        @can('customers.manage')
-            <button type="button" @click="$dispatch('open-panel', 'customer-edit')" class="absolute top-3 right-4 inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-opacity">
-                <x-nav-icon name="edit" class="w-3.5 h-3.5" />
-                Edit
-            </button>
-        @endcan
-
+    <div class="bg-surface border border-line rounded-2xl p-7 mb-5 shadow-sm">
         <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
             <div class="flex items-start gap-4">
                 <div class="w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center text-xl font-bold flex-none shadow-sm">
@@ -34,44 +27,53 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 {{ $stats['balanceDue'] > 0 ? 'sm:grid-cols-5' : 'sm:grid-cols-4' }} gap-x-6 gap-y-4">
-                <div class="flex items-start gap-2">
-                    <span class="w-7 h-7 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="wallet" class="w-3.5 h-3.5" /></span>
-                    <div>
-                        <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Store Credit</div>
-                        <div class="text-lg font-bold text-ink tabular-nums">GMD {{ number_format($customer->store_credit_balance, 2) }}</div>
-                    </div>
-                </div>
-                <div class="flex items-start gap-2">
-                    <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="clipboard" class="w-3.5 h-3.5" /></span>
-                    <div>
-                        <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Total Orders</div>
-                        <div class="text-lg font-bold text-ink tabular-nums">{{ $stats['totalOrders'] }}</div>
-                    </div>
-                </div>
-                <div class="flex items-start gap-2">
-                    <span class="w-7 h-7 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="analytics" class="w-3.5 h-3.5" /></span>
-                    <div>
-                        <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Lifetime Spend</div>
-                        <div class="text-lg font-bold text-ink tabular-nums">GMD {{ number_format($stats['lifetimeSpend'], 2) }}</div>
-                    </div>
-                </div>
-                <div class="flex items-start gap-2">
-                    <span class="w-7 h-7 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="repeat" class="w-3.5 h-3.5" /></span>
-                    <div>
-                        <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Active Subs</div>
-                        <div class="text-lg font-bold text-ink tabular-nums">{{ $stats['activeSubscriptions'] }}</div>
-                    </div>
-                </div>
-                @if ($stats['balanceDue'] > 0)
+            <div class="flex flex-col items-start lg:items-end gap-3 flex-none">
+                @can('customers.manage')
+                    <button type="button" @click="$dispatch('open-panel', 'customer-edit')" class="inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-opacity">
+                        <x-nav-icon name="edit" class="w-3.5 h-3.5" />
+                        Edit
+                    </button>
+                @endcan
+
+                <div class="grid grid-cols-2 {{ $stats['balanceDue'] > 0 ? 'sm:grid-cols-5' : 'sm:grid-cols-4' }} gap-x-6 gap-y-4">
                     <div class="flex items-start gap-2">
-                        <span class="w-7 h-7 rounded-lg bg-critical-soft text-critical flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="alert" class="w-3.5 h-3.5" /></span>
+                        <span class="w-7 h-7 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="wallet" class="w-3.5 h-3.5" /></span>
                         <div>
-                            <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Balance Due</div>
-                            <div class="text-lg font-bold text-critical tabular-nums">GMD {{ number_format($stats['balanceDue'], 2) }}</div>
+                            <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Store Credit</div>
+                            <div class="text-lg font-bold text-ink tabular-nums">GMD {{ number_format($customer->store_credit_balance, 2) }}</div>
                         </div>
                     </div>
-                @endif
+                    <div class="flex items-start gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-pill-bg text-pill-ink flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="clipboard" class="w-3.5 h-3.5" /></span>
+                        <div>
+                            <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Total Orders</div>
+                            <div class="text-lg font-bold text-ink tabular-nums">{{ $stats['totalOrders'] }}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="analytics" class="w-3.5 h-3.5" /></span>
+                        <div>
+                            <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Lifetime Spend</div>
+                            <div class="text-lg font-bold text-ink tabular-nums">GMD {{ number_format($stats['lifetimeSpend'], 2) }}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="repeat" class="w-3.5 h-3.5" /></span>
+                        <div>
+                            <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Active Subs</div>
+                            <div class="text-lg font-bold text-ink tabular-nums">{{ $stats['activeSubscriptions'] }}</div>
+                        </div>
+                    </div>
+                    @if ($stats['balanceDue'] > 0)
+                        <div class="flex items-start gap-2">
+                            <span class="w-7 h-7 rounded-lg bg-critical-soft text-critical flex items-center justify-center flex-none mt-0.5"><x-nav-icon name="alert" class="w-3.5 h-3.5" /></span>
+                            <div>
+                                <div class="text-xs font-mono uppercase tracking-wide text-ink-faint">Balance Due</div>
+                                <div class="text-lg font-bold text-critical tabular-nums">GMD {{ number_format($stats['balanceDue'], 2) }}</div>
+                            </div>
+                        </div>
+                    @endif
+                </div>
             </div>
         </div>
     </div>
@@ -616,7 +618,7 @@
                                     <span class="text-ink-faint">Subscription</span>
                                 @endif
                             </td>
-                            <td class="px-4 py-3 text-ink-muted">{{ ucfirst(str_replace('_', ' ', $payment->method)) }}</td>
+                            <td class="px-4 py-3 text-ink-muted">{{ $payment->methodLabel() }}</td>
                             <td class="px-4 py-3"><x-status-pill :status="$payment->status" /></td>
                             <td class="px-4 py-3 font-mono tabular-nums text-ink">GMD {{ number_format($payment->amount, 2) }}</td>
                         </tr>
@@ -640,7 +642,7 @@
                         <x-status-pill :status="$payment->status" />
                     </div>
                     <div class="flex items-center justify-between text-sm text-ink-muted">
-                        <span>{{ ucfirst(str_replace('_', ' ', $payment->method)) }}</span>
+                        <span>{{ $payment->methodLabel() }}</span>
                         <span class="font-mono tabular-nums text-ink">GMD {{ number_format($payment->amount, 2) }}</span>
                     </div>
                 </div>
@@ -770,16 +772,32 @@
                             @endif
                         </div>
 
-                        <div>
-                            <x-input-label for="cyclecp_method_{{ $cycle->id }}" value="Method" />
-                            <select id="cyclecp_method_{{ $cycle->id }}" name="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
-                                <option value="cash">Cash</option>
-                                <option value="card">Card</option>
-                                <option value="mixed">Mixed</option>
-                            </select>
-                            @if ((int) old('subscription_cycle_id') === $cycle->id)
-                                <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
-                            @endif
+                        @php
+                            $cycleOldMethod = old('subscription_cycle_id') == $cycle->id && in_array(old('method'), ['cash', 'wave', 'aps', 'other'], true)
+                                ? old('method')
+                                : 'cash';
+                        @endphp
+                        <div x-data="{ method: '{{ $cycleOldMethod }}' }">
+                            <div>
+                                <x-input-label for="cyclecp_method_{{ $cycle->id }}" value="Method" />
+                                <select id="cyclecp_method_{{ $cycle->id }}" name="method" x-model="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+                                    <option value="cash">Cash</option>
+                                    <option value="wave">Wave</option>
+                                    <option value="aps">APS</option>
+                                    <option value="other">Other</option>
+                                </select>
+                                @if ((int) old('subscription_cycle_id') === $cycle->id)
+                                    <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
+                                @endif
+                            </div>
+
+                            <div x-show="method === 'other'" x-cloak class="mt-4">
+                                <x-input-label for="cyclecp_method_note_{{ $cycle->id }}" value="Specify payment method" />
+                                <x-text-input id="cyclecp_method_note_{{ $cycle->id }}" name="method_note" type="text" class="block w-full" />
+                                @if ((int) old('subscription_cycle_id') === $cycle->id)
+                                    <x-input-error :messages="$errors->get('method_note')" class="mt-1.5" />
+                                @endif
+                            </div>
                         </div>
 
                         <div class="flex items-center gap-3">
@@ -822,16 +840,32 @@
                             @endif
                         </div>
 
-                        <div>
-                            <x-input-label for="cp_method_{{ $order->id }}" value="Method" />
-                            <select id="cp_method_{{ $order->id }}" name="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
-                                <option value="cash">Cash</option>
-                                <option value="card">Card</option>
-                                <option value="mixed">Mixed</option>
-                            </select>
-                            @if ((int) old('order_id') === $order->id)
-                                <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
-                            @endif
+                        @php
+                            $orderOldMethod = old('order_id') == $order->id && in_array(old('method'), ['cash', 'wave', 'aps', 'other'], true)
+                                ? old('method')
+                                : 'cash';
+                        @endphp
+                        <div x-data="{ method: '{{ $orderOldMethod }}' }">
+                            <div>
+                                <x-input-label for="cp_method_{{ $order->id }}" value="Method" />
+                                <select id="cp_method_{{ $order->id }}" name="method" x-model="method" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+                                    <option value="cash">Cash</option>
+                                    <option value="wave">Wave</option>
+                                    <option value="aps">APS</option>
+                                    <option value="other">Other</option>
+                                </select>
+                                @if ((int) old('order_id') === $order->id)
+                                    <x-input-error :messages="$errors->get('method')" class="mt-1.5" />
+                                @endif
+                            </div>
+
+                            <div x-show="method === 'other'" x-cloak class="mt-4">
+                                <x-input-label for="cp_method_note_{{ $order->id }}" value="Specify payment method" />
+                                <x-text-input id="cp_method_note_{{ $order->id }}" name="method_note" type="text" class="block w-full" />
+                                @if ((int) old('order_id') === $order->id)
+                                    <x-input-error :messages="$errors->get('method_note')" class="mt-1.5" />
+                                @endif
+                            </div>
                         </div>
 
                         <div class="flex items-center gap-3">

@@ -228,14 +228,14 @@ class TerminalEdgeCasesTest extends TestCase
 
         // 40 credit + 60 cash = 100, fully covering the order -- but since
         // real cash was actually involved, the payment's method should be
-        // the chosen method ('card' here), not 'store_credit'.
+        // the chosen method ('wave' here), not 'store_credit'.
         Livewire::test('laundry-terminal', ['customerId' => $customer->id])
             ->set('selectedPackageId', (string) $package->id)
             ->call('addPackage')
             ->set('creditToApply', 40)
             ->set('paymentTiming', 'pay_now')
             ->set('customAmount', 60)
-            ->set('paymentMethod', 'card')
+            ->set('paymentMethod', 'wave')
             ->call('submitOrder')
             ->assertHasNoErrors();
 
@@ -244,7 +244,7 @@ class TerminalEdgeCasesTest extends TestCase
 
         $this->assertEquals(100.0, (float) $payment->amount);
         $this->assertEquals(40.0, (float) $payment->credit_applied);
-        $this->assertSame('card', $payment->method, 'Real cash was involved -- the method should be what staff chose, not store_credit.');
+        $this->assertSame('wave', $payment->method, 'Real cash was involved -- the method should be what staff chose, not store_credit.');
         $this->assertEquals(0.0, $order->balanceDue());
 
         $customer = $customer->fresh();
@@ -262,14 +262,14 @@ class TerminalEdgeCasesTest extends TestCase
             ->call('addPackage')
             ->set('creditToApply', 100)
             ->set('paymentTiming', 'pay_now')
-            ->set('paymentMethod', 'card') // chosen, but no cash ends up being collected
+            ->set('paymentMethod', 'wave') // chosen, but no cash ends up being collected
             ->call('submitOrder')
             ->assertHasNoErrors();
 
         $order = Order::where('customer_id', $customer->id)->first();
         $payment = $order->payments()->first();
 
-        $this->assertSame('store_credit', $payment->method, 'No real cash/card was collected -- method should reflect that, not the dropdown choice.');
+        $this->assertSame('store_credit', $payment->method, 'No real cash/wave was collected -- method should reflect that, not the dropdown choice.');
         $this->assertEquals(0.0, $order->balanceDue());
     }
 
