@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Order page — Collection card</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+  body { margin: 0; font-family: ui-sans-serif, -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  a { color: inherit; text-decoration: none; }
+</style>
+</helmet>
+
+<div style="width: 900px; padding: 32px; box-sizing: border-box; background: #F4F6F8; display: flex; flex-direction: column; gap: 8px;">
+
+  <div style="font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #8592A6; margin-bottom: 4px;" class="mono">Order page — card layout options</div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+
+    <!-- Order Details (for scale/context only) -->
+    <div style="background: #FFFFFF; border: 1px solid #DCE3EA; border-radius: 16px; padding: 24px;">
+      <div style="font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #1A2430; margin-bottom: 16px;" class="mono">Order Details</div>
+      <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #55647A;">Customer</span>
+          <span style="color: #1A2430; font-weight: 500;">Amina Jallow</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #55647A;">Source</span>
+          <span style="color: #1A2430;">Walk-in</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: #55647A;">Created by</span>
+          <span style="display: flex; align-items: center; gap: 8px;">
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #E7EBEF; color: #4C5A6E; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex: none;">S</span>
+            <span style="color: #1A2430; font-weight: 500;">System Admin</span>
+          </span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #55647A;">Created</span>
+          <span style="color: #1A2430; font-size: 12px;" class="mono">2026-09-24 09:12</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Collection (top) + Damage Reports (bottom), stacked, same width -->
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+
+      <div style="background: #FFFFFF; border: 1px solid #DCE3EA; border-radius: 16px; padding: 24px;">
+        <div style="font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #1A2430; margin-bottom: 12px;" class="mono">Collection</div>
+        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: #55647A;">Collected by</span>
+            <span style="color: #1A2430; font-weight: 500; text-align: right;">John Mensah</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: #55647A;">Phone</span>
+            <span style="color: #1A2430; font-size: 12px;" class="mono">+220 555 1234</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: #55647A;">Collected</span>
+            <span style="color: #1A2430; font-size: 12px;" class="mono">2026-09-24 14:32</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="background: #FFFFFF; border: 1px solid #DCE3EA; border-radius: 16px; padding: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <div style="font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #1A2430;" class="mono">Damage Reports</div>
+          <span style="width: 32px; height: 32px; border-radius: 8px; background: #F8E6E3; color: #B3413A; display: flex; align-items: center; justify-content: center; flex: none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 15H3z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>
+          </span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 6px; border-radius: 8px;">
+            <span style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+              <span style="width: 32px; height: 32px; border-radius: 8px; background: #F8E6E3; color: #B3413A; display: flex; align-items: center; justify-content: center; flex: none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 15H3z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>
+              </span>
+              <span style="min-width: 0;">
+                <span style="display: block; font-size: 14px; font-weight: 600; color: #1A2430;">Stain</span>
+                <span style="display: block; font-size: 12px; color: #8592A6;">Left sleeve</span>
+              </span>
+            </span>
+            <span style="font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #EAEEF2; color: #55647A; flex: none;" class="mono">Pending review</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 6px; border-radius: 8px;">
+            <span style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+              <span style="width: 32px; height: 32px; border-radius: 8px; background: #F8E6E3; color: #B3413A; display: flex; align-items: center; justify-content: center; flex: none;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 15H3z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>
+              </span>
+              <span style="min-width: 0;">
+                <span style="display: block; font-size: 14px; font-weight: 600; color: #1A2430;">Tear</span>
+                <span style="display: block; font-size: 12px; color: #2E7D5B;">Resolved: Replaced</span>
+              </span>
+            </span>
+            <span style="font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #E4F3EC; color: #2E7D5B; flex: none;" class="mono">Resolved</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="margin-top: 12px; font-size: 12px; color: #8592A6;">Left card is "Order Details," shown only for width reference. Right column: Collection sits above Damage Reports, both the same width, stacked with a normal card gap between them.</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":900,"height":620}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

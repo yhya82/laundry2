@@ -14,12 +14,8 @@ class OrderTest extends TestCase
     public function test_next_status_follows_the_stage_sequence(): void
     {
         $cases = [
-            'received' => 'sorting',
-            'sorting' => 'washing',
-            'washing' => 'drying',
-            'drying' => 'ironing',
-            'ironing' => 'packaging',
-            'packaging' => 'completed',
+            'received' => 'wash',
+            'wash' => 'completed',
         ];
 
         foreach ($cases as $current => $expectedNext) {
@@ -65,7 +61,7 @@ class OrderTest extends TestCase
         $order->status = 'received';
         $this->assertFalse($order->isTerminal());
 
-        $order->status = 'washing';
+        $order->status = 'wash';
         $this->assertFalse($order->isTerminal());
     }
 

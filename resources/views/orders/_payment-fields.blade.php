@@ -14,9 +14,6 @@
     subscription order's flat fee lives on the cycle, not the order, so
     $orderDue alone is usually 0 there); when set, this is the balance the
     credit-applied cap is measured against instead of $orderDue.
-    $prefillAmount (float, default null) -- Record Collection pre-fills the
-    amount field with the full balance due, since partial/deferred payment
-    is no longer allowed there.
 --}}
 @php
     $amountRequired = $amountRequired ?? false;
@@ -33,7 +30,7 @@
 
 <div>
     <x-input-label for="{{ $prefix }}_amount" value="Amount collected (GMD)" />
-    <x-text-input id="{{ $prefix }}_amount" name="amount" type="number" step="0.01" min="0" class="block w-full" value="{{ old('amount', isset($prefillAmount) ? number_format($prefillAmount, 2, '.', '') : '') }}" :required="$amountRequired" />
+    <x-text-input id="{{ $prefix }}_amount" name="amount" type="number" step="0.01" min="0" class="block w-full" value="{{ old('amount') }}" :required="$amountRequired" />
     <x-input-error :messages="$errors->get('amount')" class="mt-1.5" />
 </div>
 

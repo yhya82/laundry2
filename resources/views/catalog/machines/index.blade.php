@@ -11,16 +11,16 @@
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         @forelse ($washingMachines as $machine)
             @php
-                $current = $machine->orders->firstWhere('status', 'washing');
+                $current = $machine->orders->firstWhere('status', 'wash');
                 $status = ! $machine->is_active ? 'retired' : ($current ? 'washing' : 'idle');
                 $statusLabel = ['idle' => 'Idle', 'washing' => 'Washing', 'retired' => 'Retired'][$status];
                 $pillClass = ['idle' => 'bg-success-soft text-success', 'washing' => 'bg-accent-soft text-accent-ink', 'retired' => 'bg-pill-bg text-pill-ink'][$status];
                 // Who's doing the washing -- whoever's logged in when the order
-                // moves into "washing" (order_status_history.changed_by), not
+                // moves into "wash" (order_status_history.changed_by), not
                 // orders.assigned_to: that's the separate, optional order-ownership
                 // feature (Setting order.assignment_enabled), usually off, and
                 // often unset even when an order is actively being washed.
-                $washedBy = $current?->statusHistory->where('to_status', 'washing')->sortByDesc('created_at')->first()?->changedBy?->name;
+                $washedBy = $current?->statusHistory->where('to_status', 'wash')->sortByDesc('created_at')->first()?->changedBy?->name;
             @endphp
             <button
                 type="button"
@@ -64,15 +64,15 @@
 
     @foreach ($washingMachines as $machine)
         @php
-            $current = $machine->orders->firstWhere('status', 'washing');
+            $current = $machine->orders->firstWhere('status', 'wash');
             $history = $machine->orders->reject(fn ($o) => $current && $o->id === $current->id)->take(8);
             $status = ! $machine->is_active ? 'retired' : ($current ? 'washing' : 'idle');
             $statusLabel = ['idle' => 'Idle', 'washing' => 'Washing', 'retired' => 'Retired'][$status];
             $pillClass = ['idle' => 'bg-success-soft text-success', 'washing' => 'bg-accent-soft text-accent-ink', 'retired' => 'bg-pill-bg text-pill-ink'][$status];
-            // Whoever was logged in when an order moved into "washing" --
+            // Whoever was logged in when an order moved into "wash" --
             // see the card grid's own $washedBy above for why this isn't
             // orders.assigned_to.
-            $washedByName = fn ($order) => $order->statusHistory->where('to_status', 'washing')->sortByDesc('created_at')->first()?->changedBy?->name;
+            $washedByName = fn ($order) => $order->statusHistory->where('to_status', 'wash')->sortByDesc('created_at')->first()?->changedBy?->name;
         @endphp
         <x-slide-panel name="machine-{{ $machine->id }}" title="{{ $machine->name }}">
             <div class="flex items-center gap-4 mb-5">

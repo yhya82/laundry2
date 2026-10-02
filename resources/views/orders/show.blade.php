@@ -16,12 +16,10 @@
 
     @php
         $stageIcons = [
-            'received' => 'box', 'sorting' => 'shirt', 'washing' => 'washer',
-            'drying' => 'dryer', 'ironing' => 'iron', 'packaging' => 'gift', 'completed' => 'check', 'collection' => 'truck',
+            'received' => 'box', 'wash' => 'washer', 'completed' => 'check', 'collection' => 'truck',
         ];
         $stageLabels = [
-            'received' => 'Received', 'sorting' => 'Start Sorting', 'washing' => 'Start Washing',
-            'drying' => 'Start Drying', 'ironing' => 'Start Ironing', 'packaging' => 'Start Packaging', 'completed' => 'Completed',
+            'received' => 'Received', 'wash' => 'Start Wash', 'completed' => 'Completed',
             'collection' => 'Collection',
         ];
         // Timeline-only variants -- the sidebar's big "Advance" button and the
@@ -30,13 +28,11 @@
         // those); only the per-stage caption under each timeline circle needs
         // to change once that stage is the current one or already passed.
         $stageCurrentLabels = [
-            'received' => 'Received', 'sorting' => 'Sorting', 'washing' => 'Washing',
-            'drying' => 'Drying', 'ironing' => 'Ironing', 'packaging' => 'Packaging', 'completed' => 'Completed',
+            'received' => 'Received', 'wash' => 'Wash', 'completed' => 'Completed',
             'collection' => 'Collected',
         ];
         $stagePastLabels = [
-            'received' => 'Received', 'sorting' => 'Sorted', 'washing' => 'Washed',
-            'drying' => 'Dried', 'ironing' => 'Ironed', 'packaging' => 'Packaged', 'completed' => 'Completed',
+            'received' => 'Received', 'wash' => 'Washed', 'completed' => 'Completed',
             'collection' => 'Collected',
         ];
         $stages = [...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'collection'];
@@ -61,7 +57,7 @@
         }
 
         $isActiveOrder = ! $order->isTerminal();
-        $nextIsWashing = $order->nextStatus() === 'washing';
+        $nextIsWashing = $order->nextStatus() === 'wash';
         $nextIsCollection = $order->nextStatus() === 'collection';
         $paymentStatus = $order->combinedPaymentStatus();
         // orderDue is the order's own balance -- the only thing "Record
@@ -97,14 +93,17 @@
         $grandTotal = (float) $order->total_amount + ($cycle->monthly_price_snapshot ?? 0);
         // 'completed' reads as still-active (processing done, not yet picked
         // up) -- 'collection' is the actual "fully done" green now.
-        $statusTones = ['received' => 'neutral', 'sorting' => 'active', 'washing' => 'active', 'drying' => 'active', 'ironing' => 'active', 'packaging' => 'active', 'completed' => 'active', 'collection' => 'success', 'cancelled' => 'critical'];
+        $statusTones = ['received' => 'neutral', 'wash' => 'active', 'completed' => 'active', 'collection' => 'success', 'cancelled' => 'critical'];
         $statusToneClasses = ['neutral' => 'bg-pill-bg text-pill-ink', 'active' => 'bg-accent-soft text-accent-ink', 'success' => 'bg-success-soft text-success', 'critical' => 'bg-critical-soft text-critical'];
 
         // Handling card -- only worth showing once a machine's actually been
-        // assigned (i.e. the order has reached washing at least once).
-        $washStartedAt = $stageTimestamps['washing'] ?? null;
-        $washEndedAt = $stageTimestamps['drying'] ?? null;
-        $machineState = $order->status === 'washing' ? 'washing' : 'idle';
+        // assigned (i.e. the order has reached wash at least once).
+        // Duration is now the whole wash-stage span (entering wash to
+        // leaving it into completed) -- there's no separate drying stage
+        // left to mark "washing specifically" finished partway through.
+        $washStartedAt = $stageTimestamps['wash'] ?? null;
+        $washEndedAt = $stageTimestamps['completed'] ?? null;
+        $machineState = $order->status === 'wash' ? 'washing' : 'idle';
         $loadCount = $order->packageLines->sum(fn ($line) => $line->clothesLines->sum('quantity'));
         $washDuration = $washStartedAt && $washEndedAt ? $washStartedAt->diffForHumans($washEndedAt, true) : null;
     @endphp
@@ -194,53 +193,41 @@
                     };
                 @endphp
                 <div class="flex items-center {{ $loop->last ? '' : 'flex-1' }}">
-                    <div class="flex flex-col items-center text-center w-24 flex-none">
-                        @if ($canAdvance && $stage === 'washing')
+                    <div class="flex flex-col items-center text-center w-36 flex-none">
+                        @if ($canAdvance && $stage === 'wash')
                             <button
                                 type="button"
                                 title="{{ $stageLabels[$stage] }}"
                                 @click="$dispatch('open-panel', 'select-washing-machine')"
-                                class="w-12 h-12 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
+                                class="w-20 h-20 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
                             >
-                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
+                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="!w-8 !h-8" />
                             </button>
                         @elseif ($canAdvance && $stage === 'collection')
                             <button
                                 type="button"
                                 title="Record Collection"
                                 @click="$dispatch('open-panel', 'record-collection')"
-                                class="w-12 h-12 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
+                                class="w-20 h-20 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
                             >
-                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
+                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="!w-8 !h-8" />
                             </button>
                         @elseif ($canAdvance)
                             <form method="POST" action="{{ route('orders.advance', $order) }}" title="{{ $stageLabels[$stage] }}">
                                 @csrf
                                 <button
                                     type="submit"
-                                    class="w-12 h-12 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
+                                    class="w-20 h-20 rounded-full bg-surface-2 text-ink-faint flex items-center justify-center border-2 border-dashed border-line-strong hover:border-accent hover:bg-accent-soft hover:text-accent-ink transition-colors cursor-pointer"
                                 >
-                                    <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
+                                    <x-nav-icon name="{{ $stageIcons[$stage] }}" class="!w-8 !h-8" />
                                 </button>
                             </form>
                         @else
                             <span
-                                class="w-12 h-12 rounded-full flex items-center justify-center relative transition-all duration-500 ease-out motion-reduce:transition-none"
+                                class="w-20 h-20 rounded-full flex items-center justify-center relative transition-all duration-500 ease-out motion-reduce:transition-none"
                                 :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'bg-success-soft text-success' : (({{ $i }} === currentIndex && isActive) ? 'bg-accent-soft text-accent-ink ring-2 ring-accent animate-ring-pulse' : 'bg-surface-2 text-ink-faint')"
                             >
-                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="w-5 h-5" />
-                                <span
-                                    x-show="{{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)"
-                                    x-transition:enter="transition ease-out duration-300 delay-150"
-                                    x-transition:enter-start="opacity-0 scale-50"
-                                    x-transition:enter-end="opacity-100 scale-100"
-                                    x-transition:leave="transition ease-in duration-150"
-                                    x-transition:leave-start="opacity-100 scale-100"
-                                    x-transition:leave-end="opacity-0 scale-50"
-                                    class="absolute -bottom-1 -right-1 w-4.5 h-4.5 rounded-full bg-success text-white flex items-center justify-center border-2 border-surface"
-                                >
-                                    <x-nav-icon name="check" class="w-2.5 h-2.5" />
-                                </span>
+                                <x-nav-icon name="{{ $stageIcons[$stage] }}" class="!w-8 !h-8" />
                             </span>
                         @endif
 
@@ -259,13 +246,13 @@
                             x-text="timestamps['{{ $stage }}']"
                         ></div>
                         @if (! empty($stageChangedBy[$stage]))
-                            <div class="text-[10px] text-ink-faint mt-0.5">{{ $stage === 'collection' ? 'Collected from' : 'by' }} {{ $stageChangedBy[$stage] }}</div>
+                            <div class="text-[11px] text-ink-faint mt-0.5">{{ $stage === 'collection' ? 'Collected from' : 'by' }} <span class="font-semibold text-ink">{{ $stageChangedBy[$stage] }}</span></div>
                         @endif
-                        @if ($stage === 'washing' && isset($stageTimestamps['washing']) && $order->washingMachine)
-                            <div class="text-[10px] text-ink-faint mt-0.5">{{ $order->washingMachine->name }}</div>
+                        @if ($stage === 'wash' && isset($stageTimestamps['wash']) && $order->washingMachine)
+                            <div class="text-[11px] font-semibold text-ink mt-0.5">{{ $order->washingMachine->name }}</div>
                         @endif
                         @if ($stage === 'collection' && $order->status === 'collection')
-                            <div class="text-[10px] text-ink-faint mt-0.5">Collected by {{ $order->collectedByDisplayName() }}</div>
+                            <div class="text-[11px] text-ink-faint mt-0.5">Collected by <span class="font-semibold text-ink">{{ $order->collectedByDisplayName() }}</span></div>
                         @endif
                         @unless ($stage === 'completed')
                             <div
@@ -279,7 +266,7 @@
                     </div>
 
                     @unless ($loop->last)
-                        <div class="flex-1 h-0.5 -mt-7 rounded-full bg-line overflow-hidden">
+                        <div class="flex-1 h-0.5 -mt-[44px] rounded-full bg-line overflow-hidden">
                             <div
                                 class="h-full bg-success transition-all duration-700 ease-in-out motion-reduce:transition-none"
                                 :class="({{ $i }} < currentIndex || ({{ $i }} === currentIndex && !isActive)) ? 'w-full' : 'w-0'"
@@ -326,10 +313,10 @@
                             <dt class="text-ink-muted">Machine</dt>
                             <dd class="text-ink font-mono text-xs">{{ $order->washingMachine->name }}</dd>
                         </div>
-                        @if (! empty($stageChangedBy['washing']))
+                        @if (! empty($stageChangedBy['wash']))
                             <div class="flex justify-between">
                                 <dt class="text-ink-muted">Washed by</dt>
-                                <dd class="text-ink font-mono text-xs">{{ $stageChangedBy['washing'] }}</dd>
+                                <dd class="text-ink font-mono text-xs">{{ $stageChangedBy['wash'] }}</dd>
                             </div>
                         @endif
                         <div class="flex justify-between">
@@ -447,7 +434,7 @@
                         <div class="mt-5 pt-5 border-t border-line space-y-3" x-data="{ cancelling: false }">
                             @if ($nextIsWashing)
                                 <button type="button" @click="$dispatch('open-panel', 'select-washing-machine')" class="w-full inline-flex items-center justify-center px-4 py-3 bg-accent rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity">
-                                    {{ $stageLabels['washing'] }}
+                                    {{ $stageLabels['wash'] }}
                                 </button>
                             @elseif ($nextIsCollection)
                                 <button type="button" @click="$dispatch('open-panel', 'record-collection')" class="w-full inline-flex items-center justify-center px-4 py-3 bg-accent rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity">
@@ -478,38 +465,68 @@
                 @endcan
             </div>
 
-            <div class="bg-surface border border-line rounded-2xl p-6">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Damage Reports</div>
-                    @can('damage.report')
-                        @if ($order->status !== 'cancelled')
-                            <button type="button" @click="$dispatch('open-panel', 'report-damage')" title="Report damage" aria-label="Report damage" class="w-8 h-8 rounded-lg bg-critical-soft text-critical flex items-center justify-center hover:bg-critical hover:text-white transition-colors">
-                                <x-nav-icon name="alert" class="w-3.5 h-3.5" />
-                            </button>
-                        @endif
-                    @endcan
+            <div class="flex flex-col gap-5 h-full">
+                <div class="bg-surface border border-line rounded-2xl p-6 flex-1 flex flex-col">
+                    <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Collection</div>
+                    @if ($order->collected_by_type)
+                        <dl class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <dt class="text-ink-muted">Collected by</dt>
+                                <dd class="text-ink font-medium text-right">
+                                    {{ $order->collected_by_type === 'customer' ? $order->customer->full_name : $order->collected_by_name }}
+                                </dd>
+                            </div>
+                            @if ($order->collected_by_type === 'other' && $order->collected_by_phone)
+                                <div class="flex justify-between">
+                                    <dt class="text-ink-muted">Phone</dt>
+                                    <dd class="text-ink font-mono text-xs">{{ $order->collected_by_phone }}</dd>
+                                </div>
+                            @endif
+                            @if (isset($stageTimestamps['collection']))
+                                <div class="flex justify-between">
+                                    <dt class="text-ink-muted">Collected</dt>
+                                    <dd class="text-ink font-mono text-xs">{{ $stageTimestamps['collection']->format('Y-m-d g:i A') }}</dd>
+                                </div>
+                            @endif
+                        </dl>
+                    @else
+                        <p class="text-ink-faint text-sm">Not yet collected.</p>
+                    @endif
                 </div>
-                @forelse ($order->damageRecords as $damage)
-                    <a href="{{ route('damage.show', $damage) }}" class="flex items-center justify-between gap-3 py-2 px-1.5 rounded-lg hover:bg-surface-2 transition-colors {{ ! $loop->last ? 'mb-1' : '' }}">
-                        <span class="flex items-center gap-2.5 min-w-0">
-                            <span class="w-8 h-8 rounded-lg bg-critical-soft text-critical flex items-center justify-center flex-none">
-                                <x-nav-icon name="alert" class="w-4 h-4" />
+
+                <div class="bg-surface border border-line rounded-2xl p-6 flex-1 flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Damage Reports</div>
+                        @can('damage.report')
+                            @if ($order->status !== 'cancelled')
+                                <button type="button" @click="$dispatch('open-panel', 'report-damage')" title="Report damage" aria-label="Report damage" class="w-8 h-8 rounded-lg bg-critical-soft text-critical flex items-center justify-center hover:bg-critical hover:text-white transition-colors">
+                                    <x-nav-icon name="alert" class="w-3.5 h-3.5" />
+                                </button>
+                            @endif
+                        @endcan
+                    </div>
+                    @forelse ($order->damageRecords as $damage)
+                        <a href="{{ route('damage.show', $damage) }}" class="flex items-center justify-between gap-3 py-2 px-1.5 rounded-lg hover:bg-surface-2 transition-colors {{ ! $loop->last ? 'mb-1' : '' }}">
+                            <span class="flex items-center gap-2.5 min-w-0">
+                                <span class="w-8 h-8 rounded-lg bg-critical-soft text-critical flex items-center justify-center flex-none">
+                                    <x-nav-icon name="alert" class="w-4 h-4" />
+                                </span>
+                                <span class="min-w-0">
+                                    <span class="block text-sm font-semibold text-ink truncate">{{ $damage->damageType->name ?? '—' }}</span>
+                                    @if ($damage->item_description)
+                                        <span class="block text-xs text-ink-faint truncate">{{ $damage->item_description }}</span>
+                                    @endif
+                                    @if ($damage->resolution)
+                                        <span class="block text-xs text-success truncate">Resolved: {{ ucfirst(str_replace('_', ' ', $damage->resolution->resolution_type)) }}</span>
+                                    @endif
+                                </span>
                             </span>
-                            <span class="min-w-0">
-                                <span class="block text-sm font-semibold text-ink truncate">{{ $damage->damageType->name ?? '—' }}</span>
-                                @if ($damage->item_description)
-                                    <span class="block text-xs text-ink-faint truncate">{{ $damage->item_description }}</span>
-                                @endif
-                                @if ($damage->resolution)
-                                    <span class="block text-xs text-success truncate">Resolved: {{ ucfirst(str_replace('_', ' ', $damage->resolution->resolution_type)) }}</span>
-                                @endif
-                            </span>
-                        </span>
-                        <x-status-pill :status="$damage->status" />
-                    </a>
-                @empty
-                    <p class="text-ink-faint text-sm">None reported.</p>
-                @endforelse
+                            <x-status-pill :status="$damage->status" />
+                        </a>
+                    @empty
+                        <p class="text-ink-faint text-sm">None reported.</p>
+                    @endforelse
+                </div>
             </div>
 
     </div>
@@ -659,7 +676,7 @@
                         window.Echo.channel('orders').listen('.order.status-changed', (e) => {
                             const machine = this.machines.find(m => m.id === e.washingMachineId);
                             if (! machine) return;
-                            machine.busy = e.toStatus === 'washing';
+                            machine.busy = e.toStatus === 'wash';
                             machine.currentOrderNumber = machine.busy ? e.orderNumber : null;
                         });
                     }
@@ -777,7 +794,7 @@
                         <div class="border-t border-line pt-4 space-y-4">
                             @if ($payableDue > 0)
                                 <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-critical font-bold">GMD {{ number_format($payableDue, 2) }}</span> — pay in full to collect.</p>
-                                @include('orders._payment-fields', ['prefix' => 'collect', 'amountRequired' => true, 'dueOverride' => $payableDue, 'prefillAmount' => $payableDue])
+                                @include('orders._payment-fields', ['prefix' => 'collect', 'amountRequired' => true, 'dueOverride' => $payableDue])
                             @else
                                 <p class="text-sm text-ink-muted">Payment: <span class="font-mono text-success font-bold">Paid in full</span></p>
                             @endif

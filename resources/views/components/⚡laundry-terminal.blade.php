@@ -738,27 +738,19 @@ new class extends Component
             return;
         }
 
-        foreach ($this->cart as $index => $line) {
-            if ($line['laundry_package_id'] === $package->id) {
-                $this->cart[$index]['quantity']++;
-                $this->selectedPackageId = '';
-                $this->activePackageLineIndex = $index;
-
-                return;
-            }
-        }
-
-        $this->cart[] = [
+        // The cart holds a single package at a time -- selecting a package
+        // replaces whatever was there before rather than adding alongside it.
+        $this->cart = [[
             'laundry_package_id' => $package->id,
             'name' => $package->name,
             'price' => $this->isSubscriptionMode ? 0.0 : (float) $package->base_price,
             'quantity' => 1,
             'clothes_allowed' => $package->clothes_allowed,
             'clothes' => [],
-        ];
+        ]];
 
         $this->selectedPackageId = '';
-        $this->activePackageLineIndex = array_key_last($this->cart);
+        $this->activePackageLineIndex = 0;
     }
 
     public function removePackage(int $index): void
@@ -780,18 +772,6 @@ new class extends Component
         $this->activePackageLineIndex = null;
     }
 
-
-    public function incrementPackage(int $index): void
-    {
-        $this->cart[$index]['quantity']++;
-    }
-
-    public function decrementPackage(int $index): void
-    {
-        if ($this->cart[$index]['quantity'] > 1) {
-            $this->cart[$index]['quantity']--;
-        }
-    }
 
     public function addClothingItem(int $packageIndex, int $itemId): void
     {
@@ -1151,8 +1131,8 @@ new class extends Component
     /**
      * $cart is an ordinary public Livewire property, so the client can push
      * an arbitrary syncInput update to any of its values (price, quantity,
-     * even the package id) that bypasses addPackage()/incrementPackage()
-     * entirely. Called before subtotal is first read in submitOrder() --
+     * even the package id) that bypasses addPackage() entirely. Called
+     * before subtotal is first read in submitOrder() --
      * once read, Livewire's #[Computed] caches it for the rest of the
      * request, so this has to run first or the tampered value sticks.
      * Re-derives name/price from the real package row and drops any line
@@ -1631,7 +1611,11 @@ new class extends Component
         <div class="bg-surface border border-line rounded-2xl shadow-sm p-5 flex flex-col">
             <div class="flex items-center justify-between mb-4">
                 <div class="text-lg font-bold text-ink">Laundry Cart</div>
-                @if (! empty($cart) || ! empty($subscriptionClothes))
+                {{-- Package mode's cart holds a single line, so Clear Cart would just
+                     duplicate that line's own Remove button -- only shown in
+                     subscription mode, where it bulk-clears multiple clothing lines
+                     at once instead of removing them one at a time. --}}
+                @if ($this->isSubscriptionMode && ! empty($subscriptionClothes))
                     <button type="button" wire:click="clearCart" class="text-xs font-semibold text-critical hover:underline">Clear Cart</button>
                 @endif
             </div>
@@ -1660,12 +1644,7 @@ new class extends Component
                                 <div class="font-semibold text-ink text-sm">{{ $line['name'] }}</div>
                                 <button type="button" wire:click="removePackage({{ $index }})" class="text-critical text-xs hover:underline">Remove</button>
                             </div>
-                            <div class="flex items-center justify-between mb-2">
-                                <div class="flex items-center gap-2">
-                                    <button type="button" wire:click="decrementPackage({{ $index }})" class="w-6 h-6 rounded-full bg-surface-2 text-ink-muted hover:bg-line transition-colors">−</button>
-                                    <span class="font-mono text-sm w-6 text-center tabular-nums">{{ $line['quantity'] }}</span>
-                                    <button type="button" wire:click="incrementPackage({{ $index }})" class="w-6 h-6 rounded-full bg-surface-2 text-ink-muted hover:bg-line transition-colors">+</button>
-                                </div>
+                            <div class="flex items-center justify-end mb-2">
                                 <span class="font-mono text-xs tabular-nums text-ink-muted">GMD {{ number_format($line['price'] * $line['quantity'], 2) }}</span>
                             </div>
                             <div class="space-y-1.5">
@@ -1742,19 +1721,14 @@ new class extends Component
                 @if ($this->selectedCustomer && ! $this->needsSubscriptionDecision)
                     <div>
                         <label class="text-xs font-mono uppercase tracking-wide text-ink-faint mb-1.5 block">Package</label>
-                        <div class="flex gap-2">
-                            <select wire:model="selectedPackageId" class="flex-1 min-w-0 bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent transition-shadow">
-                                <option value="">Select a package…</option>
-                                @foreach ($this->packages as $package)
-                                    <option value="{{ $package->id }}">
-                                        {{ $package->name }} — GMD {{ number_format($package->base_price, 2) }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            <button type="button" wire:click="addPackage" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold whitespace-nowrap hover:opacity-90 transition-opacity">
-                                Add Package
-                            </button>
-                        </div>
+                        <select wire:model="selectedPackageId" wire:change="addPackage" class="w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent transition-shadow">
+                            <option value="">Select a package…</option>
+                            @foreach ($this->packages as $package)
+                                <option value="{{ $package->id }}">
+                                    {{ $package->name }} — GMD {{ number_format($package->base_price, 2) }}
+                                </option>
+                            @endforeach
+                        </select>
                     </div>
                 @elseif (! $this->selectedCustomer)
                     <p class="text-ink-faint text-sm">Select a customer to choose a package.</p>

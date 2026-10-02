@@ -16,12 +16,8 @@ class Order extends Model
      * offering something the DB would reject.
      */
     public const STAGE_SEQUENCE = [
-        'received' => 'sorting',
-        'sorting' => 'washing',
-        'washing' => 'drying',
-        'drying' => 'ironing',
-        'ironing' => 'packaging',
-        'packaging' => 'completed',
+        'received' => 'wash',
+        'wash' => 'completed',
         'completed' => 'collection',
     ];
 

@@ -26,13 +26,13 @@ class WashingMachine extends Model
 
     /**
      * Derived, not stored -- "busy" is just "an order is currently sitting
-     * on this machine at the washing stage," so it can never drift out of
+     * on this machine at the wash stage," so it can never drift out of
      * sync with the order it's tracking the way a separate status column
      * could (e.g. an order cancelled without explicitly freeing the machine).
      */
     public function currentOrder(): ?Order
     {
-        return $this->orders()->where('status', 'washing')->first();
+        return $this->orders()->where('status', 'wash')->first();
     }
 
     public function isBusy(): bool

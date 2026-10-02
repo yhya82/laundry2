@@ -114,7 +114,7 @@ class OrderController extends Controller
 
         $washingMachine = null;
 
-        if ($next === 'washing') {
+        if ($next === 'wash') {
             $request->validate(['washing_machine_id' => ['required', 'exists:washing_machines,id']]);
 
             $washingMachine = WashingMachine::find($request->integer('washing_machine_id'));

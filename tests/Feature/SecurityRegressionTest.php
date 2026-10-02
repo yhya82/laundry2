@@ -109,11 +109,16 @@ class SecurityRegressionTest extends TestCase
 
         $this->actingAs($admin);
 
+        // Advancing into 'wash' now requires a washing_machine_id -- that
+        // used to only apply one stage later (sorting -> washing); 'wash'
+        // absorbs it since it's the very next stage from 'received' now.
+        $machine = \App\Models\WashingMachine::factory()->create();
+
         $this->get(route('orders.show', $order))->assertOk();
-        $this->post(route('orders.advance', $order))->assertRedirect();
+        $this->post(route('orders.advance', $order), ['washing_machine_id' => $machine->id])->assertRedirect();
 
         $order->refresh();
-        $this->assertSame('sorting', $order->status);
+        $this->assertSame('wash', $order->status);
     }
 
     public function test_terminal_cart_price_and_quantity_are_re_derived_server_side(): void

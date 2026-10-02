@@ -24,7 +24,7 @@
         it means processing is done, not that the order is fully resolved
         (still needs a pickup/collection action), but it read as
         contradictory sitting under "Pending Orders" once processing had
-        actually finished, so pendingStages stops at 'packaging' -- matches
+        actually finished, so pendingStages stops at 'wash' -- matches
         DashboardController's own $pendingOrders query, or the live counter
         here would drift out of sync with a fresh page load.
         Comments can't go inside the x-data attribute itself -- a double

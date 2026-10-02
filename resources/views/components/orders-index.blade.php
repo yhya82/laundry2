@@ -123,7 +123,7 @@ new class extends Component
                 <input type="text" wire:model.live.debounce.300ms="search" placeholder="Search order number or customer…" class="w-full bg-surface border-line-strong text-ink placeholder:text-ink-faint focus:border-accent focus:ring-accent rounded-lg shadow-sm text-sm">
                 <select wire:model.live="status" class="bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
                     <option value="">All statuses</option>
-                    @foreach (['received' => 'Received', 'sorting' => 'Sorting', 'washing' => 'Washing', 'drying' => 'Drying', 'ironing' => 'Ironing', 'packaging' => 'Packaging', 'completed' => 'Completed', 'collection' => 'Collected', 'cancelled' => 'Cancelled'] as $value => $label)
+                    @foreach (['received' => 'Received', 'wash' => 'Wash', 'completed' => 'Completed', 'collection' => 'Collected', 'cancelled' => 'Cancelled'] as $value => $label)
                         <option value="{{ $value }}" @selected($this->status === $value)>{{ $label }}</option>
                     @endforeach
                 </select>
@@ -170,7 +170,7 @@ new class extends Component
                             <td class="px-4 py-3">
                                 <x-status-pill :status="$paymentStatus" />
                                 @if ($paymentStatus !== 'paid' && $due > 0)
-                                    <span class="block text-ink-faint text-xs font-mono mt-0.5">GMD {{ number_format($due, 2) }} due</span>
+                                    <span class="block text-ink font-bold text-sm font-mono mt-0.5">GMD {{ number_format($due, 2) }} due</span>
                                 @endif
                             </td>
                             <td class="px-4 py-3 font-mono tabular-nums text-ink">
@@ -211,7 +211,14 @@ new class extends Component
                                 </td>
                             @endif
                             <td class="px-4 py-3">
-                                <div class="flex items-center justify-end">
+                                <div class="flex items-center justify-end gap-2">
+                                    @if ($paymentStatus !== 'paid' && $due > 0)
+                                        @can('orders.manage')
+                                            <button type="button" @click="$dispatch('open-panel', 'record-payment-{{ $order->id }}')" title="Record Payment" class="h-8 px-3 rounded-lg bg-accent text-white flex items-center justify-center text-xs font-semibold hover:opacity-90 transition-opacity">
+                                                Pay
+                                            </button>
+                                        @endcan
+                                    @endif
                                     @if ($order->receipt)
                                         <a href="{{ route('orders.receipt', $order) }}" target="_blank" title="Print Receipt" class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center hover:bg-accent hover:text-white transition-colors">
                                             <x-nav-icon name="receipt" class="w-4 h-4" />
@@ -285,11 +292,22 @@ new class extends Component
                         @endcan
                     </div>
                 @endif
-                @if ($order->receipt)
-                    <a href="{{ route('orders.receipt', $order) }}" target="_blank" class="flex items-center justify-center gap-1.5 border-t border-line mt-3 pt-3 text-xs font-semibold text-accent-ink hover:underline">
-                        <x-nav-icon name="receipt" class="w-3.5 h-3.5" />
-                        Print Receipt
-                    </a>
+                @php $showPayButton = $paymentStatus !== 'paid' && $due > 0 && auth()->user()->can('orders.manage'); @endphp
+                @if ($showPayButton || $order->receipt)
+                    <div class="flex items-stretch border-t border-line mt-3 pt-3 gap-3">
+                        @if ($showPayButton)
+                            <button type="button" @click="$dispatch('open-panel', 'record-payment-{{ $order->id }}')" class="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-accent-ink hover:underline">
+                                <x-nav-icon name="wallet" class="w-3.5 h-3.5" />
+                                Record Payment
+                            </button>
+                        @endif
+                        @if ($order->receipt)
+                            <a href="{{ route('orders.receipt', $order) }}" target="_blank" class="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-accent-ink hover:underline">
+                                <x-nav-icon name="receipt" class="w-3.5 h-3.5" />
+                                Print Receipt
+                            </a>
+                        @endif
+                    </div>
                 @endif
             </div>
         @empty
@@ -299,4 +317,36 @@ new class extends Component
     </div>
 
     <div class="mt-4">{{ $this->orders->links() }}</div>
+
+    @can('orders.manage')
+        @foreach ($this->orders as $order)
+            @php $panelDue = $order->combinedBalanceDue(); @endphp
+            @if ($panelDue > 0)
+                {{--
+                    error-fields on x-slide-panel would auto-open every order's
+                    panel at once (they all share field names like "amount") --
+                    old('order_id') scopes the auto-reopen-on-error to just the
+                    one order whose form was actually submitted.
+                --}}
+                <x-slide-panel
+                    name="record-payment-{{ $order->id }}"
+                    title="Record Payment — {{ $order->order_number }}"
+                    :open="old('order_id') == $order->id && $errors->any()"
+                >
+                    <form method="POST" action="{{ route('orders.payments.record', $order) }}" class="space-y-4">
+                        @csrf
+                        <input type="hidden" name="order_id" value="{{ $order->id }}">
+                        <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-critical font-bold">GMD {{ number_format($panelDue, 2) }}</span></p>
+
+                        @include('orders._payment-fields', ['order' => $order, 'prefix' => 'idx-'.$order->id, 'amountRequired' => true, 'orderDue' => $panelDue])
+
+                        <div class="flex items-center gap-3">
+                            <x-primary-button>Record Payment</x-primary-button>
+                            <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                        </div>
+                    </form>
+                </x-slide-panel>
+            @endif
+        @endforeach
+    @endcan
 </div>

@@ -63,8 +63,8 @@ class WorkflowsTest extends TestCase
 
         // Processing pipeline: advance through every stage, one at a time.
         $this->actingAs($this->admin);
-        foreach (['sorting', 'washing', 'drying', 'ironing', 'packaging', 'completed'] as $expectedStatus) {
-            $payload = $expectedStatus === 'washing'
+        foreach (['wash', 'completed'] as $expectedStatus) {
+            $payload = $expectedStatus === 'wash'
                 ? ['washing_machine_id' => \App\Models\WashingMachine::factory()->create()->id]
                 : [];
 
@@ -73,7 +73,7 @@ class WorkflowsTest extends TestCase
             $this->assertSame($expectedStatus, $order->status, "Expected order to reach {$expectedStatus}.");
         }
 
-        $this->assertSame(6, $order->statusHistory()->count(), 'Expected one history row per transition, auto-logged by the trigger.');
+        $this->assertSame(2, $order->statusHistory()->count(), 'Expected one history row per transition, auto-logged by the trigger.');
     }
 
     public function test_subscription_workflow(): void

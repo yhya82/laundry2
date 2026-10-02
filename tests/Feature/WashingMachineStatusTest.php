@@ -54,10 +54,7 @@ class WashingMachineStatusTest extends TestCase
             'subtotal' => 100,
         ]);
         $order->refresh();
-        // The status-transition guard trigger only allows one stage at a
-        // time -- received -> sorting -> washing, not a direct jump.
-        DB::statement("UPDATE orders SET status = 'sorting' WHERE id = {$order->id}");
-        DB::statement("UPDATE orders SET status = 'washing', washing_machine_id = {$machine->id} WHERE id = {$order->id}");
+        DB::statement("UPDATE orders SET status = 'wash', washing_machine_id = {$machine->id} WHERE id = {$order->id}");
 
         $response = $this->getJson(route('washingMachines.status'));
 
@@ -77,7 +74,7 @@ class WashingMachineStatusTest extends TestCase
         $response->assertJsonCount(0);
     }
 
-    public function test_the_order_page_renders_the_machine_picker_when_next_stage_is_washing(): void
+    public function test_the_order_page_renders_the_machine_picker_when_next_stage_is_wash(): void
     {
         WashingMachine::create(['name' => 'M1', 'is_active' => true]);
 
@@ -88,7 +85,8 @@ class WashingMachineStatusTest extends TestCase
             'subtotal' => 100,
         ]);
         $order->refresh();
-        DB::statement("UPDATE orders SET status = 'sorting' WHERE id = {$order->id}");
+        // 'received' is already one step from 'wash' now -- no intermediate
+        // stage to advance through first.
 
         $response = $this->get(route('orders.show', $order));
 
