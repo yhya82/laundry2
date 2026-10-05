@@ -18,7 +18,7 @@
             <label class="block text-xs text-ink-muted mb-1">To</label>
             <input type="date" name="to" value="{{ $to }}" class="bg-surface border-line-strong rounded-lg shadow-sm text-sm">
         </div>
-        <button type="submit" class="px-4 py-2 bg-surface-2 text-ink rounded-lg text-sm font-semibold">Apply range</button>
+        <button type="submit" class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">Apply range</button>
     </form>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -26,7 +26,7 @@
         <div class="bg-surface border border-line rounded-2xl p-6">
             <div class="flex items-center justify-between mb-4">
                 <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Revenue</div>
-                <a href="{{ route('reports.export.revenue', ['from' => $from, 'to' => $to]) }}" class="text-xs text-accent-ink hover:underline">Export CSV</a>
+                <a href="{{ route('reports.export.revenue', ['from' => $from, 'to' => $to]) }}" class="px-3 py-1 rounded-lg text-xs font-semibold bg-success text-white hover:bg-success-soft hover:text-success transition-colors">Export CSV</a>
             </div>
             <div class="text-2xl font-bold text-accent-ink tabular-nums mb-4">GMD {{ number_format($revenueTotal, 2) }}</div>
             <div class="space-y-1.5 max-h-56 overflow-y-auto">
@@ -45,7 +45,7 @@
         <div class="bg-surface border border-line rounded-2xl p-6">
             <div class="flex items-center justify-between mb-4">
                 <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Damage</div>
-                <a href="{{ route('reports.export.damage', ['from' => $from, 'to' => $to]) }}" class="text-xs text-accent-ink hover:underline">Export CSV</a>
+                <a href="{{ route('reports.export.damage', ['from' => $from, 'to' => $to]) }}" class="px-3 py-1 rounded-lg text-xs font-semibold bg-success text-white hover:bg-success-soft hover:text-success transition-colors">Export CSV</a>
             </div>
             <div class="space-y-2">
                 @foreach (['pending_review', 'under_investigation', 'approved', 'rejected', 'resolved'] as $status)
@@ -60,7 +60,7 @@
         <div class="bg-surface border border-line rounded-2xl p-6">
             <div class="flex items-center justify-between mb-4">
                 <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Expenses</div>
-                <a href="{{ route('reports.export.expenses', ['from' => $from, 'to' => $to]) }}" class="text-xs text-accent-ink hover:underline">Export CSV</a>
+                <a href="{{ route('reports.export.expenses', ['from' => $from, 'to' => $to]) }}" class="px-3 py-1 rounded-lg text-xs font-semibold bg-success text-white hover:bg-success-soft hover:text-success transition-colors">Export CSV</a>
             </div>
             <div class="text-2xl font-bold text-ink tabular-nums mb-4">GMD {{ number_format($expensesTotal, 2) }}</div>
             <div class="space-y-1.5 max-h-56 overflow-y-auto">

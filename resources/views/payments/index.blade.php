@@ -12,6 +12,14 @@
             }
         }"
     >
+    <form method="GET" class="flex items-center justify-end gap-2 mb-4">
+        <input type="text" name="q" value="{{ request('q') }}" placeholder="Search customer name…" class="w-full sm:w-72 bg-surface border-line-strong text-ink placeholder:text-ink-faint focus:border-accent focus:ring-accent rounded-lg shadow-sm text-sm">
+        <button type="submit" class="px-4 py-2 bg-accent border border-transparent rounded-lg font-semibold text-sm text-white hover:opacity-90 whitespace-nowrap">Search</button>
+        @if (request('q'))
+            <a href="{{ route('payments.index') }}" class="text-sm text-ink-faint hover:text-ink whitespace-nowrap">Clear</a>
+        @endif
+    </form>
+
     <div class="bg-surface border border-line rounded-2xl overflow-hidden hidden md:block">
         <table class="w-full text-sm">
             <thead class="bg-surface-2">
@@ -32,8 +40,10 @@
                         <td class="px-4 py-3">
                             @if ($payment->order)
                                 <a href="{{ route('orders.show', $payment->order) }}" class="font-mono text-accent-ink hover:underline">{{ $payment->order->order_number }}</a>
+                            @elseif ($payment->subscription)
+                                <a href="{{ route('subscriptions.show', $payment->subscription) }}" class="text-accent-ink hover:underline">Subscription</a>
                             @else
-                                <span class="text-ink-faint">Subscription</span>
+                                <span class="text-ink-faint">—</span>
                             @endif
                         </td>
                         <td class="px-4 py-3 text-ink-muted">{{ $payment->methodLabel() }}</td>
@@ -63,8 +73,10 @@
                     <span>
                         @if ($payment->order)
                             <a href="{{ route('orders.show', $payment->order) }}" class="font-mono text-accent-ink hover:underline">{{ $payment->order->order_number }}</a>
+                        @elseif ($payment->subscription)
+                            <a href="{{ route('subscriptions.show', $payment->subscription) }}" class="text-accent-ink hover:underline">Subscription</a>
                         @else
-                            <span class="text-ink-faint">Subscription</span>
+                            <span class="text-ink-faint">—</span>
                         @endif
                         · {{ $payment->methodLabel() }}
                     </span>

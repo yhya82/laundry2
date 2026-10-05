@@ -85,7 +85,20 @@
                         @foreach ($roles as $role)
                             <th class="text-center font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3 whitespace-nowrap">
                                 {{ $role->name }}
-                                <button type="submit" form="role-{{ $role->id }}-permissions" class="block mx-auto mt-1 text-accent-ink text-xs font-semibold normal-case tracking-normal hover:underline">Save</button>
+                                <button type="submit" form="role-{{ $role->id }}-permissions" class="block mx-auto mt-1 px-3 py-1 rounded-md bg-success text-white text-xs font-semibold normal-case tracking-normal hover:bg-success-soft hover:text-success transition-colors">Save</button>
+                                @if ($role->name !== 'Admin')
+                                    <div class="flex items-center justify-center gap-2 mt-1.5">
+                                        <button type="button" @click="$dispatch('open-panel', 'role-rename-{{ $role->id }}')" class="w-6 h-6 rounded-md bg-accent text-white flex items-center justify-center hover:bg-accent-soft hover:text-accent-ink transition-colors" title="Rename role" aria-label="Rename role">
+                                            <x-nav-icon name="edit" class="w-3 h-3" />
+                                        </button>
+                                        <form method="POST" action="{{ route('roles.destroy', $role) }}" onsubmit="return confirm('Delete the {{ $role->name }} role? This cannot be undone.')">
+                                            @csrf @method('DELETE')
+                                            <button type="submit" class="w-6 h-6 rounded-md bg-critical text-white flex items-center justify-center hover:bg-critical-soft hover:text-critical transition-colors" title="Delete role" aria-label="Delete role">
+                                                <x-nav-icon name="trash" class="w-3 h-3" />
+                                            </button>
+                                        </form>
+                                    </div>
+                                @endif
                             </th>
                         @endforeach
                     </tr>
@@ -123,6 +136,34 @@
             @csrf
             @method('PUT')
         </form>
+    @endforeach
+
+    {{--
+        :open is set explicitly off old('role_id') rather than :error-fields,
+        since every role's rename form shares the field name "name" -- an
+        error-fields check (as every other slide-panel on this page uses)
+        would auto-open every role's panel at once on a single validation
+        error, not just the one that was actually submitted.
+    --}}
+    @foreach ($roles as $role)
+        @if ($role->name !== 'Admin')
+            <x-slide-panel name="role-rename-{{ $role->id }}" title="Rename Role" :open="old('role_id') == $role->id && $errors->any()">
+                <form method="POST" action="{{ route('roles.update', $role) }}" class="space-y-4">
+                    @csrf
+                    @method('PUT')
+                    <input type="hidden" name="role_id" value="{{ $role->id }}">
+                    <div>
+                        <x-input-label for="role_rename_{{ $role->id }}" value="Role name" />
+                        <x-text-input id="role_rename_{{ $role->id }}" name="name" type="text" class="block w-full" value="{{ old('role_id') == $role->id ? old('name') : $role->name }}" required autofocus />
+                        <x-input-error :messages="old('role_id') == $role->id ? $errors->get('name') : []" class="mt-1.5" />
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <x-primary-button>Save</x-primary-button>
+                        <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                    </div>
+                </form>
+            </x-slide-panel>
+        @endif
     @endforeach
 
     <x-slide-panel name="user-create" title="New User" :error-fields="['name', 'email', 'phone', 'password', 'roles']">

@@ -20,9 +20,16 @@ use Illuminate\View\View;
 
 class SubscriptionController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
-        $subscriptions = Subscription::with(['customer', 'subscriptionPackage'])->latest()->paginate(15);
+        $subscriptions = Subscription::with(['customer', 'subscriptionPackage'])
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $term = '%'.$request->get('q').'%';
+                $q->whereHas('customer', fn ($c) => $c->where('full_name', 'like', $term));
+            })
+            ->latest()
+            ->paginate(15)
+            ->withQueryString();
 
         return view('subscriptions.index', compact('subscriptions'));
     }

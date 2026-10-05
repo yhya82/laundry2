@@ -18,6 +18,13 @@ class PaymentController extends Controller
     {
         $payments = Payment::with(['order.customer', 'subscription.customer'])
             ->when($request->filled('status'), fn ($q) => $q->where('status', $request->get('status')))
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $term = '%'.$request->get('q').'%';
+                $q->where(function ($sub) use ($term) {
+                    $sub->whereHas('order.customer', fn ($c) => $c->where('full_name', 'like', $term))
+                        ->orWhereHas('subscription.customer', fn ($c) => $c->where('full_name', 'like', $term));
+                });
+            })
             ->latest()
             ->paginate(20)
             ->withQueryString();

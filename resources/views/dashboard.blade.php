@@ -124,8 +124,8 @@
         @can('orders.view')
             <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm mb-5">
                 <div class="flex items-center gap-2 mb-4">
-                    <x-nav-icon name="clipboard" class="w-4 h-4 text-ink-faint" />
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Laundry Queue</div>
+                    <x-nav-icon name="clipboard" class="!w-[18px] !h-[18px] text-ink" />
+                    <div class="font-mono text-[14px] uppercase tracking-wide text-ink font-bold">Laundry Queue</div>
                 </div>
                 <div class="flex items-stretch flex-wrap gap-y-2">
                     @foreach ([...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'collection'] as $stage)
@@ -193,8 +193,8 @@
             @endphp
             <div class="bg-surface border border-line rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow mb-5">
                 <div class="flex items-center gap-2 mb-3.5">
-                    <x-nav-icon name="users" class="w-4 h-4 text-ink-faint" />
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Customers</div>
+                    <x-nav-icon name="users" class="!w-[18px] !h-[18px] text-ink" />
+                    <div class="font-mono text-[14px] uppercase tracking-wide text-ink font-bold">Customers</div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
                     @if ($totalCustomers !== null)
@@ -253,8 +253,8 @@
         }">
             <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-2">
-                    <x-nav-icon name="analytics" class="w-4 h-4 text-ink-faint" />
-                    <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">
+                    <x-nav-icon name="analytics" class="!w-[18px] !h-[18px] text-ink" />
+                    <div class="font-mono text-[14px] uppercase tracking-wide text-ink font-bold">
                         Revenue — {{ ['all' => 'All Time', 'day' => 'Today', 'year' => 'This Year'][$revenueTrendPeriod] ?? 'This Month' }}
                     </div>
                 </div>

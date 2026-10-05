@@ -209,6 +209,8 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::post('/users/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('users.toggleActive');
         Route::put('/users/{user}/roles', [UserController::class, 'updateRoles'])->name('users.roles.update');
         Route::post('/roles', [UserController::class, 'storeRole'])->name('roles.store');
+        Route::put('/roles/{role}', [UserController::class, 'updateRole'])->name('roles.update');
+        Route::delete('/roles/{role}', [UserController::class, 'destroyRole'])->name('roles.destroy');
         Route::put('/roles/{role}/permissions', [UserController::class, 'updateRolePermissions'])->name('roles.permissions.update');
     });
 

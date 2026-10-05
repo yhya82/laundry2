@@ -113,6 +113,43 @@ class UserController extends Controller
         return back()->with('status', 'Role created — set its permissions below.');
     }
 
+    /**
+     * 'Admin' is hardcoded by name throughout this app's own guards
+     * (updateRole/updateRolePermissions above, the Admin-always-keeps-
+     * users.manage rule, SecurityRegressionTest) -- renaming it would
+     * silently break every one of those checks instead of raising an error,
+     * so it's blocked here rather than left to go wrong elsewhere.
+     */
+    public function updateRole(Request $request, Role $role): RedirectResponse
+    {
+        if ($role->name === 'Admin') {
+            return back()->withErrors(['name' => 'The Admin role cannot be renamed.']);
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:255', Rule::unique('roles', 'name')->ignore($role->id)],
+        ]);
+
+        $role->update(['name' => $validated['name']]);
+
+        return back()->with('status', 'Role renamed.');
+    }
+
+    public function destroyRole(Role $role): RedirectResponse
+    {
+        if ($role->name === 'Admin') {
+            return back()->withErrors(['role' => 'The Admin role cannot be deleted.']);
+        }
+
+        if ($role->users()->exists()) {
+            return back()->withErrors(['role' => 'This role is still assigned to one or more users — reassign them first.']);
+        }
+
+        $role->delete();
+
+        return back()->with('status', 'Role deleted.');
+    }
+
     public function updateRoles(Request $request, User $user): RedirectResponse
     {
         $validated = $request->validate([
