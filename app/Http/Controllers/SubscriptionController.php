@@ -259,6 +259,10 @@ class SubscriptionController extends Controller
             return back()->withErrors(['subscription' => 'This subscription still has open collections in its current cycle.']);
         }
 
+        if($currentCycle && ! $currentCycle->isPaid()) {
+            return back()->withErrors(['subscription' => 'please pay your outstanding balance before renewing.']);
+        }
+
         $validated = $request->validate([
             'subscription_package_id' => ['required', 'exists:subscription_packages,id'],
             'collection_type' => ['required', 'in:scheduled,non_scheduled'],
