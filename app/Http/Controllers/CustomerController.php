@@ -89,6 +89,7 @@ class CustomerController extends Controller
         // debt the way an ordinary unpaid order or unpaid cycle is.
         $stats['balanceDue'] = $orders->filter(fn ($order) => $order->status !== 'cancelled')->sum(fn ($order) => $order->balanceDue())
             + $unpaidCycles->sum(fn ($cycle) => $cycle->balanceDue());
+            $hasOutstandingBalance = $stats['balanceDue'] > 0;
 
         // Every order still owing something, oldest first -- each gets its
         // own quick-pay action on the profile rather than steering staff
@@ -190,6 +191,7 @@ class CustomerController extends Controller
             'creditTransactions',
             'subscriptionPackages',
             'subscriptionOrderState',
+            'hasOutstandingBalance'
         ));
     }
 

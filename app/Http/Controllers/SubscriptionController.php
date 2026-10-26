@@ -6,6 +6,7 @@ use App\Events\SubscriptionStatusChanged;
 use App\Http\Requests\StoreSubscriptionRequest;
 use App\Http\Requests\UpdateSubscriptionRequest;
 use App\Models\Customer;
+use App\Services\CustomerBalanceService;
 use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\SubscriptionPackage;
@@ -43,39 +44,77 @@ class SubscriptionController extends Controller
         return view('subscriptions.create', compact('eligibleCustomers', 'packages', 'customerId'));
     }
 
-    public function store(StoreSubscriptionRequest $request): RedirectResponse
-    {
-        if (Setting::get('subscription.allow_new_signups', 'true') !== 'true') {
-            return back()->withErrors(['subscription' => 'New subscription sign-ups are currently disabled in Settings.']);
-        }
-
-        try {
-            $subscription = DB::transaction(function () use ($request) {
-                $subscription = Subscription::create($request->validated());
-
-                CollectionScheduler::scheduleFirstCycle($subscription);
-
-                return $subscription;
-            });
-        } catch (QueryException $e) {
-            return back()->withInput()->withErrors(['customer_id' => 'Cancel the existing subscription before creating a new one.']);
-        }
-
-        // Set by the Terminal's New Subscription modal so submitting it lands
-        // staff back in the Terminal for this same customer, already on the
-        // newly scheduled first collection -- back() can't be trusted for
-        // this because a customer picked via the Terminal's own search never
-        // put ?customer= in the URL, so there's no referer to fall back to.
-        if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
-            return redirect()->route('orders.create', ['customer' => $redirectCustomerId])->with('status', 'Subscription created.');
-        }
-
-        if ($request->boolean('return_to_profile')) {
-            return redirect()->route('customers.show', $subscription->customer_id)->with('status', 'Subscription created.');
-        }
-
-        return redirect()->route('subscriptions.show', $subscription)->with('status', 'Subscription created.');
+  
+    public function store( StoreSubscriptionRequest $request,CustomerBalanceService $balanceService): RedirectResponse {
+    if (Setting::get('subscription.allow_new_signups', 'true') !== 'true') {
+        return back()->withErrors([
+            'subscription' => 'New subscription sign-ups are currently disabled in Settings.',
+        ]);
     }
+
+    try {
+        $subscription = DB::transaction(function () use (
+            $request,
+            $balanceService
+        ) {
+            // Lock the customer row before checking their balance.
+            $customer = Customer::query()
+                ->whereKey($request->validated('customer_id'))
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            // Check the customer's overall outstanding balance.
+            if ($balanceService->hasOutstandingBalance($customer)) {
+                return null;
+            }
+
+            // Create the subscription only after the balance check passes.
+            $subscription = Subscription::create(
+                $request->validated()
+            );
+
+            CollectionScheduler::scheduleFirstCycle($subscription);
+
+            return $subscription;
+        });
+    } catch (QueryException $e) {
+        return back()
+            ->withInput()
+            ->withErrors([
+                'customer_id' => 'Cancel the existing subscription before creating a new one.',
+            ]);
+    }
+
+    // A null result means the customer has an outstanding balance.
+    if (! $subscription) {
+        return redirect()
+            ->route('customers.show', $request->validated('customer_id'))
+            ->withErrors([
+                'subscription' => 'This customer has an outstanding balance. Please settle it before creating a new subscription.',
+            ]);
+    }
+
+    // Return to the Terminal when the request originated there.
+    if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
+        return redirect()
+            ->route('orders.create', [
+                'customer' => $redirectCustomerId,
+            ])
+            ->with('status', 'Subscription created.');
+    }
+
+    if ($request->boolean('return_to_profile')) {
+        return redirect()
+            ->route('customers.show', $subscription->customer_id)
+            ->with('status', 'Subscription created.');
+    }
+
+    return redirect()
+        ->route('subscriptions.show', $subscription)
+        ->with('status', 'Subscription created.');
+}
+
+
 
     /**
      * Only allowed while the current cycle has no collected visit yet.
@@ -110,7 +149,7 @@ class SubscriptionController extends Controller
         $currentCycle = $subscription->cycles()->latest('starts_on')->first();
 
         if ($currentCycle && $currentCycle->collections()->where('status', 'collected')->exists()) {
-            return back()->withErrors(['subscription' => 'This subscription already has a collected visit — it can no longer be edited.']);
+            return back()->withErrors(['subscription' => 'This subscription already has a collected visit,it can no longer be edited.']);
         }
 
         $needsReschedule = $validated['collections_per_month'] !== $subscription->collections_per_month
@@ -247,7 +286,7 @@ class SubscriptionController extends Controller
      * staff change package/collection type/counts and pick the new cycle's
      * start date, rather than just repeating the previous cycle unchanged.
      */
-    public function renew(Request $request, Subscription $subscription): RedirectResponse
+   public function renew(Request $request, Subscription $subscription, CustomerBalanceService $balanceService): RedirectResponse
     {
         if ($subscription->status !== 'active') {
             return back()->withErrors(['subscription' => 'Only an active subscription can be renewed.']);
@@ -259,8 +298,20 @@ class SubscriptionController extends Controller
             return back()->withErrors(['subscription' => 'This subscription still has open collections in its current cycle.']);
         }
 
-        if($currentCycle && ! $currentCycle->isPaid()) {
-            return back()->withErrors(['subscription' => 'please pay your outstanding balance before renewing.']);
+        $customer = $subscription->customer;
+
+        if (! $customer) {
+         return back()->withErrors([
+        'subscription' => 'The customer for this subscription could not be found.',
+            ]);
+        }
+
+        if ($balanceService->hasOutstandingBalance($customer)) {
+        return redirect()
+         ->route('customers.show', $customer->id)
+            ->withErrors([
+            'subscription' => 'This customer has an outstanding balance. Please settle it before renewing a subscription.',
+            ]);
         }
 
         $validated = $request->validate([

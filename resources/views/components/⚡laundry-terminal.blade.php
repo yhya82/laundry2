@@ -529,15 +529,32 @@ new class extends Component
         return min(max(0, (float) ($this->customAmount ?? 0)), $this->remainingDue);
     }
 
-    public function selectCustomer(int $id): void
-    {
-        if ($this->collectionId !== null) {
-            return;
-        }
 
-        $this->customerId = $id;
-        $this->customerSearch = '';
+
+
+
+public function selectCustomer(int $id): void
+{
+    if ($this->collectionId !== null) {
+        return;
     }
+
+    $customer = Customer::find($id);
+
+    if (! $customer) {
+        $this->addError('customerId', 'Customer not found.');
+        return;
+    }
+
+    $this->resetErrorBag('customerId');
+
+    $this->customerId = $customer->id;
+    $this->customerSearch = '';
+}
+
+
+
+
 
     /**
      * Only for the mount()-time query-string entry point (?customer= links
@@ -900,6 +917,37 @@ new class extends Component
         $this->subscriptionClothes = array_values($this->subscriptionClothes);
     }
 
+   
+protected function customerHasOutstandingBalance(Customer $customer): bool
+{
+    // Check balances belonging directly to orders.
+    // Cancelled orders do not contribute their own balance.
+    $hasUnpaidOrder = $customer->orders()
+        ->where('status', '!=', 'cancelled')
+        ->get()
+        ->contains(
+            fn (Order $order) => $order->balanceDue() > 0
+        );
+
+    if ($hasUnpaidOrder) {
+        return true;
+    }
+
+    // Check each subscription cycle exactly once.
+    // A cycle's monthly fee is shared across its collections.
+    $hasUnpaidCycle = $customer->subscriptions()
+        ->with('cycles')
+        ->get()
+        ->flatMap(fn (Subscription $subscription) => $subscription->cycles)
+        ->contains(
+            fn (SubscriptionCycle $cycle) => $cycle->balanceDue() > 0
+        );
+
+    return $hasUnpaidCycle;
+}
+
+
+
     public function submitOrder()
     {
         if ($this->isSubscriptionMode) {
@@ -964,74 +1012,141 @@ new class extends Component
         $chargesWalkInExtra = $this->walkInExtraChargeEnabled && $this->walkInExtraCharge > 0;
 
         try {
-            [$order, $payments, $customerId] = DB::transaction(function () use ($chargesWalkInExtra) {
-                // The whole point of deferring creation in createCustomer():
-                // a pending walk-in customer only ever actually lands in the
-                // customers table here, inside the same transaction as the
-                // order itself -- if anything below throws, this rolls back
-                // right along with it, same as it would for any other
-                // MySQL/QueryException failure in this transaction.
-                $customerId = $this->usingPendingCustomer
-                    ? Customer::create([
-                        'full_name' => $this->newCustomerName,
-                        'phone' => $this->newCustomerPhone,
-                        'customer_type' => 'walk_in',
-                    ])->id
-                    : $this->customerId;
+            [$order, $payments, $customerId, $blockedByBalance] = DB::transaction(function () use ($chargesWalkInExtra) {
 
-                $order = Order::create([
-                    'order_number' => Numbering::nextOrderNumber(),
-                    'customer_id' => $customerId,
-                    'user_id' => auth()->id(),
-                    'order_source' => 'walk_in',
-                    'subtotal' => $this->subtotal,
-                    'discount' => $this->discount,
-                    'discount_reason' => $this->discount > 0 ? $this->discountReason : null,
-                    'extra_charge' => $chargesWalkInExtra ? $this->walkInExtraCharge : 0,
-                    'extra_charge_reason' => $chargesWalkInExtra ? $this->walkInExtraChargeReason : null,
-                    'notes' => trim($this->notes) !== '' ? trim($this->notes) : 'None',
-                ]);
-                $order->refresh();
+        // Create a pending walk-in customer inside the transaction.
+        // If anything fails, the customer creation is rolled back too.
+        $customerId = $this->usingPendingCustomer
+            ? Customer::create([
+                'full_name' => $this->newCustomerName,
+                'phone' => $this->newCustomerPhone,
+                'customer_type' => 'walk_in',
+            ])->id
+            : $this->customerId;
 
-                $this->createLineItems($order);
-                $payments = $this->applyCreditAndPayment($order);
+        /*
+         * Check previous walk-in orders for existing customers.
+         *
+         * New pending customers have no previous orders, so they do
+         * not need this check.
+         *
+         * Cancelled orders are excluded from the restriction.
+         */
+        if (! $this->usingPendingCustomer) {
+        $customer = Customer::find($customerId);
 
-                $order->receipt()->create([
-                    'receipt_number' => Numbering::nextReceiptNumber(),
-                    'reprint_count' => 0,
-                ]);
-
-                return [$order, $payments, $customerId];
-            });
-        } catch (QueryException $e) {
-            $this->addError('cart', $this->friendlyDatabaseError($e));
-
-            return;
+        if (
+        ! $customer ||
+        $this->customerHasOutstandingBalance($customer)
+        ) {
+        return [null, [], $customerId, true];
         }
+}
 
-        $this->customerId = $customerId;
-        $this->usingPendingCustomer = false;
+        // Create the new walk-in order.
+        $order = Order::create([
+            'order_number' => Numbering::nextOrderNumber(),
+            'customer_id' => $customerId,
+            'user_id' => auth()->id(),
+            'order_source' => 'walk_in',
+            'subtotal' => $this->subtotal,
+            'discount' => $this->discount,
+            'discount_reason' => $this->discount > 0
+                ? $this->discountReason
+                : null,
+            'extra_charge' => $chargesWalkInExtra
+                ? $this->walkInExtraCharge
+                : 0,
+            'extra_charge_reason' => $chargesWalkInExtra
+                ? $this->walkInExtraChargeReason
+                : null,
+            'notes' => trim($this->notes) !== ''
+                ? trim($this->notes)
+                : 'None',
+        ]);
 
-        // Broadcast only after the transaction has actually committed --
-        // broadcasting from inside it risks announcing data that a later
-        // failure in the same transaction would roll back.
-        OrderStatusChanged::dispatch($order, null);
-        foreach ($payments as $payment) {
-            PaymentReceived::dispatch($payment);
-        }
+        $order->refresh();
 
-        $this->resetForNewOrder($order);
-    }
+        // Create order line items.
+        $this->createLineItems($order);
+
+        // Apply customer credit and any payment received.
+        $payments = $this->applyCreditAndPayment($order);
+
+        // Generate the receipt.
+        $order->receipt()->create([
+            'receipt_number' => Numbering::nextReceiptNumber(),
+            'reprint_count' => 0,
+        ]);
+
+        return [$order, $payments, $customerId, false];
+
+    });
+
+} catch (QueryException $e) {
+    $this->addError('cart', $this->friendlyDatabaseError($e));
+
+    return;
+}
+
+// Stop if the customer has an outstanding balance.
+if ($blockedByBalance) {
+    $this->addError(
+        'cart',
+        'This customer has an outstanding balance on a previous walk-in order. Please settle the balance before creating another order.'
+    );
+
+    return;
+}
+
+// Continue with the existing successful-order flow.
+$this->customerId = $customerId;
+$this->usingPendingCustomer = false;
+
+// Broadcast only after the transaction has committed.
+OrderStatusChanged::dispatch($order, null);
+
+foreach ($payments as $payment) {
+    PaymentReceived::dispatch($payment);
+}
+
+$this->resetForNewOrder($order);
+
+}
 
     protected function submitSubscriptionCollection()
     {
-        $collection = $this->collection;
+       
+    $collection = $this->collection;
 
-        if (! $collection || $collection->status !== 'scheduled') {
-            $this->addError('cart', 'This collection is no longer available.');
+    if (! $collection || $collection->status !== 'scheduled') {
+    $this->addError('cart', 'This collection is no longer available.');
 
-            return;
-        }
+    return;
+}
+
+$customer = $collection->subscription?->customer;
+
+if (! $customer) {
+    $this->addError('cart', 'The customer for this collection could not be found.');
+
+    return;
+}
+
+if ($this->customerHasOutstandingBalance($customer)) {
+    session()->flash(
+        'error',
+        'This customer has an outstanding balance. Please settle it before creating another order.'
+    );
+
+    $this->redirectRoute('customers.show', [
+        'customer' => $customer->id,
+    ]);
+
+    return;
+}
+
+
 
         $this->sanitizeSubscriptionClothes();
 
