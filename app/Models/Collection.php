@@ -38,6 +38,11 @@ class Collection extends Model
         return $this->belongsTo(SubscriptionCycle::class);
     }
 
+    public function orders(): HasMany
+    {
+    return $this->hasMany(Order::class);
+    }
+
     /**
      * The other collection this one's slot got folded into after being
      * cancelled -- that visit fulfills both slots at once.

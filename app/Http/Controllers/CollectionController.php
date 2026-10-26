@@ -51,7 +51,7 @@ class CollectionController extends Controller
         $collection->loadMissing('subscription');
 
         if ($collection->subscription->status !== 'active') {
-            return back()->withErrors(['collection' => 'This subscription is paused — resume it before skipping or cancelling a collection.']);
+            return back()->withErrors(['collection' => 'This subscription is paused,resume it before skipping or cancelling a collection.']);
         }
 
         $validated = $request->validate([
@@ -101,7 +101,7 @@ class CollectionController extends Controller
         $collection->loadMissing('subscription');
 
         if ($collection->subscription->status !== 'active') {
-            return redirect()->route('collections.index')->withErrors(['collection' => 'This subscription is paused — resume it before collecting.']);
+            return redirect()->route('collections.index')->withErrors(['collection' => 'This subscription is paused,resume it before collecting.']);
         }
 
         $collection->load('subscription.customer', 'subscription.subscriptionPackage');

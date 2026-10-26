@@ -85,15 +85,16 @@ class SubscriptionCycle extends Model
         return max(0, $this->max_clothes_snapshot - $this->clothesCollected());
     }
 
+   
     /**
-     * True once every collection belonging to this cycle has been resolved
-     * (collected or cancelled) -- the point at which Renew becomes available
-     * instead of the old auto-continue behavior.
-     */
+ * A cycle is exhausted when every collection has been collected or cancelled.
+ */
     public function isExhausted(): bool
     {
-        return ! $this->collections()->where('status', 'scheduled')->exists();
-    }
+    return ! $this->collections()
+        ->whereNotIn('status', ['collected', 'cancelled'])
+        ->exists();
+}
 
     /**
      * Non-scheduled cycles are created with ends_on left null (see
@@ -112,4 +113,58 @@ class SubscriptionCycle extends Model
             $this->update(['ends_on' => now()->toDateString()]);
         }
     }
+    //checks if the collection is the last scheduled collection in the cycle.
+    
+    
+/**
+ * Determine whether this is the final unresolved collection in the cycle.
+ *
+ * Supports both scheduled collections (with dates) and non-scheduled
+ * collections (without dates).
+ */
+/**
+ * Determine whether this is the final unresolved collection in the cycle.
+ *
+ * Supports both scheduled and non-scheduled collections.
+ */
+
+public function isLastScheduledCollection(Collection $collection): bool
+{
+    if ((int) $collection->subscription_cycle_id !== (int) $this->id) {
+        return false;
+    }
+
+    // Cancelled or already resolved collection slots cannot be the final pickup.
+    if (in_array($collection->status, ['cancelled'], true)) {
+        return false;
+    }
+
+    // The current collection must have an order that has not yet been picked up.
+    $currentOrderIsPendingPickup = $collection->orders()
+        ->whereNotIn('status', ['collection', 'cancelled'])
+        ->exists();
+
+    if (! $currentOrderIsPendingPickup) {
+        return false;
+    }
+
+    // No other collection slot may remain available or have an order awaiting pickup.
+    return ! $this->collections()
+        ->where('id', '!=', $collection->id)
+        ->where(function ($query) {
+            $query
+                // An unused, non-cancelled collection slot is still available.
+                ->whereDoesntHave('orders')
+                ->whereNotIn('status', ['cancelled']);
+        })
+        ->exists()
+        && ! $this->collections()
+            ->where('id', '!=', $collection->id)
+            ->whereHas('orders', function ($query) {
+                $query->whereNotIn('status', ['collection', 'cancelled']);
+            })
+            ->exists();
+}
+
+
 }

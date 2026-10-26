@@ -273,49 +273,69 @@
                     <span class="w-7 h-7 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="zap" class="w-3.5 h-3.5" /></span>
                     <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold">Quick Actions</div>
                 </div>
-                <div class="flex flex-col gap-1.5">
                 
-                    @can('terminal.use')
-                      @if ($hasOutstandingBalance)
-                     <a href="{{ route('customers.show', ['customer' => $customer->id]) }}"
-                         class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-critical hover:bg-critical/5 transition-colors">
-                     <span class="w-8 h-8 rounded-lg bg-critical/10 text-critical flex items-center justify-center flex-none">
-                 <x-nav-icon name="clipboard" class="w-4 h-4" />
-                     </span>
-                     <span class="flex-1">Settle Outstanding Balance</span>
-                     <span class="text-ink-faint">&rarr;</span>
-                    </a>
-                     @elseif ($subscriptionOrderState === 'open' || $subscriptionOrderState === 'exhausted')
-                     <button type="button"
-                      @click="$dispatch('open-panel', 'new-order-choice')"
-                        class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors text-left w-full">
-                    <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none">
-                     <x-nav-icon name="clipboard" class="w-4 h-4" />
-                    </span>
-                    <span class="flex-1">Create Order</span>
-                 <span class="text-ink-faint">&rarr;</span>
-                </button>
+                <div class="flex flex-col gap-1.5">
 
-                 <x-subscription-order-choice-modal
-                 :customer="$customer"
-                :cycle-state="$subscriptionOrderState"
-                 :subscription="$subscriptions->where('status', 'active')->first()"
-                      :packages="$subscriptionPackages"
-                      />
-                 @else
-                    <a href="{{ route('orders.create', ['customer' => $customer->id]) }}"
-                     class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors">
-                    <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none">
-                    <x-nav-icon name="clipboard" class="w-4 h-4" />
-                    </span>
-                    <span class="flex-1">Create Order</span>
-                    <span class="text-ink-faint">&rarr;</span>
-                    </a>
-                 @endif
-                @endcan
+                        {{-- New Subscription: independent of outstanding balance --}}
+                        @can('subscriptions.manage')
+                       @if ($customer->customer_type === 'subscription')
+                    <button
+                         type="button"
+                         @click="$dispatch('open-panel', 'new-subscription')"
+                          class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors text-left w-full"
+                    >
+                      <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none">
+                     <x-nav-icon name="plus" class="w-4 h-4" />
+                      </span>
+                      <span class="flex-1">New Subscription</span>
+                      <span class="text-ink-faint">&rarr;</span>
+                   </button>
+                   @endif
+                   @endcan
 
+                     {{-- Order actions: preserve existing balance restrictions --}}
+                     @can('terminal.use')
+                     @if ($hasOutstandingBalance)
+                       <a href="{{ route('customers.show', ['customer' => $customer->id]) }}"
+                          class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-critical hover:bg-critical/5 transition-colors">
+                       <span class="w-8 h-8 rounded-lg bg-critical/10 text-critical flex items-center justify-center flex-none">
+                         <x-nav-icon name="clipboard" class="w-4 h-4" />
+                       </span>
+                       <span class="flex-1">Settle Outstanding Balance</span>
+                       <span class="text-ink-faint">&rarr;</span>
+                       </a>
 
-                </div>
+                       @elseif ($subscriptionOrderState === 'open' || $subscriptionOrderState === 'exhausted')
+                           <button type="button"
+                                @click="$dispatch('open-panel', 'new-order-choice')"
+                                  class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors text-left w-full">
+                                <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none">
+                                <x-nav-icon name="clipboard" class="w-4 h-4" />
+                                </span>
+                               <span class="flex-1">Create Order</span>
+                                <span class="text-ink-faint">&rarr;</span>
+                             </button>
+
+                         <x-subscription-order-choice-modal
+                            :customer="$customer"
+                            :cycle-state="$subscriptionOrderState"
+                            :subscription="$subscriptions->where('status', 'active')->first()"
+                            :packages="$subscriptionPackages"
+                           />
+
+                        @else
+                        <a href="{{ route('orders.create', ['customer' => $customer->id]) }}"
+                         class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ink hover:bg-accent-soft/50 hover:text-accent-ink transition-colors">
+                         <span class="w-8 h-8 rounded-lg bg-accent-soft text-accent-ink flex items-center justify-center flex-none">
+                         <x-nav-icon name="clipboard" class="w-4 h-4" />
+                        </span>
+                        <span class="flex-1">Create Order</span>
+                         <span class="text-ink-faint">&rarr;</span>
+                       </a>
+                     @endif
+                    @endcan
+
+            </div>
             </div>
 
             <div class="lg:col-span-2 bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">

@@ -50,6 +50,7 @@ class OrderController extends Controller
 
     public function create(Request $request): View
     {
+
         $customerId = $request->integer('customer') ?: null;
         $forceWalkIn = $request->get('mode') === 'walk_in';
 
@@ -168,64 +169,246 @@ class OrderController extends Controller
      * already-fully-paid order skips the payment step entirely. Same
      * order-then-cycle preference as $payableDue in orders/show.blade.php.
      */
-    protected function advanceToCollection(Request $request, Order $order): RedirectResponse
-    {
-        $payableDue = $order->balanceDue() > 0 ? $order->balanceDue() : ($order->subscriptionCycle()?->balanceDue() ?? 0);
 
-        $validated = $request->validate([
-            'collected_by_type' => ['required', 'in:customer,other'],
-            'collected_by_name' => ['required_if:collected_by_type,other', 'nullable', 'string', 'max:255'],
-            'collected_by_phone' => ['required_if:collected_by_type,other', 'nullable', 'string', 'regex:/^[+0-9][0-9 ()\-]{6,19}$/'],
-            'credit_applied' => ['nullable', 'numeric', 'min:0'],
-            'amount' => [
-                $payableDue > 0 ? 'required' : 'nullable',
-                'numeric', 'min:0',
-                function ($attribute, $value, $fail) use ($request, $payableDue) {
-                    if ($payableDue <= 0) {
-                        return;
-                    }
+    
+    protected function advanceToCollection(Request $request,Order $order): RedirectResponse {
+        
+    $cycle = $order->subscriptionCycle();
+    $collection = $order->collection;
 
-                    $totalCovered = round($request->float('credit_applied') + (float) $value, 2);
+    $isSubscription = $order->order_source === 'subscription';
 
-                    if ($totalCovered < $payableDue) {
-                        $fail('The full balance due (GMD '.number_format($payableDue, 2).') must be paid to record collection.');
-                    }
-                },
-            ],
-            'method' => [$request->float('amount') > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
-            'method_note' => ['required_if:method,other', 'nullable', 'string', 'max:255'],
-        ]);
+    $orderDue = $order->balanceDue();
+    $cycleDue = $cycle?->balanceDue() ?? 0;
 
-        $hasPayment = $request->float('amount') > 0 || $request->float('credit_applied') > 0;
-        $cycle = $order->subscriptionCycle();
-        $from = $order->status;
+    $isFinalSubscriptionCollection = $isSubscription
+        && $cycle !== null
+        && $collection !== null
+        && $cycle->isLastScheduledCollection($collection);
 
-        try {
-            DB::transaction(function () use ($order, $validated, $hasPayment, $cycle) {
-                $order->collected_by_type = $validated['collected_by_type'];
-                $order->collected_by_name = $validated['collected_by_type'] === 'other' ? $validated['collected_by_name'] : null;
-                $order->collected_by_phone = $validated['collected_by_type'] === 'other' ? $validated['collected_by_phone'] : null;
-                $order->status = 'collection';
-                $order->save();
+    /*
+    |--------------------------------------------------------------------------
+    | Determine the mandatory payment
+    |--------------------------------------------------------------------------
+    |
+    | Order-specific balances must be settled before pickup.
+    | The cycle balance is mandatory only at the final eligible
+    | subscription collection.
+    |
+    */
 
-                if ($hasPayment) {
-                    if ($order->balanceDue() > 0) {
-                        app(OrderPaymentRecorder::class)->record($order, $validated);
-                    } elseif ($cycle) {
-                        app(SubscriptionCyclePaymentRecorder::class)->record($cycle, $validated);
-                    } else {
-                        throw new \RuntimeException('This order is already fully paid.');
-                    }
+    $payableDue = $orderDue > 0
+        ? $orderDue
+        : (
+            $isFinalSubscriptionCollection
+                ? $cycleDue
+                : 0
+        );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Validate the request
+    |--------------------------------------------------------------------------
+    */
+
+    $validated = $request->validate([
+        'collected_by_type' => [
+            'required',
+            'in:customer,other',
+        ],
+
+        'collected_by_name' => [
+            'required_if:collected_by_type,other',
+            'nullable',
+            'string',
+            'max:255',
+        ],
+
+        'collected_by_phone' => [
+            'required_if:collected_by_type,other',
+            'nullable',
+            'string',
+            'regex:/^[+0-9][0-9 ()\-]{6,19}$/',
+        ],
+
+        'credit_applied' => [
+            'nullable',
+            'numeric',
+            'min:0',
+        ],
+
+        'amount' => [
+            $payableDue > 0 ? 'required' : 'nullable',
+            'numeric',
+            'min:0',
+
+            function ($attribute, $value, $fail) use (
+                $request,
+                $payableDue
+            ) {
+                if ($payableDue <= 0) {
+                    return;
                 }
-            });
-        } catch (\RuntimeException $e) {
-            return back()->withInput()->withErrors(['amount' => $e->getMessage()]);
-        }
 
-        OrderStatusChanged::dispatch($order, $from);
+                $totalCovered = round(
+                    $request->float('credit_applied')
+                        + (float) $value,
+                    2
+                );
 
-        return back()->with('status', 'Order collected.');
+                if ($totalCovered < $payableDue) {
+                    $fail(
+                        'The full balance due (GMD '
+                        . number_format($payableDue, 2)
+                        . ') must be paid to record collection.'
+                    );
+                }
+            },
+        ],
+
+        'method' => [
+            $request->float('amount') > 0
+                ? 'required'
+                : 'nullable',
+            'in:cash,wave,aps,other',
+        ],
+
+        'method_note' => [
+            'required_if:method,other',
+            'nullable',
+            'string',
+            'max:255',
+        ],
+    ]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Determine whether a payment was submitted
+    |--------------------------------------------------------------------------
+    */
+
+    $amount = (float) ($validated['amount'] ?? 0);
+
+    $creditApplied = (float) (
+        $validated['credit_applied'] ?? 0
+    );
+
+    $hasPayment = $amount > 0 || $creditApplied > 0;
+
+    $from = $order->status;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Record payment and collect the order
+    |--------------------------------------------------------------------------
+    */
+
+    try {
+        DB::transaction(function () use (
+            $order,
+            $validated,
+            $hasPayment,
+            $cycle,
+            $isFinalSubscriptionCollection,
+            $orderDue,
+            $cycleDue,
+            $amount,
+            $creditApplied
+        ) {
+            /*
+            |--------------------------------------------------------------------------
+            | Validate payment amount against the appropriate balance
+            |--------------------------------------------------------------------------
+            */
+
+            if ($hasPayment) {
+                // Never allow a payment to exceed the balance being settled.
+                $paymentTotal = round(
+                    $amount + $creditApplied,
+                    2
+                );
+
+                if ($orderDue > 0) {
+                    if ($paymentTotal > $orderDue) {
+                        throw new \RuntimeException(
+                            'The payment cannot exceed the outstanding order balance.'
+                        );
+                    }
+
+                    app(OrderPaymentRecorder::class)->record(
+                        $order,
+                        $validated
+                    );
+                } elseif ($cycle && $cycleDue > 0) {
+                    // Final collection requires the entire remaining cycle balance.
+                    if (
+                        $isFinalSubscriptionCollection
+                        && $paymentTotal < $cycleDue
+                    ) {
+                        throw new \RuntimeException(
+                            'The remaining subscription cycle balance must be paid in full before this final collection.'
+                        );
+                    }
+
+                    // Partial or full cycle payments are allowed before the final collection.
+                    if ($paymentTotal > $cycleDue) {
+                        throw new \RuntimeException(
+                            'The payment cannot exceed the outstanding subscription cycle balance.'
+                        );
+                    }
+
+                    app(SubscriptionCyclePaymentRecorder::class)->record(
+                        $cycle,
+                        $validated
+                    );
+                } else {
+                    throw new \RuntimeException(
+                        'There is no outstanding balance to pay.'
+                    );
+                }
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Record who collected the order
+            |--------------------------------------------------------------------------
+            */
+
+            $order->collected_by_type =
+                $validated['collected_by_type'];
+
+            $order->collected_by_name =
+                $validated['collected_by_type'] === 'other'
+                    ? $validated['collected_by_name']
+                    : null;
+
+            $order->collected_by_phone =
+                $validated['collected_by_type'] === 'other'
+                    ? $validated['collected_by_phone']
+                    : null;
+
+            /*
+            |--------------------------------------------------------------------------
+            | Mark the order as collected
+            |--------------------------------------------------------------------------
+            */
+
+            $order->status = 'collection';
+
+            $order->save();
+        });
+    } catch (\RuntimeException $e) {
+        return back()
+            ->withInput()
+            ->withErrors([
+                'amount' => $e->getMessage(),
+            ]);
     }
+
+    OrderStatusChanged::dispatch($order, $from);
+
+    return back()->with('status', 'Order collected.');
+}
 
     /**
      * Purely a label -- see Order::assignedTo()'s doc comment. Assignable

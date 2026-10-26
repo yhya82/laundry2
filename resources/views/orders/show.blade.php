@@ -14,99 +14,192 @@
         </a>
     </div>
 
+    
     @php
-        $stageIcons = [
-            'received' => 'box', 'wash' => 'washer', 'completed' => 'check', 'collection' => 'truck',
-        ];
-        $stageLabels = [
-            'received' => 'Received', 'wash' => 'Start Wash', 'completed' => 'Completed',
-            'collection' => 'Collection',
-        ];
-        // Timeline-only variants -- the sidebar's big "Advance" button and the
-        // timeline's own advance buttons always talk about the *next* stage
-        // (so $stageLabels above, the "before" form, is always correct for
-        // those); only the per-stage caption under each timeline circle needs
-        // to change once that stage is the current one or already passed.
-        $stageCurrentLabels = [
-            'received' => 'Received', 'wash' => 'Wash', 'completed' => 'Completed',
-            'collection' => 'Collected',
-        ];
-        $stagePastLabels = [
-            'received' => 'Received', 'wash' => 'Washed', 'completed' => 'Completed',
-            'collection' => 'Collected',
-        ];
-        $stages = [...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'collection'];
+    $stageIcons = [
+        'received' => 'box',
+        'wash' => 'washer',
+        'completed' => 'check',
+        'collection' => 'truck',
+    ];
 
-        $stageTimestamps = ['received' => $order->created_at];
-        // Received has no order_status_history row -- the trigger only fires
-        // on UPDATE, not the initial INSERT -- so its "who" comes from the
-        // order's own creator instead.
-        $stageChangedBy = ['received' => $order->creator?->name];
-        foreach ($order->statusHistory->sortBy('created_at') as $entry) {
-            if (in_array($entry->to_status, $stages, true)) {
-                $stageTimestamps[$entry->to_status] = $entry->created_at;
-                $stageChangedBy[$entry->to_status] = $entry->changedBy?->name;
-            }
+    $stageLabels = [
+        'received' => 'Received',
+        'wash' => 'Start Wash',
+        'completed' => 'Completed',
+        'collection' => 'Collection',
+    ];
+
+    // Timeline-only labels.
+    $stageCurrentLabels = [
+        'received' => 'Received',
+        'wash' => 'Wash',
+        'completed' => 'Completed',
+        'collection' => 'Collected',
+    ];
+
+    $stagePastLabels = [
+        'received' => 'Received',
+        'wash' => 'Washed',
+        'completed' => 'Completed',
+        'collection' => 'Collected',
+    ];
+
+    $stages = [...array_keys(\App\Models\Order::STAGE_SEQUENCE), 'collection'];
+
+    $stageTimestamps = ['received' => $order->created_at];
+
+    // Received has no order_status_history row, so use the order creator.
+    $stageChangedBy = ['received' => $order->creator?->name];
+
+    foreach ($order->statusHistory->sortBy('created_at') as $entry) {
+        if (in_array($entry->to_status, $stages, true)) {
+            $stageTimestamps[$entry->to_status] = $entry->created_at;
+            $stageChangedBy[$entry->to_status] = $entry->changedBy?->name;
         }
+    }
 
-        $lastReachedIndex = 0;
-        foreach ($stages as $i => $stage) {
-            if (isset($stageTimestamps[$stage])) {
-                $lastReachedIndex = $i;
-            }
+    $lastReachedIndex = 0;
+
+    foreach ($stages as $i => $stage) {
+        if (isset($stageTimestamps[$stage])) {
+            $lastReachedIndex = $i;
         }
+    }
 
-        $isActiveOrder = ! $order->isTerminal();
-        $nextIsWashing = $order->nextStatus() === 'wash';
-        $nextIsCollection = $order->nextStatus() === 'collection';
-        $paymentStatus = $order->combinedPaymentStatus();
-        // orderDue is the order's own balance -- the only thing "Record
-        // Payment" here actually settles. combinedDue/combinedPaid fold in
-        // the subscription cycle's balance too (most of what's owed on a
-        // subscription visit usually sits on the cycle, not the order
-        // itself), matching what combinedPaymentStatus() already checks --
-        // otherwise the hero and the Payments card can disagree about
-        // whether the order is "paid" at all.
-        $cycle = $order->subscriptionCycle();
-        $orderDue = $order->balanceDue();
-        // combinedBalanceDue() (not $orderDue + cycle inline) so a cancelled
-        // order's own share correctly drops out of this hero stat -- that
-        // service was never rendered, so it isn't real, actionable debt.
-        $combinedDue = $order->combinedBalanceDue();
-        $combinedPaid = $order->amountPaid() + ($cycle?->amountPaid() ?? 0);
-        // Both Record Payment and Record Collection settle whichever balance
-        // actually has money owed on it -- the order's own (e.g. a
-        // cycle-overage charge) if any, otherwise the cycle's flat fee,
-        // which is where a subscription visit's balance normally lives.
-        // $orderDue alone would hide the payment action entirely for the
-        // common subscription case (see PaymentController::record()'s same
-        // order-then-cycle preference).
-        //
-        // A cancelled order's own balance is deliberately excluded here --
-        // $orderDue/$combinedDue above still show its true (no longer
-        // collectible) amount in the hero, but $payableDue specifically
-        // drives whether a Record Payment action is offered, and that
-        // service was never rendered (see PaymentController::record()'s
-        // matching guard) -- the cycle's own balance, if any, still falls
-        // through normally since it's independent, still-collectible money.
-        $payableDue = ($orderDue > 0 && $order->status !== 'cancelled') ? $orderDue : ($cycle?->balanceDue() ?? 0);
-        $grandTotal = (float) $order->total_amount + ($cycle->monthly_price_snapshot ?? 0);
-        // 'completed' reads as still-active (processing done, not yet picked
-        // up) -- 'collection' is the actual "fully done" green now.
-        $statusTones = ['received' => 'neutral', 'wash' => 'active', 'completed' => 'active', 'collection' => 'success', 'cancelled' => 'critical'];
-        $statusToneClasses = ['neutral' => 'bg-pill-bg text-pill-ink', 'active' => 'bg-accent-soft text-accent-ink', 'success' => 'bg-success-soft text-success', 'critical' => 'bg-critical-soft text-critical'];
+    $isActiveOrder = ! $order->isTerminal();
 
-        // Handling card -- only worth showing once a machine's actually been
-        // assigned (i.e. the order has reached wash at least once).
-        // Duration is now the whole wash-stage span (entering wash to
-        // leaving it into completed) -- there's no separate drying stage
-        // left to mark "washing specifically" finished partway through.
-        $washStartedAt = $stageTimestamps['wash'] ?? null;
-        $washEndedAt = $stageTimestamps['completed'] ?? null;
-        $machineState = $order->status === 'wash' ? 'washing' : 'idle';
-        $loadCount = $order->packageLines->sum(fn ($line) => $line->clothesLines->sum('quantity'));
-        $washDuration = $washStartedAt && $washEndedAt ? $washStartedAt->diffForHumans($washEndedAt, true) : null;
-    @endphp
+    $nextIsWashing = $order->nextStatus() === 'wash';
+    $nextIsCollection = $order->nextStatus() === 'collection';
+
+    $paymentStatus = $order->combinedPaymentStatus();
+
+    /*
+    |--------------------------------------------------------------------------
+    | Order and Subscription Cycle Balances
+    |--------------------------------------------------------------------------
+    */
+
+    $cycle = $order->subscriptionCycle();
+    $collection = $order->collection;
+
+    // The order's own outstanding balance, such as an overage charge.
+    $orderDue = $order->balanceDue();
+
+    // Includes the cycle fee when applicable.
+    $combinedDue = $order->combinedBalanceDue();
+
+    $combinedPaid = $order->amountPaid()
+        + ($cycle?->amountPaid() ?? 0);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Record Payment
+    |--------------------------------------------------------------------------
+    |
+    | Keep the existing behavior for the Record Payment panel.
+    | This allows the cycle fee to be paid early, even before the final
+    | scheduled collection.
+    |
+    */
+
+    $payableDue = (
+        $orderDue > 0
+        && $order->status !== 'cancelled'
+    )
+        ? $orderDue
+        : ($cycle?->balanceDue() ?? 0);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Record Collection
+    |--------------------------------------------------------------------------
+    |
+    | Walk-in orders:
+    |   Their own outstanding balance must be paid.
+    |
+    | Subscription orders:
+    |   Any order-specific balance must be paid.
+    |   The shared cycle fee is not required for non-final collections.
+    |   The shared cycle fee must be settled for the final scheduled
+    |   collection.
+    |
+    */
+
+    $isSubscription = $order->order_source === 'subscription';
+
+    $isFinalSubscriptionCollection = $isSubscription
+        && $cycle !== null
+        && $collection !== null
+        && $cycle->isLastScheduledCollection($collection);
+
+    $collectionPayableDue = 0;
+
+    if ($order->status !== 'cancelled') {
+        if ($orderDue > 0) {
+            // Order-specific debt must always be settled first.
+            $collectionPayableDue = $orderDue;
+        } elseif ($isFinalSubscriptionCollection) {
+            // The cycle fee is required only for the final collection.
+            $collectionPayableDue = $cycle->balanceDue();
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Display Totals
+    |--------------------------------------------------------------------------
+    */
+
+    $grandTotal = (float) $order->total_amount
+        + ($cycle?->monthly_price_snapshot ?? 0);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Status Styling
+    |--------------------------------------------------------------------------
+    */
+
+    $statusTones = [
+        'received' => 'neutral',
+        'wash' => 'active',
+        'completed' => 'active',
+        'collection' => 'success',
+        'cancelled' => 'critical',
+    ];
+
+    $statusToneClasses = [
+        'neutral' => 'bg-pill-bg text-pill-ink',
+        'active' => 'bg-accent-soft text-accent-ink',
+        'success' => 'bg-success-soft text-success',
+        'critical' => 'bg-critical-soft text-critical',
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Handling Card
+    |--------------------------------------------------------------------------
+    */
+
+    $washStartedAt = $stageTimestamps['wash'] ?? null;
+    $washEndedAt = $stageTimestamps['completed'] ?? null;
+
+    $machineState = $order->status === 'wash'
+        ? 'washing'
+        : 'idle';
+
+    $loadCount = $order->packageLines->sum(
+        fn ($line) => $line->clothesLines->sum('quantity')
+    );
+
+    $washDuration = $washStartedAt && $washEndedAt
+        ? $washStartedAt->diffForHumans($washEndedAt, true)
+        : null;
+
+    
+@endphp
+
+
 
     {{-- Summary hero: who, what stage, and the one number that matters -- answers "what do I need to know" before any card does. --}}
     <div
@@ -791,14 +884,74 @@
                             </div>
                         </div>
 
-                        <div class="border-t border-line pt-4 space-y-4">
-                            @if ($payableDue > 0)
-                                <p class="text-sm text-ink-muted">Balance due: <span class="font-mono text-critical font-bold">GMD {{ number_format($payableDue, 2) }}</span> — pay in full to collect.</p>
-                                @include('orders._payment-fields', ['prefix' => 'collect', 'amountRequired' => true, 'dueOverride' => $payableDue])
-                            @else
-                                <p class="text-sm text-ink-muted">Payment: <span class="font-mono text-success font-bold">Paid in full</span></p>
-                            @endif
-                        </div>
+                        
+                        
+                       <div class="border-t border-line pt-4 space-y-4">
+
+                         @if ($order->status !== 'cancelled')
+
+                          @if ($orderDue > 0)
+
+                         {{-- Order-specific balance must be paid before collection. --}}
+                        <p class="text-sm text-ink-muted">
+                          Order balance due:
+                       <span class="font-mono text-critical font-bold">
+                         GMD {{ number_format($orderDue, 2) }}
+                       </span>
+                          <br>
+                           Pay in full to collect.
+                         </p>
+
+                       @include('orders._payment-fields', [
+                           'prefix' => 'collect',
+                           'amountRequired' => true,
+                           'dueOverride' => $orderDue,
+                            ])
+
+                       @elseif ($isSubscription && $cycle && $cycle->balanceDue() > 0)
+
+                     {{-- Cycle payment is available before the final collection too. --}}
+                      <p class="text-sm text-ink-muted">
+                         Subscription cycle balance due:
+                         <span class="font-mono text-critical font-bold">
+                           GMD {{ number_format($cycle->balanceDue(), 2) }}
+                        </span>
+                        </p>
+
+                       @if ($isFinalSubscriptionCollection)
+                      <p class="text-sm text-ink-muted">
+                       Pay the remaining cycle balance in full to collect.
+                     </p>
+                     @else
+                    <p class="text-sm text-ink-muted">
+                      Payment is optional for this collection.
+                      You may pay the cycle balance now or settle it
+                      before the final collection.
+                    </p>
+                   @endif
+
+                       @include('orders._payment-fields', [
+                       'prefix' => 'collect',
+                       'amountRequired' => $isFinalSubscriptionCollection,
+                       'dueOverride' => $cycle->balanceDue(),
+                      ])
+
+                     @else
+
+                     <p class="text-sm text-ink-muted">
+                      Payment:
+                     <span class="font-mono text-success font-bold">
+                         Paid in full
+                       </span>
+                      </p>
+
+                      @endif
+
+                     @endif
+
+                    </div>
+
+
 
                         <div class="flex items-center gap-3">
                             <x-primary-button>Confirm Collection</x-primary-button>

@@ -286,66 +286,97 @@ class SubscriptionController extends Controller
      * staff change package/collection type/counts and pick the new cycle's
      * start date, rather than just repeating the previous cycle unchanged.
      */
-   public function renew(Request $request, Subscription $subscription, CustomerBalanceService $balanceService): RedirectResponse
-    {
-        if ($subscription->status !== 'active') {
-            return back()->withErrors(['subscription' => 'Only an active subscription can be renewed.']);
-        }
 
-        $currentCycle = $subscription->cycles()->latest('starts_on')->first();
-
-        if ($currentCycle && ! $currentCycle->isExhausted()) {
-            return back()->withErrors(['subscription' => 'This subscription still has open collections in its current cycle.']);
-        }
-
-        $customer = $subscription->customer;
-
-        if (! $customer) {
-         return back()->withErrors([
-        'subscription' => 'The customer for this subscription could not be found.',
-            ]);
-        }
-
-        if ($balanceService->hasOutstandingBalance($customer)) {
-        return redirect()
-         ->route('customers.show', $customer->id)
-            ->withErrors([
-            'subscription' => 'This customer has an outstanding balance. Please settle it before renewing a subscription.',
-            ]);
-        }
-
-        $validated = $request->validate([
-            'subscription_package_id' => ['required', 'exists:subscription_packages,id'],
-            'collection_type' => ['required', 'in:scheduled,non_scheduled'],
-            'start_date' => [
-                'required',
-                'date',
-                Rule::unique('subscription_cycles', 'starts_on')->where('subscription_id', $subscription->id),
-            ],
-            'collections_per_month' => ['required', 'integer', 'min:1', 'max:28'],
-            'max_clothes_per_cycle' => ['required', 'integer', 'min:1'],
-        ], [
-            'start_date.unique' => 'This subscription already has a cycle starting on that date — pick a different date.',
+public function renew(Request $request,Subscription $subscription,CustomerBalanceService $balanceService): RedirectResponse {
+    if ($subscription->status !== 'active') {
+        return back()->withErrors([
+            'subscription' => 'Only an active subscription can be renewed.',
         ]);
-
-        DB::transaction(function () use ($subscription, $validated) {
-            $subscription->update([
-                'subscription_package_id' => $validated['subscription_package_id'],
-                'collection_type' => $validated['collection_type'],
-                'collections_per_month' => $validated['collections_per_month'],
-                'max_clothes_per_cycle' => $validated['max_clothes_per_cycle'],
-            ]);
-            $subscription->refresh();
-
-            CollectionScheduler::renew($subscription, Carbon::parse($validated['start_date']));
-        });
-
-        // Same reasoning as store()'s redirect_customer_id -- see that method.
-        if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
-            return redirect()->route('orders.create', ['customer' => $redirectCustomerId])->with('status', 'Subscription renewed for a new cycle.');
-        }
-
-        return back()->with('status', 'Subscription renewed for a new cycle.');
     }
 
+    $currentCycle = $subscription->cycles()
+        ->latest('starts_on')
+        ->first();
+
+    if ($currentCycle && ! $currentCycle->isExhausted()) {
+        return back()->withErrors([
+            'subscription' => 'This subscription still has open collections in its current cycle.',
+        ]);
+    }
+
+    $customer = $subscription->customer;
+
+    if (! $customer) {
+        return back()->withErrors([
+            'subscription' => 'The customer for this subscription could not be found.',
+        ]);
+    }
+
+    if ($balanceService->hasOutstandingBalance($customer)) {
+        return redirect()
+            ->route('customers.show', $customer->id)
+            ->withErrors([
+                'subscription' => 'This customer has an outstanding balance. Please settle it before renewing a subscription.',
+            ]);
+    }
+
+    $validated = $request->validate([
+        'subscription_package_id' => [
+            'required',
+            'exists:subscription_packages,id',
+        ],
+        'collection_type' => [
+            'required',
+            'in:scheduled,non_scheduled',
+        ],
+        'start_date' => [
+            'required',
+            'date',
+            Rule::unique('subscription_cycles', 'starts_on')
+                ->where('subscription_id', $subscription->id),
+        ],
+        'collections_per_month' => [
+            'required',
+            'integer',
+            'min:1',
+            'max:4',
+        ],
+        'max_clothes_per_cycle' => [
+            'required',
+            'integer',
+            'min:1',
+        ],
+    ], [
+        'start_date.unique' => 'This subscription already has a cycle starting on that date — pick a different date.',
+        'collections_per_month.min' => 'A subscription must have at least 1 collection per month.',
+        'collections_per_month.max' => 'A subscription cannot have more than 4 collections per month.',
+    ]);
+
+    DB::transaction(function () use ($subscription, $validated) {
+        $subscription->update([
+            'subscription_package_id' => $validated['subscription_package_id'],
+            'collection_type' => $validated['collection_type'],
+            'collections_per_month' => $validated['collections_per_month'],
+            'max_clothes_per_cycle' => $validated['max_clothes_per_cycle'],
+        ]);
+
+        $subscription->refresh();
+
+        CollectionScheduler::renew(
+            $subscription,
+            Carbon::parse($validated['start_date'])
+        );
+    });
+
+    // Return to the Terminal when the request originated there.
+    if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
+        return redirect()
+            ->route('orders.create', [
+                'customer' => $redirectCustomerId,
+            ])
+            ->with('status', 'Subscription renewed for a new cycle.');
+    }
+
+    return back()->with('status', 'Subscription renewed for a new cycle.');
+}
 }

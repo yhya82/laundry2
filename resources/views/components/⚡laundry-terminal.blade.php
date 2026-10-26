@@ -15,6 +15,7 @@ use App\Models\SubscriptionCycle;
 use App\Models\SubscriptionPackage;
 use App\Support\Numbering;
 use App\Support\PhoneNumber;
+use App\Services\CustomerBalanceService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -948,300 +949,351 @@ protected function customerHasOutstandingBalance(Customer $customer): bool
 
 
 
-    public function submitOrder()
-    {
-        if ($this->isSubscriptionMode) {
-            return $this->submitSubscriptionCollection();
-        }
 
-        $this->sanitizeCart();
+public function submitOrder(CustomerBalanceService $balanceService)
+{
+    if ($this->isSubscriptionMode) {
+        return $this->submitSubscriptionCollection();
+    }
 
-        $maxDiscountPercent = (float) Setting::get('order.max_discount_percent', '100');
+    $this->sanitizeCart();
 
-        $this->newCustomerPhone = PhoneNumber::normalize($this->newCustomerPhone);
+    $maxDiscountPercent = (float) Setting::get('order.max_discount_percent', '100');
 
-        $this->validate([
-            'customerId' => $this->usingPendingCustomer ? ['nullable'] : ['required', 'exists:customers,id'],
-            // Re-validated here, not just trusted from createCustomer()'s
-            // earlier pass -- phone uniqueness in particular could have
-            // changed in the meantime (another order creating the same
-            // number), and this is the actual point of commitment.
-            'newCustomerName' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'max:255'],
-            'newCustomerPhone' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:customers,phone'],
-            'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
-            'discount' => [
-                'numeric', 'min:0',
-                function ($attribute, $value, $fail) use ($maxDiscountPercent) {
-                    if ($this->subtotal > 0 && ($value / $this->subtotal * 100) > $maxDiscountPercent) {
-                        $fail("Discount cannot exceed {$maxDiscountPercent}% of the subtotal.");
-                    }
-                },
-            ],
-            'walkInExtraChargeReason' => [$this->walkInExtraChargeEnabled && $this->walkInExtraCharge > 0 ? 'required' : 'nullable', 'string', 'max:255'],
-            'walkInExtraCharge' => ['numeric', 'min:0'],
-            'creditToApply' => ['numeric', 'min:0', 'max:'.$this->maxApplicableCredit],
-            'customAmount' => $this->paymentTiming === 'pay_now' && $this->remainingDue > 0
-                ? ['required', 'numeric', 'min:0.01', 'max:'.$this->remainingDue]
-                : ['nullable', 'numeric', 'min:0'],
-            'paymentMethod' => [$this->amountToCollect > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
-            'paymentMethodNote' => [$this->paymentMethod === 'other' ? 'required' : 'nullable', 'string', 'max:255'],
-        ], [
-            'customerId.required' => 'Select or add a customer first.',
-            'newCustomerName.required' => 'Enter a name for the new customer.',
-            'newCustomerPhone.required' => 'Enter a phone number for the new customer.',
-            'newCustomerPhone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
-            'discountReason.required' => 'A discount needs a reason.',
-            'walkInExtraChargeReason.required' => 'An extra charge needs a reason.',
-            'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
-            'customAmount.required' => 'Enter an amount to collect, or switch to Pay on Pickup.',
-            'paymentMethodNote.required' => 'Specify what "Other" payment method was used.',
-            'customAmount.min' => 'Amount must be greater than 0.',
-            'customAmount.max' => 'Cannot collect more than the remaining due.',
-        ]);
+    $this->newCustomerPhone = PhoneNumber::normalize($this->newCustomerPhone);
 
-        if (empty($this->cart)) {
-            $this->addError('cart', 'Add at least one package before creating the order.');
+    $this->validate([
+        'customerId' => $this->usingPendingCustomer ? ['nullable'] : ['required', 'exists:customers,id'],
 
-            return;
-        }
+        // Re-validated here, not just trusted from createCustomer()'s
+        // earlier pass -- phone uniqueness in particular could have
+        // changed in the meantime (another order creating the same
+        // number), and this is the actual point of commitment.
+        'newCustomerName' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'max:255'],
+        'newCustomerPhone' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:customers,phone'],
 
-        // Setting can be toggled off between an amount being typed and
-        // submit -- ignored rather than trusted whenever it's disabled, same
-        // as discount already is via discountEnabled not gating anything
-        // server-side either (its own cap is what's actually enforced).
-        $chargesWalkInExtra = $this->walkInExtraChargeEnabled && $this->walkInExtraCharge > 0;
+        'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
 
-        try {
-            [$order, $payments, $customerId, $blockedByBalance] = DB::transaction(function () use ($chargesWalkInExtra) {
+        'discount' => [
+            'numeric',
+            'min:0',
+            function ($attribute, $value, $fail) use ($maxDiscountPercent) {
+                if ($this->subtotal > 0 && ($value / $this->subtotal * 100) > $maxDiscountPercent) {
+                    $fail("Discount cannot exceed {$maxDiscountPercent}% of the subtotal.");
+                }
+            },
+        ],
 
-        // Create a pending walk-in customer inside the transaction.
-        // If anything fails, the customer creation is rolled back too.
-        $customerId = $this->usingPendingCustomer
-            ? Customer::create([
-                'full_name' => $this->newCustomerName,
-                'phone' => $this->newCustomerPhone,
-                'customer_type' => 'walk_in',
-            ])->id
-            : $this->customerId;
+        'walkInExtraChargeReason' => [
+            $this->walkInExtraChargeEnabled && $this->walkInExtraCharge > 0 ? 'required' : 'nullable',
+            'string',
+            'max:255',
+        ],
 
-        /*
-         * Check previous walk-in orders for existing customers.
-         *
-         * New pending customers have no previous orders, so they do
-         * not need this check.
-         *
-         * Cancelled orders are excluded from the restriction.
-         */
-        if (! $this->usingPendingCustomer) {
-        $customer = Customer::find($customerId);
+        'walkInExtraCharge' => ['numeric', 'min:0'],
+        'creditToApply' => ['numeric', 'min:0', 'max:' . $this->maxApplicableCredit],
 
-        if (
-        ! $customer ||
-        $this->customerHasOutstandingBalance($customer)
-        ) {
-        return [null, [], $customerId, true];
-        }
-}
+        'customAmount' => $this->paymentTiming === 'pay_now' && $this->remainingDue > 0
+            ? ['required', 'numeric', 'min:0.01', 'max:' . $this->remainingDue]
+            : ['nullable', 'numeric', 'min:0'],
 
-        // Create the new walk-in order.
-        $order = Order::create([
-            'order_number' => Numbering::nextOrderNumber(),
-            'customer_id' => $customerId,
-            'user_id' => auth()->id(),
-            'order_source' => 'walk_in',
-            'subtotal' => $this->subtotal,
-            'discount' => $this->discount,
-            'discount_reason' => $this->discount > 0
-                ? $this->discountReason
-                : null,
-            'extra_charge' => $chargesWalkInExtra
-                ? $this->walkInExtraCharge
-                : 0,
-            'extra_charge_reason' => $chargesWalkInExtra
-                ? $this->walkInExtraChargeReason
-                : null,
-            'notes' => trim($this->notes) !== ''
-                ? trim($this->notes)
-                : 'None',
-        ]);
+        'paymentMethod' => [$this->amountToCollect > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
 
-        $order->refresh();
-
-        // Create order line items.
-        $this->createLineItems($order);
-
-        // Apply customer credit and any payment received.
-        $payments = $this->applyCreditAndPayment($order);
-
-        // Generate the receipt.
-        $order->receipt()->create([
-            'receipt_number' => Numbering::nextReceiptNumber(),
-            'reprint_count' => 0,
-        ]);
-
-        return [$order, $payments, $customerId, false];
-
-    });
-
-} catch (QueryException $e) {
-    $this->addError('cart', $this->friendlyDatabaseError($e));
-
-    return;
-}
-
-// Stop if the customer has an outstanding balance.
-if ($blockedByBalance) {
-    $this->addError(
-        'cart',
-        'This customer has an outstanding balance on a previous walk-in order. Please settle the balance before creating another order.'
-    );
-
-    return;
-}
-
-// Continue with the existing successful-order flow.
-$this->customerId = $customerId;
-$this->usingPendingCustomer = false;
-
-// Broadcast only after the transaction has committed.
-OrderStatusChanged::dispatch($order, null);
-
-foreach ($payments as $payment) {
-    PaymentReceived::dispatch($payment);
-}
-
-$this->resetForNewOrder($order);
-
-}
-
-    protected function submitSubscriptionCollection()
-    {
-       
-    $collection = $this->collection;
-
-    if (! $collection || $collection->status !== 'scheduled') {
-    $this->addError('cart', 'This collection is no longer available.');
-
-    return;
-}
-
-$customer = $collection->subscription?->customer;
-
-if (! $customer) {
-    $this->addError('cart', 'The customer for this collection could not be found.');
-
-    return;
-}
-
-if ($this->customerHasOutstandingBalance($customer)) {
-    session()->flash(
-        'error',
-        'This customer has an outstanding balance. Please settle it before creating another order.'
-    );
-
-    $this->redirectRoute('customers.show', [
-        'customer' => $customer->id,
+        'paymentMethodNote' => [
+            $this->paymentMethod === 'other' ? 'required' : 'nullable',
+            'string',
+            'max:255',
+        ],
+    ], [
+        'customerId.required' => 'Select or add a customer first.',
+        'newCustomerName.required' => 'Enter a name for the new customer.',
+        'newCustomerPhone.required' => 'Enter a phone number for the new customer.',
+        'newCustomerPhone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
+        'discountReason.required' => 'A discount needs a reason.',
+        'walkInExtraChargeReason.required' => 'An extra charge needs a reason.',
+        'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
+        'customAmount.required' => 'Enter an amount to collect, or switch to Pay on Pickup.',
+        'paymentMethodNote.required' => 'Specify what "Other" payment method was used.',
+        'customAmount.min' => 'Amount must be greater than 0.',
+        'customAmount.max' => 'Cannot collect more than the remaining due.',
     ]);
 
-    return;
-}
+    if (empty($this->cart)) {
+        $this->addError('cart', 'Add at least one package before creating the order.');
 
+        return;
+    }
 
+    // Setting can be toggled off between an amount being typed and
+    // submit -- ignored rather than trusted whenever it's disabled, same
+    // as discount already is via discountEnabled not gating anything
+    // server-side either (its own cap is what's actually enforced).
+    $chargesWalkInExtra = $this->walkInExtraChargeEnabled && $this->walkInExtraCharge > 0;
 
-        $this->sanitizeSubscriptionClothes();
+    try {
+        [$order, $payments, $customerId, $blockedByBalance] = DB::transaction(
+            function () use ($chargesWalkInExtra, $balanceService) {
 
-        $chargesForCycleOverage = $this->chargeForCycleOverage && $this->cycleOverageCount > 0;
+                // Create a pending walk-in customer inside the transaction.
+                // If anything fails, the customer creation is rolled back too.
+                $customerId = $this->usingPendingCustomer
+                    ? Customer::create([
+                        'full_name' => $this->newCustomerName,
+                        'phone' => $this->newCustomerPhone,
+                        'customer_type' => 'walk_in',
+                    ])->id
+                    : $this->customerId;
 
-        $this->validate([
-            // cycleOverageCharge is a float defaulting to 0.0, never null --
-            // 'nullable' wouldn't actually skip 'min:0.01' against that
-            // default, so the two rule sets are kept fully separate instead.
-            'cycleOverageCharge' => $chargesForCycleOverage ? ['required', 'numeric', 'min:0.01'] : ['numeric', 'min:0'],
-            'creditToApply' => ['numeric', 'min:0', 'max:'.$this->maxApplicableCredit],
-            'customAmount' => $this->paymentTiming === 'pay_now' && $this->remainingDue > 0
-                ? ['required', 'numeric', 'min:0.01', 'max:'.$this->remainingDue]
-                : ['nullable', 'numeric', 'min:0'],
-            'paymentMethod' => [$this->amountToCollect > 0 ? 'required' : 'nullable', 'in:cash,wave,aps,other'],
-            'paymentMethodNote' => [$this->paymentMethod === 'other' ? 'required' : 'nullable', 'string', 'max:255'],
-        ], [
-            'cycleOverageCharge.required' => 'This cycle is over its max clothes limit — enter the overage charge.',
-            'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
-            'customAmount.required' => 'Enter an amount to collect, or switch to Pay on Pickup.',
-            'customAmount.min' => 'Amount must be greater than 0.',
-            'customAmount.max' => 'Cannot collect more than the remaining due.',
-            'paymentMethodNote.required' => 'Specify what "Other" payment method was used.',
-        ]);
+                /*
+                 * Check outstanding balances for existing customers.
+                 *
+                 * New pending customers have no previous orders or
+                 * subscription cycles, so they do not need this check.
+                 *
+                 * CustomerBalanceService handles the balance calculation.
+                 * Cancelled orders are excluded according to its logic.
+                 */
+                if (! $this->usingPendingCustomer) {
+                    $customer = Customer::query()
+                        ->whereKey($customerId)
+                        ->lockForUpdate()
+                        ->first();
 
-        if (empty($this->subscriptionClothes)) {
-            $this->addError('cart', 'Record at least one clothing item collected.');
+                    if (
+                        ! $customer ||
+                        $balanceService->hasOutstandingBalance($customer)
+                    ) {
+                        return [null, [], $customerId, true];
+                    }
+                }
 
-            return;
-        }
-
-        if (! LaundryPackage::where('is_active', true)->exists()) {
-            $this->addError('cart', 'No active laundry package exists to record this collection against.');
-
-            return;
-        }
-
-        try {
-            [$order, $payments] = DB::transaction(function () use ($collection, $chargesForCycleOverage) {
-                // A cycle's flat monthly price belongs to the cycle itself
-                // (payments.subscription_id + subscription_cycle_id), not to
-                // any one collection's order -- every collection in the
-                // cycle draws against the same shared balance. The order
-                // created here only ever carries this visit's own
-                // cycle_overage_charge, if any (the only chargeable
-                // over-the-limit event -- see cycleOverageCharge's doc
-                // comment). A legacy collection predating cycles
-                // (subscriptionCycle null) falls back to the old behavior:
-                // the price goes directly on its own order, since there's no
-                // cycle to attach a cycle-level payment to.
-                $cycle = $collection->subscriptionCycle;
-
+                // Create the new walk-in order.
                 $order = Order::create([
                     'order_number' => Numbering::nextOrderNumber(),
-                    'customer_id' => $collection->subscription->customer_id,
-                    'collection_id' => $collection->id,
+                    'customer_id' => $customerId,
                     'user_id' => auth()->id(),
-                    'order_source' => 'subscription',
-                    'subtotal' => $cycle ? 0 : $this->subtotal,
-                    'discount' => 0,
-                    'extra_charge' => 0,
-                    'cycle_overage_charge' => $chargesForCycleOverage ? $this->cycleOverageCharge : 0,
-                    'notes' => trim($this->notes) !== '' ? trim($this->notes) : 'None',
+                    'order_source' => 'walk_in',
+                    'subtotal' => $this->subtotal,
+                    'discount' => $this->discount,
+                    'discount_reason' => $this->discount > 0
+                        ? $this->discountReason
+                        : null,
+                    'extra_charge' => $chargesWalkInExtra
+                        ? $this->walkInExtraCharge
+                        : 0,
+                    'extra_charge_reason' => $chargesWalkInExtra
+                        ? $this->walkInExtraChargeReason
+                        : null,
+                    'notes' => trim($this->notes) !== ''
+                        ? trim($this->notes)
+                        : 'None',
                 ]);
+
                 $order->refresh();
 
+                // Create order line items.
                 $this->createLineItems($order);
-                $payments = $cycle
-                    ? $this->applyCreditAndPayment($cycle, $order)
-                    : $this->applyCreditAndPayment($order);
 
+                // Apply customer credit and any payment received.
+                $payments = $this->applyCreditAndPayment($order);
+
+                // Generate the receipt.
                 $order->receipt()->create([
                     'receipt_number' => Numbering::nextReceiptNumber(),
                     'reprint_count' => 0,
                 ]);
 
-                $collection->update(['status' => 'collected', 'collected_at' => now()]);
-                $cycle?->closeIfExhausted();
+                return [$order, $payments, $customerId, false];
+            }
+        );
+    } catch (QueryException $e) {
+        $this->addError('cart', $this->friendlyDatabaseError($e));
 
-                return [$order, $payments];
-            });
-        } catch (QueryException $e) {
-            $this->addError('cart', $this->friendlyDatabaseError($e));
-
-            return;
-        }
-
-        OrderStatusChanged::dispatch($order, null);
-        CollectionStatusChanged::dispatch($collection);
-        foreach ($payments as $payment) {
-            PaymentReceived::dispatch($payment);
-        }
-
-        $this->resetForNewOrder($order);
+        return;
     }
+
+    // Stop if the customer has an outstanding balance.
+    if ($blockedByBalance) {
+        $this->addError(
+            'cart',
+            'This customer has an outstanding balance. Please settle the balance before creating a walk-in order.'
+        );
+
+        return;
+    }
+
+    // Continue with the existing successful-order flow.
+    $this->customerId = $customerId;
+    $this->usingPendingCustomer = false;
+
+    // Broadcast only after the transaction has committed.
+    OrderStatusChanged::dispatch($order, null);
+
+    foreach ($payments as $payment) {
+        PaymentReceived::dispatch($payment);
+    }
+
+    $this->resetForNewOrder($order);
+}
+
+
+
+   
+protected function submitSubscriptionCollection()
+    {
+   $collection = $this->collection;
+
+if (! $collection || $collection->status !== 'scheduled') {
+    $this->addError('cart', 'This collection is no longer available.');
+
+    return;
+}
+
+    // A collection can have only one subscription order.
+    if (Order::where('collection_id', $collection->id)->exists()) {
+    $this->addError(
+        'cart',
+        'An order has already been created for this collection.'
+    );
+
+    return;
+}
+
+    $customer = $collection->subscription?->customer;
+
+    if (! $customer) {
+        $this->addError('cart', 'The customer for this collection could not be found.');
+
+        return;
+    }
+
+    $this->sanitizeSubscriptionClothes();
+
+    $chargesForCycleOverage = $this->chargeForCycleOverage && $this->cycleOverageCount > 0;
+
+    $this->validate([
+        // cycleOverageCharge is a float defaulting to 0.0, never null --
+        // 'nullable' wouldn't actually skip 'min:0.01' against that
+        // default, so the two rule sets are kept fully separate instead.
+        'cycleOverageCharge' => $chargesForCycleOverage
+            ? ['required', 'numeric', 'min:0.01']
+            : ['numeric', 'min:0'],
+
+        'creditToApply' => ['numeric', 'min:0', 'max:' . $this->maxApplicableCredit],
+
+        'customAmount' => $this->paymentTiming === 'pay_now' && $this->remainingDue > 0
+            ? ['required', 'numeric', 'min:0.01', 'max:' . $this->remainingDue]
+            : ['nullable', 'numeric', 'min:0'],
+
+        'paymentMethod' => [
+            $this->amountToCollect > 0 ? 'required' : 'nullable',
+            'in:cash,wave,aps,other',
+        ],
+
+        'paymentMethodNote' => [
+            $this->paymentMethod === 'other' ? 'required' : 'nullable',
+            'string',
+            'max:255',
+        ],
+    ], [
+        'cycleOverageCharge.required' => 'This cycle is over its max clothes limit — enter the overage charge.',
+        'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
+        'customAmount.required' => 'Enter an amount to collect, or switch to Pay on Pickup.',
+        'customAmount.min' => 'Amount must be greater than 0.',
+        'customAmount.max' => 'Cannot collect more than the remaining due.',
+        'paymentMethodNote.required' => 'Specify what "Other" payment method was used.',
+    ]);
+
+    if (empty($this->subscriptionClothes)) {
+        $this->addError('cart', 'Record at least one clothing item collected.');
+
+        return;
+    }
+
+    if (! LaundryPackage::where('is_active', true)->exists()) {
+        $this->addError('cart', 'No active laundry package exists to record this collection against.');
+
+        return;
+    }
+
+    try {
+        [$order, $payments] = DB::transaction(function () use (
+            $collection,
+            $chargesForCycleOverage
+        ) {
+            // A cycle's flat monthly price belongs to the cycle itself
+            // (payments.subscription_id + subscription_cycle_id), not to
+            // any one collection's order -- every collection in the
+            // cycle draws against the same shared balance. The order
+            // created here only ever carries this visit's own
+            // cycle_overage_charge, if any (the only chargeable
+            // over-the-limit event -- see cycleOverageCharge's doc
+            // comment). A legacy collection predating cycles
+            // (subscriptionCycle null) falls back to the old behavior:
+            // the price goes directly on its own order, since there's no
+            // cycle to attach a cycle-level payment to.
+            $cycle = $collection->subscriptionCycle;
+
+            $order = Order::create([
+                'order_number' => Numbering::nextOrderNumber(),
+                'customer_id' => $collection->subscription->customer_id,
+                'collection_id' => $collection->id,
+                'user_id' => auth()->id(),
+                'order_source' => 'subscription',
+                'subtotal' => $cycle ? 0 : $this->subtotal,
+                'discount' => 0,
+                'extra_charge' => 0,
+                'cycle_overage_charge' => $chargesForCycleOverage
+                    ? $this->cycleOverageCharge
+                    : 0,
+                'notes' => trim($this->notes) !== ''
+                    ? trim($this->notes)
+                    : 'None',
+            ]);
+
+            $order->refresh();
+
+            $this->createLineItems($order);
+
+            $payments = $cycle
+                ? $this->applyCreditAndPayment($cycle, $order)
+                : $this->applyCreditAndPayment($order);
+
+            $order->receipt()->create([
+                'receipt_number' => Numbering::nextReceiptNumber(),
+                'reprint_count' => 0,
+            ]);
+
+            $collection->update([
+               'status' => 'collected',
+               'collected_at' => now(),
+           ]);
+
+            
+
+
+
+
+            $cycle?->closeIfExhausted();
+
+            return [$order, $payments];
+        });
+    } catch (QueryException $e) {
+        $this->addError('cart', $this->friendlyDatabaseError($e));
+
+        return;
+    }
+
+    OrderStatusChanged::dispatch($order, null);
+    CollectionStatusChanged::dispatch($collection);
+
+    foreach ($payments as $payment) {
+        PaymentReceived::dispatch($payment);
+    }
+
+    $this->resetForNewOrder($order);
+}
+
 
     /**
      * $cart is an ordinary public Livewire property, so the client can push
