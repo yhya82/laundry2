@@ -18,11 +18,9 @@ class StoreSubscriptionRequest extends FormRequest
         return [
             'customer_id' => ['required', 'exists:customers,id'],
             'subscription_package_id' => ['required', 'exists:subscription_packages,id'],
-            'start_date' => ['required', 'date'],
-
-            // end_date is not taken from the form: for a scheduled
-            // subscription it's derived from the generated schedule (its
-            // last collection date), and a non-scheduled one has none.
+            // No start_date or end_date: a subscription always starts today
+            // (SubscriptionCreationService), and a scheduled one's end_date
+            // is its last collection date.
 
             // A subscription must have between 1 and 4 collections per month.
             'collections_per_month' => [

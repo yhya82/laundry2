@@ -16,8 +16,12 @@ use App\Models\SubscriptionPackage;
 use App\Support\Numbering;
 use App\Support\PhoneNumber;
 use App\Services\CustomerBalanceService;
+use App\Services\SubscriptionCreationException;
+use App\Services\SubscriptionCreationService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -36,20 +40,39 @@ new class extends Component
      * customer's details that have been filled in and confirmed via the
      * modal, but deliberately not yet written to the customers table --
      * see createCustomer()'s doc comment for why. Never true for a
-     * subscription-type new customer; that path still creates eagerly.
+     * subscription-type new customer -- see $creatingSubscriptionCustomer.
      */
     public bool $usingPendingCustomer = false;
 
     /**
-     * True right after createCustomer() eagerly creates a subscription-type
-     * customer (see that method's doc comment for why it can't be staged
-     * like a walk-in customer), until either a real Subscription gets
-     * created for them or cancelNewSubscription() rolls the customer back.
-     * Never true for a customer arrived at via search -- only for one this
-     * exact Terminal session just inserted moments ago with nothing behind
-     * it yet.
+     * True while the subscription slide-over is open for a brand-new
+     * customer. Their name/phone sit in $newCustomerName/$newCustomerPhone,
+     * unsaved, until createSubscription() writes the customer and the
+     * subscription together in one transaction. Closing the panel saves
+     * nothing.
      */
-    public bool $pendingSubscriptionCustomerCreation = false;
+    public bool $creatingSubscriptionCustomer = false;
+
+    /**
+     * True only after staff click "Set up subscription" for an EXISTING
+     * subscription customer with no active subscription. Selecting such a
+     * customer never opens the slide-over by itself -- they already exist,
+     * so the Terminal just shows a notice with the choice.
+     */
+    public bool $settingUpSubscription = false;
+
+    /**
+     * The slide-over's plan fields. Picking a package fills in its defaults
+     * for visits and clothes cap (updatedPlanPackageId()). There's no start
+     * date -- a subscription always starts today.
+     */
+    public string $planPackageId = '';
+
+    public string $planCollectionType = 'scheduled';
+
+    public ?int $planCollectionsPerMonth = 1;
+
+    public ?int $planMaxClothesPerCycle = null;
 
     public string $customerSearch = '';
 
@@ -59,7 +82,7 @@ new class extends Component
 
     public string $newCustomerPhone = '';
 
-    public string $newCustomerType = 'walk_in';
+    public string $newCustomerType = '';
 
     /**
      * @var list<array{laundry_package_id: int, name: string, price: float, quantity: int, clothes: list<array{clothing_item_id: int, name: string, quantity: int}>}>
@@ -302,7 +325,18 @@ new class extends Component
     #[Computed]
     public function lastSubmittedOrder()
     {
-        return $this->lastSubmittedOrderId ? Order::find($this->lastSubmittedOrderId) : null;
+        // Loaded with everything the receipt printer's paper shows
+        // (orders/_receipt-body), so rendering it costs no extra queries.
+        return $this->lastSubmittedOrderId
+            ? Order::with([
+                'customer',
+                'packageLines.clothesLines',
+                'payments',
+                'receipt',
+                'collection.subscriptionCycle.payments',
+                'collection.subscription.subscriptionPackage',
+            ])->find($this->lastSubmittedOrderId)
+            : null;
     }
 
     #[Computed]
@@ -377,6 +411,32 @@ new class extends Component
      * show for the selected customer. Only meaningful when
      * needsSubscriptionDecision is true.
      */
+    /**
+     * The subscription slide-over shows for a brand-new subscription
+     * customer, or -- only once staff ask for it (openSubscriptionSetup()) --
+     * for an existing subscription customer with no active subscription
+     * (plan section only). Selecting an existing customer never opens it.
+     */
+    #[Computed]
+    public function showsSubscriptionPanel(): bool
+    {
+        return $this->creatingSubscriptionCustomer
+            || ($this->settingUpSubscription && $this->needsSubscriptionDecision && $this->subscriptionOrderState === 'none');
+    }
+
+    /**
+     * subscriptionOrderState() only counts active subscriptions, so a
+     * customer whose subscription is paused also reads 'none'. They can't
+     * get a new one (one active-or-paused per customer) -- the notice tells
+     * staff to resume it instead of offering setup.
+     */
+    #[Computed]
+    public function selectedCustomerHasPausedSubscription(): bool
+    {
+        return $this->selectedCustomer?->exists
+            && Subscription::where('customer_id', $this->selectedCustomer->id)->where('status', 'paused')->exists();
+    }
+
     #[Computed]
     public function subscriptionOrderState(): string
     {
@@ -661,10 +721,11 @@ public function selectCustomer(int $id): void
     {
         $this->customerId = null;
         $this->usingPendingCustomer = false;
-        $this->pendingSubscriptionCustomerCreation = false;
+        $this->creatingSubscriptionCustomer = false;
+        $this->settingUpSubscription = false;
         $this->newCustomerName = '';
         $this->newCustomerPhone = '';
-        $this->newCustomerType = 'walk_in';
+        $this->newCustomerType = '';
         $this->collectionId = null;
         $this->cart = [];
         $this->subscriptionClothes = [];
@@ -676,27 +737,281 @@ public function selectCustomer(int $id): void
     }
 
     /**
-     * Cancelling the New Subscription modal right after createCustomer()
-     * eagerly created a subscription-type customer (see
-     * $pendingSubscriptionCustomerCreation) means that customer was never
-     * actually wanted -- roll the eager creation back so it doesn't linger
-     * as a real customer with no subscription and no orders. A customer
-     * reached via search that simply doesn't have a subscription yet
-     * (subscriptionOrderState 'none' on an existing customer) is left
-     * alone; only ever deletes the one this session just inserted.
+     * Opens the subscription slide-over for a brand-new customer -- picking
+     * "Subscription" in the New Customer pop-up lands here. Whatever name
+     * and phone were already typed carry over into the panel. Nothing is
+     * saved until createSubscription().
      */
-    public function cancelNewSubscription(): void
+    public function openSubscriptionPanelForNewCustomer(): void
     {
-        if ($this->pendingSubscriptionCustomerCreation && $this->customerId) {
-            $customer = Customer::find($this->customerId);
-
-            if ($customer && $customer->subscriptions()->doesntExist() && $customer->orders()->doesntExist()) {
-                $customer->delete();
-            }
+        if ($this->isSubscriptionMode) {
+            return;
         }
 
-        $this->clearCustomer();
+        $this->resetErrorBag();
+        $this->resetPlan();
+        $this->showNewCustomerForm = false;
+        $this->creatingSubscriptionCustomer = true;
+    }
+
+    /**
+     * The New Customer pop-up has no submit button -- choosing the type is
+     * the action. Name and phone are checked first for BOTH types: Walk-in
+     * then adds the customer, Subscription opens the slide-over. If either
+     * field is invalid, the errors show and the choice is cleared, so staff
+     * fix the fields and pick again.
+     */
+    public function updatedNewCustomerType(string $value): void
+    {
+        if (! $this->showNewCustomerForm || ! in_array($value, ['walk_in', 'subscription'], true)) {
+            return;
+        }
+
+        try {
+            if ($value === 'subscription') {
+                $this->validateNewCustomerDetails();
+                $this->openSubscriptionPanelForNewCustomer();
+
+                return;
+            }
+
+            $this->createCustomer();
+        } catch (ValidationException $e) {
+            $this->newCustomerType = '';
+
+            throw $e;
+        }
+    }
+
+    /**
+     * The one set of name/phone rules for a new customer in the Terminal --
+     * same as the Customers page: 7 or 9 digits after +220 (typed bare or
+     * with +220, spaces and dashes ignored), and not already in use.
+     */
+    protected function newCustomerDetailRules(): array
+    {
+        return [
+            'newCustomerName' => ['required', 'string', 'max:255'],
+            'newCustomerPhone' => ['required', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:customers,phone'],
+        ];
+    }
+
+    protected function newCustomerDetailMessages(): array
+    {
+        return [
+            'newCustomerName.required' => 'Enter the customer\'s name.',
+            'newCustomerPhone.required' => 'Enter a phone number.',
+            'newCustomerPhone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
+            'newCustomerPhone.unique' => 'A customer with this phone number already exists.',
+        ];
+    }
+
+    /**
+     * Normalizes the phone (bare digits get +220) before checking, so the
+     * uniqueness check compares the same stored shape.
+     */
+    protected function validateNewCustomerDetails(): void
+    {
+        $this->newCustomerPhone = PhoneNumber::normalize($this->newCustomerPhone);
+
+        $this->validate(
+            $this->newCustomerDetailRules(),
+            $this->newCustomerDetailMessages(),
+            ['newCustomerName' => 'name', 'newCustomerPhone' => 'phone']
+        );
+    }
+
+    /**
+     * Live feedback: each field is checked as staff leave it (wire:model.blur),
+     * while the New Customer pop-up or the new-customer slide-over is open.
+     * Never on an empty field -- that would flag "required" before they've
+     * had a chance to type.
+     */
+    public function updatedNewCustomerName(): void
+    {
+        $this->validateNewCustomerFieldLive('newCustomerName');
+    }
+
+    public function updatedNewCustomerPhone(): void
+    {
+        $this->validateNewCustomerFieldLive('newCustomerPhone');
+    }
+
+    protected function validateNewCustomerFieldLive(string $field): void
+    {
+        if (! $this->showNewCustomerForm && ! $this->creatingSubscriptionCustomer) {
+            return;
+        }
+
+        if (trim($this->{$field}) === '') {
+            $this->resetErrorBag($field);
+
+            return;
+        }
+
+        if ($field === 'newCustomerPhone') {
+            $this->newCustomerPhone = PhoneNumber::normalize($this->newCustomerPhone);
+        }
+
+        $this->validateOnly(
+            $field,
+            $this->newCustomerDetailRules(),
+            $this->newCustomerDetailMessages(),
+            ['newCustomerName' => 'name', 'newCustomerPhone' => 'phone']
+        );
+    }
+
+    /**
+     * Closing the panel saves nothing. A brand-new customer's details are
+     * kept (and the type choice cleared), so reopening New Customer
+     * doesn't lose what was typed. An existing customer stays selected, back
+     * on their "no active subscription" notice.
+     */
+    public function closeSubscriptionPanel(): void
+    {
+        $this->resetErrorBag();
+        $this->resetPlan();
+
+        if ($this->creatingSubscriptionCustomer) {
+            $this->creatingSubscriptionCustomer = false;
+            $this->newCustomerType = '';
+
+            return;
+        }
+
+        $this->settingUpSubscription = false;
+    }
+
+    /**
+     * The notice's "Set up subscription" button: opens the slide-over with
+     * the plan section only, for the existing customer already selected.
+     */
+    public function openSubscriptionSetup(): void
+    {
+        if (! $this->needsSubscriptionDecision || $this->subscriptionOrderState !== 'none' || $this->selectedCustomerHasPausedSubscription) {
+            return;
+        }
+
+        $this->resetErrorBag();
+        $this->resetPlan();
+        $this->settingUpSubscription = true;
+    }
+
+    /**
+     * Applies the chosen package's defaults for visits and clothes cap;
+     * staff can still change them before creating.
+     */
+    public function updatedPlanPackageId(string $value): void
+    {
+        $package = SubscriptionPackage::where('is_active', true)->find($value);
+
+        if ($package) {
+            $this->planCollectionsPerMonth = min(4, max(1, (int) $package->collections_per_month));
+            $this->planMaxClothesPerCycle = max(1, (int) $package->max_clothes_per_cycle);
+        }
+    }
+
+    /**
+     * The panel's one button. In a single transaction: creates the customer
+     * (when new), then the subscription and its first cycle through
+     * SubscriptionCreationService -- the same rules as the Subscriptions
+     * page, including "starts today". Nothing reloads: the Terminal goes
+     * straight into recording the first visit.
+     */
+    public function createSubscription(SubscriptionCreationService $creator): void
+    {
+        $creatingCustomer = $this->creatingSubscriptionCustomer;
+
+        if (! $creatingCustomer && ! $this->showsSubscriptionPanel) {
+            return;
+        }
+
+        if ($creatingCustomer) {
+            $this->newCustomerPhone = PhoneNumber::normalize($this->newCustomerPhone);
+        }
+
+        $this->validate([
+            ...($creatingCustomer ? $this->newCustomerDetailRules() : []),
+            'planPackageId' => ['required', Rule::exists('subscription_packages', 'id')->where('is_active', true)],
+            'planCollectionType' => ['required', 'in:scheduled,non_scheduled'],
+            'planCollectionsPerMonth' => ['required', 'integer', 'min:1', 'max:4'],
+            'planMaxClothesPerCycle' => ['required', 'integer', 'min:1'],
+        ], [
+            ...$this->newCustomerDetailMessages(),
+            'planPackageId.required' => 'Choose a package.',
+            'planCollectionsPerMonth.max' => 'A subscription cannot have more than 4 collections per month.',
+        ], [
+            'newCustomerName' => 'name',
+            'newCustomerPhone' => 'phone',
+            'planPackageId' => 'package',
+            'planCollectionType' => 'collection type',
+            'planCollectionsPerMonth' => 'number of collections',
+            'planMaxClothesPerCycle' => 'max clothes per cycle',
+        ]);
+
+        $plan = [
+            'subscription_package_id' => $this->planPackageId,
+            'collection_type' => $this->planCollectionType,
+            'collections_per_month' => $this->planCollectionsPerMonth,
+            'max_clothes_per_cycle' => $this->planMaxClothesPerCycle,
+        ];
+
+        try {
+            $subscription = DB::transaction(function () use ($creator, $creatingCustomer, $plan) {
+                $customer = $creatingCustomer
+                    ? Customer::create([
+                        'full_name' => $this->newCustomerName,
+                        'phone' => $this->newCustomerPhone,
+                        'customer_type' => 'subscription',
+                    ])
+                    : Customer::findOrFail($this->customerId);
+
+                return $creator->create($customer, $plan);
+            });
+        } catch (SubscriptionCreationException $e) {
+            $this->addError('plan', $e->getMessage());
+
+            return;
+        } catch (QueryException $e) {
+            // e.g. the phone number was taken by someone else in the
+            // meantime -- nothing was saved either way.
+            $this->addError('plan', 'This subscription could not be created. Refresh and try again.');
+
+            return;
+        }
+
+        $this->creatingSubscriptionCustomer = false;
+        $this->settingUpSubscription = false;
+        $this->newCustomerName = '';
+        $this->newCustomerPhone = '';
+        $this->newCustomerType = '';
         $this->customerSearch = '';
+        $this->resetPlan();
+
+        $this->customerId = $subscription->customer_id;
+        $this->collectionId = $this->nextOpenCollection($subscription)?->id;
+
+        // Computed values read earlier in this request (customer, mode,
+        // panel visibility) are cached until the request ends -- drop them
+        // so this render reflects the new subscription.
+        unset(
+            $this->selectedCustomer,
+            $this->isSubscriptionMode,
+            $this->collection,
+            $this->needsSubscriptionDecision,
+            $this->subscriptionOrderState,
+            $this->activeSubscriptionForDecision,
+            $this->showsSubscriptionPanel,
+            $this->selectedCustomerHasPausedSubscription,
+        );
+    }
+
+    protected function resetPlan(): void
+    {
+        $this->planPackageId = '';
+        $this->planCollectionType = 'scheduled';
+        $this->planCollectionsPerMonth = 1;
+        $this->planMaxClothesPerCycle = null;
     }
 
     /**
@@ -734,12 +1049,9 @@ public function selectCustomer(int $id): void
      * and is untouched by this -- adding a customer there was never
      * conditional on an order.
      *
-     * Subscription-type customers are the one exception and still create
-     * eagerly -- a subscription can't be staged the way a walk-in customer
-     * can, since needsSubscriptionDecision()/subscriptionOrderState() need a
-     * real customer_id to look up. This customer having zero subscriptions
-     * yet is exactly what makes the New Subscription modal show immediately
-     * after -- no Subscription row is created here, only the Customer.
+     * Subscription-type customers never come through here: they go to the
+     * subscription slide-over, which creates the customer and the
+     * subscription together (createSubscription()).
      */
     public function createCustomer(): void
     {
@@ -747,32 +1059,14 @@ public function selectCustomer(int $id): void
             return;
         }
 
-        $this->newCustomerPhone = PhoneNumber::normalize($this->newCustomerPhone);
-
-        $this->validate([
-            'newCustomerName' => ['required', 'string', 'max:255'],
-            'newCustomerPhone' => ['required', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:customers,phone'],
-            'newCustomerType' => ['required', 'in:walk_in,subscription'],
-        ], [
-            'newCustomerPhone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
-        ], ['newCustomerName' => 'name', 'newCustomerPhone' => 'phone', 'newCustomerType' => 'customer type']);
-
         if ($this->newCustomerType === 'subscription') {
-            $customer = DB::transaction(fn () => Customer::create([
-                'full_name' => $this->newCustomerName,
-                'phone' => $this->newCustomerPhone,
-                'customer_type' => 'subscription',
-            ]));
-
-            $this->customerId = $customer->id;
-            $this->pendingSubscriptionCustomerCreation = true;
-            $this->newCustomerName = '';
-            $this->newCustomerPhone = '';
-            $this->newCustomerType = 'walk_in';
-            $this->showNewCustomerForm = false;
+            $this->validateNewCustomerDetails();
+            $this->openSubscriptionPanelForNewCustomer();
 
             return;
         }
+
+        $this->validateNewCustomerDetails();
 
         $this->usingPendingCustomer = true;
         $this->showNewCustomerForm = false;
@@ -1529,14 +1823,20 @@ if (! $collection || $collection->status !== 'scheduled') {
                 </div>
                 <div class="space-y-3">
                     <div>
-                        <input type="text" wire:model="newCustomerName" placeholder="Full name" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md">
+                        <input type="text" wire:model.blur="newCustomerName" placeholder="Full name" autocomplete="off" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md @error('newCustomerName') border-critical @enderror">
                         @error('newCustomerName') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
-                        <input type="text" wire:model="newCustomerPhone" placeholder="555123456" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md">
-                        @error('newCustomerPhone') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
+                        <input type="tel" inputmode="tel" wire:model.blur="newCustomerPhone" placeholder="555123456" autocomplete="off" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md @error('newCustomerPhone') border-critical @enderror">
+                        @error('newCustomerPhone')
+                            <p class="text-critical text-xs mt-1">{{ $message }}</p>
+                        @else
+                            <p class="text-ink-faint text-xs mt-1">7 or 9 digits. +220 is added for you.</p>
+                        @enderror
                     </div>
+                    {{-- No submit button: choosing the type is the action (see updatedNewCustomerType()). --}}
                     <div>
+                        <p class="text-xs text-ink-muted mb-1.5">Customer type</p>
                         <div class="flex gap-3">
                             <label class="flex-1 inline-flex items-center justify-center gap-1.5 text-sm text-ink border border-line-strong rounded-lg py-2 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:text-accent-ink transition-colors">
                                 <input type="radio" wire:model.live="newCustomerType" value="walk_in" class="text-accent focus:ring-accent">
@@ -1550,37 +1850,211 @@ if (! $collection || $collection->status !== 'scheduled') {
                         @error('newCustomerType') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
 
-                    @if ($newCustomerType === 'subscription')
-                        <p class="text-xs text-ink-faint">Scheduled vs. non-scheduled collections is set on the New Subscription form, right after this customer is created.</p>
-                    @endif
-
-                    <button type="button" wire:click="createCustomer" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90 transition-opacity">Add &amp; select</button>
+                    <p class="text-xs text-ink-faint">Fill in name and phone, then choose a type. Walk-in adds and selects the customer; Subscription opens the plan panel.</p>
+                    <p wire:loading wire:target="newCustomerType" class="text-xs text-ink-muted">Working…</p>
                 </div>
             </div>
         </div>
     @endif
 
-    @if ($this->lastSubmittedOrder)
-        <div class="fixed inset-0 bg-ink/40 backdrop-blur-sm z-40 flex items-center justify-center p-4" x-transition.opacity>
-            <div class="bg-surface border border-line rounded-2xl shadow-xl w-full max-w-sm p-6 text-center" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
-                <div class="w-12 h-12 rounded-full bg-success-soft text-success flex items-center justify-center mx-auto mb-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
+    {{-- Subscription slide-over: customer + plan for a brand-new subscription
+         customer, or the plan alone for an existing one with no subscription.
+         Rendered by Livewire state (not Alpine), so it reliably reflects the
+         server; the Alpine flag only drives the slide-in animation. --}}
+    @if ($this->showsSubscriptionPanel)
+        <div wire:key="subscription-panel" x-data="{ shown: false }" x-init="$nextTick(() => shown = true)" x-on:keydown.escape.window="$wire.closeSubscriptionPanel()">
+            <div x-show="shown" x-transition.opacity class="fixed inset-0 bg-black/40 z-40" wire:click="closeSubscriptionPanel"></div>
+
+            <div
+                x-show="shown"
+                x-transition:enter="transition ease-out duration-300"
+                x-transition:enter-start="translate-x-full"
+                x-transition:enter-end="translate-x-0"
+                class="fixed inset-y-0 right-0 z-50 w-full sm:w-[36rem] lg:w-1/2 bg-surface border-l border-line shadow-xl flex flex-col"
+                role="dialog" aria-modal="true" aria-labelledby="subscription-panel-title"
+            >
+                <div class="flex items-center justify-between px-5 py-4 border-b border-line flex-none">
+                    <h3 id="subscription-panel-title" class="font-semibold text-ink">
+                        {{ $creatingSubscriptionCustomer ? 'New Subscription Customer' : 'Set Up Subscription' }}
+                    </h3>
+                    <button type="button" wire:click="closeSubscriptionPanel" class="text-ink-faint hover:text-ink transition-colors" aria-label="Close">✕</button>
                 </div>
-                <h3 class="font-semibold text-ink text-lg mb-1">{{ $this->lastSubmittedOrder->order_source === 'subscription' ? 'Collection Recorded' : 'Order Created' }}</h3>
-                <p class="text-sm text-ink-muted mb-5">{{ $this->lastSubmittedOrder->order_number }} · GMD {{ number_format($this->lastSubmittedOrder->total_amount, 2) }}</p>
-                <div class="space-y-2">
-                    <a href="{{ route('orders.show', $this->lastSubmittedOrder) }}" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-accent rounded-lg text-white text-sm font-semibold hover:opacity-90 transition-opacity">
-                        View Order
-                    </a>
-                    <button type="button" wire:click="$set('lastSubmittedOrderId', null)" class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-surface-2 rounded-lg text-ink text-sm font-semibold hover:bg-line transition-colors">
-                        New Order
-                    </button>
-                </div>
+
+                {{-- Scrolling body + footer pinned at the bottom, so Create/Cancel are always in reach. --}}
+                <form wire:submit="createSubscription" class="flex-1 min-h-0 flex flex-col">
+                    <div class="flex-1 overflow-y-auto p-5 sm:p-6 space-y-7">
+                        <section class="space-y-3">
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Customer</div>
+
+                            @if ($creatingSubscriptionCustomer)
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <x-input-label for="sp_name" value="Full name" />
+                                        <input id="sp_name" type="text" wire:model.blur="newCustomerName" autocomplete="off" class="mt-1 w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm @error('newCustomerName') border-critical @enderror">
+                                        @error('newCustomerName') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
+                                    </div>
+                                    <div>
+                                        <x-input-label for="sp_phone" value="Phone" />
+                                        <input id="sp_phone" type="tel" inputmode="tel" wire:model.blur="newCustomerPhone" placeholder="555123456" autocomplete="off" class="mt-1 w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm @error('newCustomerPhone') border-critical @enderror">
+                                        @error('newCustomerPhone')
+                                            <p class="text-critical text-xs mt-1">{{ $message }}</p>
+                                        @else
+                                            <p class="text-ink-faint text-xs mt-1">7 or 9 digits. +220 is added for you.</p>
+                                        @enderror
+                                    </div>
+                                </div>
+                            @else
+                                <div class="rounded-xl bg-surface-2 px-3 py-2.5">
+                                    <div class="text-sm font-medium text-ink">{{ $this->selectedCustomer?->full_name }}</div>
+                                    <div class="font-mono text-xs text-ink-faint">{{ $this->selectedCustomer?->phone }}</div>
+                                    <div class="text-xs text-ink-muted mt-1">Subscription customer with no active subscription yet.</div>
+                                </div>
+                            @endif
+                        </section>
+
+                        <section class="space-y-3">
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint" id="sp_package_label">Choose a package</div>
+
+                            {{-- Real radios (visually hidden, still keyboard-focusable) styled as cards;
+                                 wire:model.live so picking one applies its defaults (updatedPlanPackageId()). --}}
+                            @if ($this->subscriptionPackages->isEmpty())
+                                <p class="rounded-xl border border-line bg-surface-2 p-3 text-sm text-ink-muted">No active subscription packages. Add one under Catalog → Packages first.</p>
+                            @elseif ($this->subscriptionPackages->count() > 3)
+                                {{-- More than 3 packages don't fit as cards -- a dropdown, with the chosen one summarised below. --}}
+                                <select id="sp_package" aria-labelledby="sp_package_label" wire:model.live="planPackageId" class="block w-full bg-surface border-line-strong text-ink rounded-lg shadow-sm text-sm focus:border-accent focus:ring-accent">
+                                    <option value="">Select a package…</option>
+                                    @foreach ($this->subscriptionPackages as $package)
+                                        <option value="{{ $package->id }}">{{ $package->name }} — GMD {{ number_format($package->monthly_price, 2) }}</option>
+                                    @endforeach
+                                </select>
+
+                                @if ($chosen = $this->subscriptionPackages->firstWhere('id', (int) $planPackageId))
+                                    <div class="rounded-xl border border-accent bg-accent-soft p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                        <div><div class="text-ink-faint">Price</div><div class="font-mono tabular-nums text-accent-ink font-semibold">GMD {{ number_format($chosen->monthly_price, 2) }}</div></div>
+                                        <div><div class="text-ink-faint">Per visit</div><div class="text-ink">{{ $chosen->clothes_allowance }} items</div></div>
+                                        <div><div class="text-ink-faint">Visits</div><div class="text-ink">{{ $chosen->collections_per_month }}</div></div>
+                                        <div><div class="text-ink-faint">Clothes max</div><div class="text-ink">{{ $chosen->max_clothes_per_cycle }}</div></div>
+                                    </div>
+                                @endif
+                            @else
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3" role="radiogroup" aria-labelledby="sp_package_label">
+                                    @foreach ($this->subscriptionPackages as $package)
+                                        <label wire:key="sp-package-{{ $package->id }}" class="group relative flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-sm cursor-pointer transition duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-accent has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:shadow-md has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent has-[:focus-visible]:ring-offset-2">
+                                            <input type="radio" wire:model.live="planPackageId" value="{{ $package->id }}" class="sr-only">
+
+                                            {{-- Name + selection badge --}}
+                                            <div class="flex items-start justify-between gap-2">
+                                                <span class="text-sm font-semibold text-ink leading-snug">{{ $package->name }}</span>
+                                                <span class="flex-none w-5 h-5 rounded-full border-2 border-line-strong flex items-center justify-center transition-colors group-has-[:checked]:border-accent group-has-[:checked]:bg-accent" aria-hidden="true">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-white opacity-0 transition-opacity group-has-[:checked]:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                                    </svg>
+                                                </span>
+                                            </div>
+
+                                            {{-- Price --}}
+                                            <div class="mt-3 flex items-baseline gap-1">
+                                                <span class="font-mono text-xs text-ink-faint">GMD</span>
+                                                <span class="text-2xl font-bold tabular-nums text-ink transition-colors group-has-[:checked]:text-accent-ink">{{ number_format($package->monthly_price, 2) }}</span>
+                                            </div>
+                                            <span class="text-xs text-ink-faint">per cycle</span>
+
+                                            {{-- What's included --}}
+                                            <ul class="mt-3 pt-3 border-t border-line space-y-1.5 text-xs text-ink-muted">
+                                                @foreach ([
+                                                    $package->clothes_allowance.' items per visit',
+                                                    $package->max_clothes_per_cycle.' clothes max per cycle',
+                                                ] as $feature)
+                                                    <li class="flex items-center gap-2">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 flex-none text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                        {{ $feature }}
+                                                    </li>
+                                                @endforeach
+                                            </ul>
+                                        </label>
+                                    @endforeach
+                                </div>
+                            @endif
+                            @error('planPackageId') <p class="text-critical text-xs">{{ $message }}</p> @enderror
+                        </section>
+
+                        <section class="space-y-3">
+                            <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Details</div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <x-input-label for="sp_collections" value="Number of collections" />
+                                    <input id="sp_collections" type="number" min="1" max="4" wire:model="planCollectionsPerMonth" class="mt-1 w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm">
+                                    @error('planCollectionsPerMonth') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
+                                </div>
+                                <div>
+                                    <x-input-label for="sp_max_clothes" value="Max clothes per cycle" />
+                                    <input id="sp_max_clothes" type="number" min="1" wire:model="planMaxClothesPerCycle" class="mt-1 w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm">
+                                    @error('planMaxClothesPerCycle') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
+                                </div>
+                            </div>
+
+                            <div>
+                                <x-input-label value="Collection type" />
+                                <div class="flex gap-3 mt-1">
+                                    @foreach (['scheduled' => 'Scheduled', 'non_scheduled' => 'Non-scheduled'] as $value => $label)
+                                        <label class="flex-1 inline-flex items-center justify-center gap-1.5 text-sm text-ink border border-line-strong rounded-lg py-2 cursor-pointer has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:text-accent-ink transition-colors">
+                                            <input type="radio" wire:model="planCollectionType" value="{{ $value }}" class="text-accent focus:ring-accent">
+                                            {{ $label }}
+                                        </label>
+                                    @endforeach
+                                </div>
+                                @error('planCollectionType') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
+                            </div>
+
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="text-ink-muted">Start date</span>
+                                <span class="text-ink">Today, <span class="font-mono">{{ now()->format('M d, Y') }}</span></span>
+                            </div>
+                        </section>
+
+                        @error('plan')
+                            <p class="rounded-xl border border-critical bg-critical-soft p-3 text-sm text-critical">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    {{-- Create stays disabled until a package is picked (createSubscription() also requires one). --}}
+                    <div class="flex-none flex items-center justify-between gap-3 px-5 sm:px-6 py-3.5 border-t border-line bg-surface">
+                        <p class="text-xs text-ink-faint">
+                            @if ($planPackageId === '')
+                                Select a package to continue.
+                            @else
+                                Starts today.
+                            @endif
+                        </p>
+
+                        <div class="flex items-center gap-2 flex-none">
+                            <button type="button" wire:click="closeSubscriptionPanel" class="inline-flex items-center justify-center px-3.5 py-2 rounded-lg border border-line-strong bg-surface text-sm font-medium text-ink-muted shadow-sm hover:bg-surface-2 hover:text-ink hover:border-ink-faint transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2">
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                @disabled($planPackageId === '')
+                                wire:loading.attr="disabled"
+                                wire:target="createSubscription"
+                                class="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-accent text-white text-sm font-semibold shadow-sm hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <span wire:loading.remove wire:target="createSubscription">{{ $creatingSubscriptionCustomer ? 'Create & subscribe' : 'Create subscription' }}</span>
+                                <span wire:loading wire:target="createSubscription">Creating…</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
         </div>
     @endif
+
+    {{-- Success screen after Create Order / Record Collection: an animated
+         receipt printer (Processing → Printing → Complete), with View Order,
+         Print Receipt and New Order. --}}
+    @include('orders._receipt-printer', ['printerOrder' => $this->lastSubmittedOrder])
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
@@ -1607,7 +2081,24 @@ if (! $collection || $collection->status !== 'scheduled') {
 
                         @if ($this->needsSubscriptionDecision)
                             @if ($this->subscriptionOrderState === 'none')
-                                <x-new-subscription-modal :customer="$this->selectedCustomer" :packages="$this->subscriptionPackages" :redirect-to-terminal="true" :open="true" />
+                                {{-- An existing customer: never auto-open the slide-over, just offer the choice. --}}
+                                <div class="mt-2 rounded-lg border border-line bg-surface-2 p-3" data-no-subscription-notice>
+                                    @if ($this->selectedCustomerHasPausedSubscription)
+                                        <p class="text-sm font-medium text-ink">Their subscription is paused.</p>
+                                        <p class="text-xs text-ink-muted mt-0.5">Resume it from their profile to record a visit, or ring this up as a walk-in.</p>
+                                    @else
+                                        <p class="text-sm font-medium text-ink">No active subscription.</p>
+                                        <p class="text-xs text-ink-muted mt-0.5">Set one up for this customer, or ring this up as a walk-in.</p>
+                                    @endif
+                                    <div class="mt-2.5 flex flex-wrap items-center gap-2">
+                                        @if ($this->selectedCustomerHasPausedSubscription)
+                                            <a href="{{ route('customers.show', $this->selectedCustomer) }}" class="inline-flex items-center px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:opacity-90 transition-opacity">Open profile</a>
+                                        @elseif (auth()->user()->can('subscriptions.manage'))
+                                            <button type="button" wire:click="openSubscriptionSetup" class="inline-flex items-center px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:opacity-90 transition-opacity">Set up subscription</button>
+                                        @endif
+                                        <button type="button" wire:click="$set('forceWalkIn', true)" class="inline-flex items-center px-3 py-1.5 rounded-lg border border-line-strong bg-surface text-ink-muted hover:text-ink text-xs font-semibold transition-colors">Walk-in order</button>
+                                    </div>
+                                </div>
                             @elseif ($this->subscriptionOrderState === 'open' || $this->subscriptionOrderState === 'exhausted')
                                 <x-subscription-order-choice-modal
                                     :customer="$this->selectedCustomer"
@@ -2041,7 +2532,9 @@ if (! $collection || $collection->status !== 'scheduled') {
                 <span class="font-mono text-xl font-bold tabular-nums text-accent-ink">GMD {{ number_format($this->creditToApply > 0 ? $this->remainingDue : $this->total, 2) }}</span>
             </div>
 
-            <button type="button" wire:click="submitOrder" wire:loading.attr="disabled" class="w-full inline-flex items-center justify-center px-5 py-3.5 bg-accent rounded-xl text-white font-semibold text-sm shadow-sm hover:opacity-90 hover:shadow-md active:scale-[0.99] transition-all disabled:opacity-60">
+            {{-- Runs submitOrder through the receipt printer (it shows the
+                 Processing stage while the request runs). --}}
+            <button type="button" x-on:click="$dispatch('terminal-submit')" wire:loading.attr="disabled" wire:target="submitOrder" class="w-full inline-flex items-center justify-center px-5 py-3.5 bg-accent rounded-xl text-white font-semibold text-sm shadow-sm hover:opacity-90 hover:shadow-md active:scale-[0.99] transition-all disabled:opacity-60">
                 <span wire:loading.remove wire:target="submitOrder">{{ $this->isSubscriptionMode ? 'Record Collection' : 'Create Order' }}</span>
                 <span wire:loading wire:target="submitOrder" class="inline-flex items-center gap-2">
                     <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

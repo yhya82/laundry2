@@ -851,7 +851,7 @@
 
     @can('orders.manage')
         @if ($nextIsCollection)
-            <x-slide-panel name="record-collection" title="Record Collection" :error-fields="['collected_by_type', 'collected_by_name', 'collected_by_phone', 'amount', 'credit_applied', 'method']">
+            <x-slide-panel name="record-collection" title="Record Collection" :error-fields="['collected_by_type', 'collected_by_name', 'collected_by_phone', 'payment_timing', 'amount', 'credit_applied', 'method', 'method_note']">
                 <div x-data="{ collectedByType: @js(old('collected_by_type', 'customer')) }">
                     <form method="POST" action="{{ route('orders.advance', $order) }}" class="space-y-4">
                         @csrf
@@ -884,74 +884,106 @@
                             </div>
                         </div>
 
-                        
-                        
-                       <div class="border-t border-line pt-4 space-y-4">
 
-                         @if ($order->status !== 'cancelled')
+                        {{--
+                            Payment at collection: Pay now / Pay later.
+                            - Something owed and payment REQUIRED ($collectionPayableDue > 0:
+                              a walk-in balance, an order's own extra charge, or the last
+                              visit of a cycle) -> Pay now selected, Pay later greyed out.
+                            - Something owed but optional (a non-final subscription visit
+                              with the cycle fee open) -> both; Pay later hides the fields.
+                            - Nothing owed -> "Paid in full", no choice.
+                            The fields sit in a <fieldset> that's disabled for Pay later,
+                            so nothing half-typed is sent. OrderController::advanceToCollection()
+                            enforces the same rules server-side.
+                        --}}
+                        @php
+                            $collectDue = $order->status === 'cancelled' ? 0 : ($orderDue > 0 ? $orderDue : ($cycle?->balanceDue() ?? 0));
+                            $mustPayAtCollection = $collectionPayableDue > 0;
+                            $mustPayReason = $orderDue > 0
+                                ? ($isSubscription ? 'This order has its own extra charge, so it must be paid in full to collect.' : 'Must be paid in full to collect.')
+                                : 'Last collection of this cycle, so it must be paid in full.';
+                            $initialTiming = $mustPayAtCollection ? 'now' : old('payment_timing', 'now');
+                        @endphp
 
-                          @if ($orderDue > 0)
+                        <div class="border-t border-line pt-4 space-y-4" x-data="{ timing: @js($initialTiming) }">
+                            @if ($collectDue > 0)
+                                <p class="text-sm text-ink-muted">
+                                    {{ $orderDue > 0 ? 'Order balance due:' : 'Subscription cycle balance due:' }}
+                                    <span class="font-mono text-critical font-bold">GMD {{ number_format($collectDue, 2) }}</span>
+                                </p>
 
-                         {{-- Order-specific balance must be paid before collection. --}}
-                        <p class="text-sm text-ink-muted">
-                          Order balance due:
-                       <span class="font-mono text-critical font-bold">
-                         GMD {{ number_format($orderDue, 2) }}
-                       </span>
-                          <br>
-                           Pay in full to collect.
-                         </p>
+                                <div>
+                                    <x-input-label value="Payment" />
+                                    {{-- Option cards: real radios (visually hidden, still keyboard-focusable). --}}
+                                    <div class="grid grid-cols-2 gap-3 mt-1.5" role="radiogroup">
+                                        <label class="group relative flex items-center gap-3 rounded-xl border border-line-strong bg-surface p-3 cursor-pointer shadow-sm transition hover:border-accent has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:ring-1 has-[:checked]:ring-accent has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent">
+                                            <input type="radio" name="payment_timing" value="now" x-model="timing" class="sr-only">
+                                            {{-- Green for paying now; solid once picked. --}}
+                                            <span class="flex-none w-9 h-9 rounded-lg bg-emerald-500/15 text-emerald-600 flex items-center justify-center transition-colors group-has-[:checked]:bg-emerald-500 group-has-[:checked]:text-white" aria-hidden="true">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" /></svg>
+                                            </span>
+                                            <span class="min-w-0 pr-5">
+                                                <span class="block text-sm font-semibold text-ink group-has-[:checked]:text-accent-ink">Pay now</span>
+                                            </span>
+                                            <span class="absolute top-2.5 right-2.5 w-4 h-4 rounded-full border-2 border-line-strong flex items-center justify-center transition-colors group-has-[:checked]:border-accent group-has-[:checked]:bg-accent" aria-hidden="true">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5 text-white opacity-0 group-has-[:checked]:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                            </span>
+                                        </label>
 
-                       @include('orders._payment-fields', [
-                           'prefix' => 'collect',
-                           'amountRequired' => true,
-                           'dueOverride' => $orderDue,
-                            ])
+                                        @if ($mustPayAtCollection)
+                                            {{-- Locked: payment is required for this collection. --}}
+                                            <label class="relative flex items-center gap-3 rounded-xl border border-dashed border-line-strong bg-surface-2 p-3 cursor-not-allowed" title="{{ $mustPayReason }}">
+                                                <input type="radio" name="payment_timing" value="later" class="sr-only" disabled>
+                                                <span class="flex-none w-9 h-9 rounded-lg bg-surface text-ink-faint flex items-center justify-center" aria-hidden="true">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
+                                                </span>
+                                                <span class="min-w-0">
+                                                    <span class="block text-sm font-semibold text-ink-faint">Pay later</span>
+                                                </span>
+                                            </label>
+                                        @else
+                                            <label class="group relative flex items-center gap-3 rounded-xl border border-line-strong bg-surface p-3 cursor-pointer shadow-sm transition hover:border-accent has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:ring-1 has-[:checked]:ring-accent has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent">
+                                                <input type="radio" name="payment_timing" value="later" x-model="timing" class="sr-only">
+                                                {{-- Amber for deferring; solid once picked. --}}
+                                                <span class="flex-none w-9 h-9 rounded-lg bg-amber-500/15 text-amber-600 flex items-center justify-center transition-colors group-has-[:checked]:bg-amber-500 group-has-[:checked]:text-white" aria-hidden="true">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                                                </span>
+                                                <span class="min-w-0 pr-5">
+                                                    <span class="block text-sm font-semibold text-ink group-has-[:checked]:text-accent-ink">Pay later</span>
+                                                </span>
+                                                <span class="absolute top-2.5 right-2.5 w-4 h-4 rounded-full border-2 border-line-strong flex items-center justify-center transition-colors group-has-[:checked]:border-accent group-has-[:checked]:bg-accent" aria-hidden="true">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-2.5 h-2.5 text-white opacity-0 group-has-[:checked]:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="4"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                                </span>
+                                            </label>
+                                        @endif
+                                    </div>
+                                    @if ($mustPayAtCollection)
+                                        <p class="flex items-center gap-1.5 text-xs text-ink-muted mt-2">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 flex-none text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                                            {{ $mustPayReason }}
+                                        </p>
+                                    @endif
+                                    <x-input-error :messages="$errors->get('payment_timing')" class="mt-1.5" />
+                                </div>
 
-                       @elseif ($isSubscription && $cycle && $cycle->balanceDue() > 0)
+                                <fieldset x-show="timing === 'now'" :disabled="timing !== 'now'" class="space-y-4">
+                                    @include('orders._payment-fields', [
+                                        'prefix' => 'collect',
+                                        'amountRequired' => true,
+                                        'dueOverride' => $collectDue,
+                                    ])
+                                </fieldset>
 
-                     {{-- Cycle payment is available before the final collection too. --}}
-                      <p class="text-sm text-ink-muted">
-                         Subscription cycle balance due:
-                         <span class="font-mono text-critical font-bold">
-                           GMD {{ number_format($cycle->balanceDue(), 2) }}
-                        </span>
-                        </p>
-
-                       @if ($isFinalSubscriptionCollection)
-                      <p class="text-sm text-ink-muted">
-                       Pay the remaining cycle balance in full to collect.
-                     </p>
-                     @else
-                    <p class="text-sm text-ink-muted">
-                      Payment is optional for this collection.
-                      You may pay the cycle balance now or settle it
-                      before the final collection.
-                    </p>
-                   @endif
-
-                       @include('orders._payment-fields', [
-                       'prefix' => 'collect',
-                       'amountRequired' => $isFinalSubscriptionCollection,
-                       'dueOverride' => $cycle->balanceDue(),
-                      ])
-
-                     @else
-
-                     <p class="text-sm text-ink-muted">
-                      Payment:
-                     <span class="font-mono text-success font-bold">
-                         Paid in full
-                       </span>
-                      </p>
-
-                      @endif
-
-                     @endif
-
-                    </div>
-
-
+                                <p x-show="timing === 'later'" x-cloak class="rounded-lg bg-surface-2 px-3 py-2.5 text-sm text-ink-muted">
+                                    No payment is recorded now. The cycle balance stays open and must be paid in full by the last collection.
+                                </p>
+                            @else
+                                <p class="text-sm text-ink-muted">
+                                    Payment: <span class="font-mono text-success font-bold">Paid in full</span>
+                                </p>
+                            @endif
+                        </div>
 
                         <div class="flex items-center gap-3">
                             <x-primary-button>Confirm Collection</x-primary-button>

@@ -1,4 +1,4 @@
-@props(['customer', 'packages', 'redirectToTerminal' => false, 'open' => null, 'subscription' => null])
+@props(['customer', 'packages', 'open' => null, 'subscription' => null])
 
 @php
     // $subscription set => this instance edits an existing subscription
@@ -24,11 +24,7 @@
             }
         },
         cancel() {
-            if (! this.open) return;
             this.open = false;
-            @if ($redirectToTerminal)
-                this.$wire.cancelNewSubscription();
-            @endif
         },
     }"
     x-on:open-panel.window="$event.detail === '{{ $panelName }}' && (open = true)"
@@ -59,11 +55,7 @@
                     <input type="hidden" name="_editing_subscription_id" value="{{ $subscription->id }}">
                 @else
                     <input type="hidden" name="customer_id" value="{{ $customer->id }}">
-                    @if ($redirectToTerminal)
-                        <input type="hidden" name="redirect_customer_id" value="{{ $customer->id }}">
-                    @else
-                        <input type="hidden" name="return_to_profile" value="1">
-                    @endif
+                    <input type="hidden" name="return_to_profile" value="1">
                 @endif
 
                 <div>
@@ -81,9 +73,8 @@
 
                 @unless ($editing)
                     <div>
-                        <x-input-label for="ns_start_date_{{ $panelName }}" value="Start date" />
-                        <x-text-input id="ns_start_date_{{ $panelName }}" name="start_date" type="date" class="block w-full" value="{{ old('start_date', now()->format('Y-m-d')) }}" required />
-                        <x-input-error :messages="$errors->get('start_date')" class="mt-1.5" />
+                        <x-input-label value="Start date" />
+                        <p class="mt-1 text-sm text-ink">Today, <span class="font-mono">{{ now()->format('M d, Y') }}</span></p>
                     </div>
                 @endunless
 
@@ -120,7 +111,7 @@
                     @if ($editing)
                         Changing the number of collections or collection type rebuilds this cycle's schedule from scratch, starting from {{ $subscription->currentCycle()?->starts_on?->format('M d, Y') }}.
                     @else
-                        The first collection is scheduled automatically for the start date.
+                        Starts today. The first collection is scheduled automatically.
                     @endif
                 </p>
 

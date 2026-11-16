@@ -6,11 +6,12 @@ use App\Events\SubscriptionStatusChanged;
 use App\Http\Requests\StoreSubscriptionRequest;
 use App\Http\Requests\UpdateSubscriptionRequest;
 use App\Models\Customer;
-use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\SubscriptionCycle;
 use App\Models\SubscriptionPackage;
 use App\Services\CustomerBalanceService;
+use App\Services\SubscriptionCreationException;
+use App\Services\SubscriptionCreationService;
 use App\Support\CollectionScheduler;
 use Carbon\Carbon;
 use DomainException;
@@ -46,56 +47,30 @@ class SubscriptionController extends Controller
         return view('subscriptions.create', compact('eligibleCustomers', 'packages', 'customerId'));
     }
 
-    public function store(StoreSubscriptionRequest $request, CustomerBalanceService $balanceService): RedirectResponse
+    /**
+     * All the rules (sign-ups setting, customer type, outstanding balance,
+     * one live subscription, start today) live in SubscriptionCreationService,
+     * shared with the Terminal's subscription panel.
+     */
+    public function store(StoreSubscriptionRequest $request, SubscriptionCreationService $creator): RedirectResponse
     {
-        if (Setting::get('subscription.allow_new_signups', 'true') !== 'true') {
-            return back()->withErrors([
-                'subscription' => 'New subscription sign-ups are currently disabled in Settings.',
-            ]);
-        }
+        $customer = Customer::findOrFail($request->validated('customer_id'));
 
         try {
-            $subscription = DB::transaction(function () use ($request, $balanceService) {
-                // Lock the customer row before checking their balance.
-                $customer = Customer::query()
-                    ->whereKey($request->validated('customer_id'))
-                    ->lockForUpdate()
-                    ->firstOrFail();
-
-                if ($balanceService->hasOutstandingBalance($customer)) {
-                    return null;
-                }
-
-                $subscription = Subscription::create($request->validated());
-
-                // Also sets end_date for a scheduled subscription (its last
-                // collection date) -- see CollectionScheduler.
-                CollectionScheduler::scheduleFirstCycle($subscription);
-
-                return $subscription;
-            });
-        } catch (QueryException $e) {
-            return back()
-                ->withInput()
-                ->withErrors([
-                    'customer_id' => 'Cancel the existing subscription before creating a new one.',
-                ]);
-        }
-
-        // A null result means the customer has an outstanding balance.
-        if (! $subscription) {
-            return redirect()
-                ->route('customers.show', $request->validated('customer_id'))
-                ->withErrors([
-                    'subscription' => 'This customer has an outstanding balance. Please settle it before creating a new subscription.',
-                ]);
-        }
-
-        // Return to the Terminal when the request originated there.
-        if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
-            return redirect()
-                ->route('orders.create', ['customer' => $redirectCustomerId])
-                ->with('status', 'Subscription created.');
+            $subscription = $creator->create($customer, $request->validated());
+        } catch (SubscriptionCreationException $e) {
+            return match ($e->kind) {
+                SubscriptionCreationException::OUTSTANDING_BALANCE => redirect()
+                    ->route('customers.show', $customer)
+                    ->withErrors(['subscription' => $e->getMessage()]),
+                SubscriptionCreationException::ALREADY_SUBSCRIBED,
+                SubscriptionCreationException::NOT_SUBSCRIPTION_CUSTOMER => back()
+                    ->withInput()
+                    ->withErrors(['customer_id' => $e->getMessage()]),
+                default => back()
+                    ->withInput()
+                    ->withErrors(['subscription' => $e->getMessage()]),
+            };
         }
 
         if ($request->boolean('return_to_profile')) {

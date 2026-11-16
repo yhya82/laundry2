@@ -207,6 +207,57 @@ class OrderController extends Controller
 
     /*
     |--------------------------------------------------------------------------
+    | Pay now / Pay later
+    |--------------------------------------------------------------------------
+    |
+    | The Record Collection panel offers Pay later only when no payment is
+    | required ($payableDue == 0) -- a non-final subscription visit with
+    | the cycle fee still open. It's refused here whatever the browser
+    | sends: a walk-in balance, an order's own extra charge, and the last
+    | visit of a cycle must all be paid in full. Pay later records no
+    | payment, so any amount sent with it is dropped. A request without
+    | payment_timing (older clients) keeps the previous behaviour.
+    |
+    */
+
+    $paymentTiming = $request->input('payment_timing');
+
+    $request->validate([
+        'payment_timing' => ['nullable', 'in:now,later'],
+    ]);
+
+    if ($paymentTiming === 'later') {
+        if ($payableDue > 0) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'payment_timing' => $orderDue > 0
+                        ? 'This order\'s balance must be paid in full to collect it.'
+                        : 'This is the last collection of the cycle, so the cycle balance must be paid in full.',
+                ]);
+        }
+
+        $request->merge([
+            'amount' => null,
+            'credit_applied' => null,
+            'method' => null,
+            'method_note' => null,
+        ]);
+    }
+
+    // Where paying is optional, choosing Pay now means a payment is
+    // expected -- otherwise staff should have picked Pay later. (Where it's
+    // required, the full-balance rule below already covers this.)
+    $optionalDue = $payableDue <= 0 && $order->status !== 'cancelled' ? $cycleDue : 0;
+
+    if ($paymentTiming === 'now' && $optionalDue > 0 && $request->float('amount') <= 0 && $request->float('credit_applied') <= 0) {
+        return back()
+            ->withInput()
+            ->withErrors(['amount' => 'Enter the amount collected, or choose Pay later.']);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Validate the request
     |--------------------------------------------------------------------------
     */

@@ -399,19 +399,20 @@ class TerminalEdgeCasesTest extends TestCase
         $this->assertNull($component->get('selectedCustomer'));
     }
 
-    public function test_a_new_subscription_type_customer_still_creates_immediately_not_deferred(): void
+    public function test_choosing_subscription_for_a_new_customer_opens_the_panel_without_saving_anything(): void
     {
-        // Deliberately different from the walk-in path: addSubscriptionPackage()
-        // needs a real customer id the moment a plan is picked, well before any
-        // order/collection submission exists to defer into.
+        // Saved only together with the subscription (createSubscription()),
+        // never on its own -- see SubscriptionTerminalPanelTest.
         $component = Livewire::test('laundry-terminal')
-            ->set('newCustomerName', 'Immediate Sub Customer')
+            ->set('showNewCustomerForm', true)
+            ->set('newCustomerName', 'Panel Sub Customer')
             ->set('newCustomerPhone', '+220700222256')
-            ->set('newCustomerType', 'subscription')
-            ->call('createCustomer');
+            ->set('newCustomerType', 'subscription');
 
         $component->assertHasNoErrors();
-        $component->assertSet('usingPendingCustomer', false);
-        $this->assertDatabaseHas('customers', ['phone' => '+220700222256', 'customer_type' => 'subscription']);
+        $component->assertSet('creatingSubscriptionCustomer', true);
+        $component->assertSet('showNewCustomerForm', false);
+        $component->assertSet('newCustomerName', 'Panel Sub Customer');
+        $this->assertDatabaseMissing('customers', ['phone' => '+220700222256']);
     }
 }

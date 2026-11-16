@@ -52,11 +52,10 @@
                     <x-input-error :messages="$errors->get('subscription_package_id')" class="mt-1.5" />
                 </div>
 
-                {{-- No End date field: a scheduled subscription's end date is its last collection date. --}}
+                {{-- A subscription always starts today, and a scheduled one's end date is its last collection date -- neither is picked here. --}}
                 <div>
-                    <x-input-label for="start_date" value="Start date" />
-                    <x-text-input id="start_date" name="start_date" type="date" class="block w-full" value="{{ old('start_date', now()->format('Y-m-d')) }}" required />
-                    <x-input-error :messages="$errors->get('start_date')" class="mt-1.5" />
+                    <x-input-label value="Start date" />
+                    <p class="mt-1 text-sm text-ink">Today, <span class="font-mono">{{ now()->format('M d, Y') }}</span></p>
                 </div>
 
                 {{-- Number of collections / max clothes per cycle / collection type are

@@ -3,7 +3,7 @@
 {{-- Shown in place of a Renew button while the customer owes anything
      (an unpaid order or subscription cycle). SubscriptionController::renew()
      refuses the renewal server-side regardless; this just says so up front. --}}
-<div {{ $attributes->merge(['class' => 'rounded-xl border border-critical/30 bg-critical/5 p-3']) }}>
+<div {{ $attributes->merge(['class' => 'rounded-xl border border-critical bg-critical-soft p-3']) }}>
     <p class="text-sm font-medium text-critical">Outstanding balance — renewal unavailable</p>
     <p class="text-xs text-ink-muted mt-0.5">Settle what this customer owes before starting a new cycle.</p>
     @if ($link && $customer)

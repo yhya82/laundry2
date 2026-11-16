@@ -32,6 +32,18 @@ class Setting extends Model
     {
         static::updateOrCreate(['key' => $key], ['group' => $group, 'value' => $value, 'type' => $type]);
 
+        static::flushCache();
+    }
+
+    /**
+     * Drops the per-request memo. A web request never needs this (the static
+     * dies with the request), but a long-lived process does -- the test
+     * suite runs every test in one process, where a value cached by one test
+     * would otherwise leak into the next after its database rows were rolled
+     * back.
+     */
+    public static function flushCache(): void
+    {
         static::$cache = null;
     }
 }
