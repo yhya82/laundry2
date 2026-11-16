@@ -1,5 +1,21 @@
 # Trigger Inventory
 
+> **Update 2026-11-16 (`2026_11_16_000003_expand_audit_triggers`):** the audit
+> triggers below were replaced and extended. There are now **58 audit triggers**:
+> - `trg_{table}_audit_insert` / `_update` / `_delete` on **18 tables**: the
+>   original 8, plus users, collections, subscription_cycles, refunds,
+>   laundry_packages, subscription_packages, clothing_items, clothes_categories,
+>   washing_machines and roles.
+> - Role grant/removal on `model_has_roles`, and permission grant/removal on
+>   `role_has_permissions`.
+>
+> Update rows now store `{"old": {...}, "new": {...}}` for the tracked columns,
+> and are skipped when none of those columns changed. A user's password is never
+> copied; only a `password_changed` flag is stored. Older rows keep their flat
+> "after only" shape. The Audit Log page reads both shapes (`App\Support\AuditPresenter`)
+> and, for Admins, merges in the Security Center's `login_events`.
+> The business-rule triggers are unchanged.
+
 Every MySQL/MariaDB trigger the schema installs, where it's defined, and its
 verification status. Source: `database/migrations/2025_01_02_000001_create_laundry_triggers.php`,
 `database/migrations/2026_08_05_132208_extend_payment_cap_guard_for_subscription_cycles.php`,

@@ -16,6 +16,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SubscriptionController;
+use App\Http\Controllers\SecurityController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SubscriptionPackageController;
 use App\Http\Controllers\ThemeController;
@@ -205,7 +206,8 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::post('/users', [UserController::class, 'store'])->name('users.store');
         Route::get('/users/{user}', [UserController::class, 'show'])->name('users.show');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
-        Route::put('/users/{user}/password', [UserController::class, 'setPassword'])->name('users.setPassword');
+        // Admin role itself, not just users.manage -- only Admins change passwords.
+        Route::put('/users/{user}/password', [UserController::class, 'setPassword'])->middleware('role:Admin')->name('users.setPassword');
         Route::post('/users/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('users.toggleActive');
         Route::put('/users/{user}/roles', [UserController::class, 'updateRoles'])->name('users.roles.update');
         Route::post('/roles', [UserController::class, 'storeRole'])->name('roles.store');
@@ -219,8 +221,18 @@ Route::middleware('auth')->group(function () use ($builtRoutes) {
         Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
     });
 
+    // Settings → Security: Admin role only (not a delegable permission).
+    // Saving the Security settings themselves goes through settings.update,
+    // which checks the Admin role for the 'security' group.
+    Route::middleware('role:Admin')->prefix('security')->name('security.')->group(function () {
+        Route::delete('/sessions/{sessionId}', [SecurityController::class, 'revokeSession'])->name('sessions.revoke');
+        Route::delete('/users/{user}/sessions', [SecurityController::class, 'revokeUserSessions'])->name('users.sessions.revoke');
+        Route::delete('/sessions', [SecurityController::class, 'revokeOtherSessions'])->name('sessions.revokeOthers');
+    });
+
     Route::middleware('permission:audit.view')->group(function () {
         Route::get('/audit', [AuditController::class, 'index'])->name('audit.index');
+        Route::get('/audit/export', [AuditController::class, 'export'])->name('audit.export');
     });
 
     // Placeholder routes for every remaining sidebar destination. Each is

@@ -67,24 +67,32 @@
             </form>
         </div>
 
-        <div class="bg-surface border border-line rounded-2xl p-6">
-            <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Set Password</div>
-            <form method="POST" action="{{ route('users.setPassword', $user) }}" class="space-y-4">
-                @csrf
-                @method('PUT')
-                <div>
-                    <x-input-label for="user_password" value="New password" />
-                    <x-text-input id="user_password" name="password" type="password" class="block w-full" required />
-                    <x-input-error :messages="$errors->get('password')" class="mt-1.5" />
-                </div>
-                <div>
-                    <x-input-label for="user_password_confirmation" value="Confirm password" />
-                    <x-text-input id="user_password_confirmation" name="password_confirmation" type="password" class="block w-full" required />
-                </div>
-                <p class="text-xs text-ink-faint">{{ $user->name }} will need to use this new password on their next login.</p>
-                <x-primary-button>Set password</x-primary-button>
-            </form>
-        </div>
+        {{-- Admin only, and never your own (use Profile, which asks for the current password). --}}
+        @if (auth()->user()->hasRole('Admin') && $user->id !== auth()->id())
+            @php $bag = $errors->getBag("setPassword{$user->id}"); @endphp
+            <div class="bg-surface border border-line rounded-2xl p-6">
+                <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Set Password</div>
+                {{-- Live policy check; Set password stays disabled until it passes. --}}
+                <form method="POST" action="{{ route('users.setPassword', $user) }}" class="space-y-4" novalidate
+                    x-data="{ pw: '', confirm: '', policyOk: false }"
+                    x-on:password-validity="policyOk = $event.detail.ok">
+                    @csrf
+                    @method('PUT')
+                    <div>
+                        <x-input-label for="user_password" value="New password" />
+                        <x-password-input id="user_password" name="password" autocomplete="new-password" required :requirements="true" x-model="pw" />
+                        <x-input-error :messages="$bag->get('password')" class="mt-1.5" />
+                    </div>
+                    <div>
+                        <x-input-label for="user_password_confirmation" value="Confirm password" />
+                        <x-password-input id="user_password_confirmation" name="password_confirmation" autocomplete="new-password" required x-model="confirm" />
+                        <p x-show="confirm !== '' && confirm !== pw" x-cloak class="mt-1.5 text-xs text-critical">The passwords don't match yet.</p>
+                    </div>
+                    <p class="text-xs text-ink-faint">Temporary: {{ $user->name }} chooses their own at next login, and is signed out of every device now.</p>
+                    <x-primary-button x-bind:disabled="! (policyOk && pw !== '' && pw === confirm)" class="disabled:opacity-50 disabled:cursor-not-allowed">Set password</x-primary-button>
+                </form>
+            </div>
+        @endif
 
         <div class="bg-surface border border-line rounded-2xl p-6">
             <div class="font-mono text-xs uppercase tracking-wide text-ink font-bold mb-3">Roles</div>

@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Middleware\ApplySecuritySessionLifetime;
+use App\Http\Middleware\EnforcePasswordPolicy;
 use App\Http\Middleware\EnsureUserIsActive;
+use App\Http\Middleware\ExplainSignOut;
 use App\Http\Middleware\SetCurrentUserForAudit;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
@@ -23,8 +26,15 @@ return Application::configure(basePath: dirname(__DIR__))
             'role_or_permission' => RoleOrPermissionMiddleware::class,
         ]);
 
+        // Idle timeout from Settings → Security -- must run before StartSession.
+        $middleware->prependToGroup('web', ApplySecuritySessionLifetime::class);
+
         $middleware->appendToGroup('web', EnsureUserIsActive::class);
         $middleware->appendToGroup('web', SetCurrentUserForAudit::class);
+        // Temporary / expired password -> "Choose a new password" first.
+        $middleware->appendToGroup('web', EnforcePasswordPolicy::class);
+        // Tells the login page why someone was signed out (idle / by an Admin).
+        $middleware->appendToGroup('web', ExplainSignOut::class);
     })
     ->withSchedule(function (Schedule $schedule): void {
         // withoutOverlapping guards against a slow backup still running when

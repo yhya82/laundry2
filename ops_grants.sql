@@ -30,6 +30,13 @@ CREATE USER IF NOT EXISTS 'laundry_app'@'%' IDENTIFIED BY '{{LAUNDRY_APP_PASSWOR
 -- Baseline: SELECT + INSERT everywhere.
 GRANT SELECT, INSERT ON {{DB_NAME}}.* TO 'laundry_app'@'%';
 
+-- Security Center tables (2026_11_16_000002): login_events and
+-- password_histories get NO per-table UPDATE/DELETE grant below, on purpose --
+-- the baseline above is all they need, which makes the login log and the
+-- password-hash history append-only for the app. users (password_changed_at,
+-- must_change_password, remember_token) and sessions (signing devices out)
+-- already have UPDATE/DELETE below.
+
 -- UPDATE + DELETE granted per table below. The three append-only tables are
 -- simply never granted these, rather than granted-then-revoked (see note
 -- above on why REVOKE-after-db-level-GRANT does not work here). Add new

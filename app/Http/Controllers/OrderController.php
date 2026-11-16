@@ -159,15 +159,15 @@ class OrderController extends Controller
      * collected without the money actually recorded. Reuses
      * OrderPaymentRecorder/SubscriptionCyclePaymentRecorder rather than
      * duplicating PaymentController's store-credit/overshoot/trigger-race
-     * handling. The payment goes to the order's own balance if it has one
-     * (e.g. a cycle-overage charge sitting on the order itself), otherwise
-     * the subscription cycle's -- a subscription visit's own order subtotal
-     * is normally 0, the flat fee lives on the cycle instead.
+     * handling.
      *
-     * Payment is no longer optional here -- whatever's owed (order's own
-     * balance, else the cycle's) must be paid in full to collect; only an
-     * already-fully-paid order skips the payment step entirely. Same
-     * order-then-cycle preference as $payableDue in orders/show.blade.php.
+     * What must be paid to collect:
+     *  - the order's own balance, always (a walk-in total, or a
+     *    subscription visit's overage charge);
+     *  - PLUS the remaining cycle fee on the LAST collection of a cycle.
+     * Anything up to order + cycle may be paid; one payment is split
+     * automatically, order first, then the cycle. Same rules as
+     * $collectionPayableDue in orders/show.blade.php.
      */
 
     
@@ -191,19 +191,19 @@ class OrderController extends Controller
     | Determine the mandatory payment
     |--------------------------------------------------------------------------
     |
-    | Order-specific balances must be settled before pickup.
-    | The cycle balance is mandatory only at the final eligible
-    | subscription collection.
+    | The order's own balance (a walk-in total, or a subscription visit's
+    | overage charge) must always be settled before pickup. On the LAST
+    | collection of a cycle the remaining cycle fee is required as well --
+    | BOTH together, not one or the other (previously an order with its own
+    | charge skipped the cycle fee entirely on the last visit).
     |
     */
 
-    $payableDue = $orderDue > 0
-        ? $orderDue
-        : (
-            $isFinalSubscriptionCollection
-                ? $cycleDue
-                : 0
-        );
+    $payableDue = round($orderDue + ($isFinalSubscriptionCollection ? $cycleDue : 0), 2);
+
+    // Most that can be paid here: the order's balance plus whatever the
+    // cycle still owes (paying the cycle early on a non-final visit is fine).
+    $maxPayable = round($orderDue + $cycleDue, 2);
 
     /*
     |--------------------------------------------------------------------------
@@ -231,9 +231,9 @@ class OrderController extends Controller
             return back()
                 ->withInput()
                 ->withErrors([
-                    'payment_timing' => $orderDue > 0
-                        ? 'This order\'s balance must be paid in full to collect it.'
-                        : 'This is the last collection of the cycle, so the cycle balance must be paid in full.',
+                    'payment_timing' => $isFinalSubscriptionCollection
+                        ? 'This is the last collection of the cycle, so everything still owed (GMD '.number_format($payableDue, 2).') must be paid in full.'
+                        : 'This order\'s balance must be paid in full to collect it.',
                 ]);
         }
 
@@ -282,10 +282,14 @@ class OrderController extends Controller
             'regex:/^[+0-9][0-9 ()\-]{6,19}$/',
         ],
 
+        // Checked up front: the payment recorders would otherwise quietly
+        // cap credit at the customer's balance, leaving a last collection
+        // short of what it must cover.
         'credit_applied' => [
             'nullable',
             'numeric',
             'min:0',
+            'max:'.(float) $order->customer->store_credit_balance,
         ],
 
         'amount' => [
@@ -362,7 +366,8 @@ class OrderController extends Controller
             $cycle,
             $isFinalSubscriptionCollection,
             $orderDue,
-            $cycleDue,
+            $payableDue,
+            $maxPayable,
             $amount,
             $creditApplied
         ) {
@@ -373,49 +378,62 @@ class OrderController extends Controller
             */
 
             if ($hasPayment) {
-                // Never allow a payment to exceed the balance being settled.
-                $paymentTotal = round(
-                    $amount + $creditApplied,
-                    2
-                );
+                $paymentTotal = round($amount + $creditApplied, 2);
 
-                if ($orderDue > 0) {
-                    if ($paymentTotal > $orderDue) {
-                        throw new \RuntimeException(
-                            'The payment cannot exceed the outstanding order balance.'
-                        );
-                    }
+                if ($maxPayable <= 0) {
+                    throw new \RuntimeException('There is no outstanding balance to pay.');
+                }
 
-                    app(OrderPaymentRecorder::class)->record(
-                        $order,
-                        $validated
-                    );
-                } elseif ($cycle && $cycleDue > 0) {
-                    // Final collection requires the entire remaining cycle balance.
-                    if (
-                        $isFinalSubscriptionCollection
-                        && $paymentTotal < $cycleDue
-                    ) {
-                        throw new \RuntimeException(
-                            'The remaining subscription cycle balance must be paid in full before this final collection.'
-                        );
-                    }
-
-                    // Partial or full cycle payments are allowed before the final collection.
-                    if ($paymentTotal > $cycleDue) {
-                        throw new \RuntimeException(
-                            'The payment cannot exceed the outstanding subscription cycle balance.'
-                        );
-                    }
-
-                    app(SubscriptionCyclePaymentRecorder::class)->record(
-                        $cycle,
-                        $validated
-                    );
-                } else {
+                // Never more than the order plus the cycle still owe.
+                if ($paymentTotal > $maxPayable) {
                     throw new \RuntimeException(
-                        'There is no outstanding balance to pay.'
+                        'The payment cannot exceed the outstanding balance of GMD '.number_format($maxPayable, 2).'.'
                     );
+                }
+
+                // The last collection needs everything: order AND cycle.
+                if ($isFinalSubscriptionCollection && $paymentTotal < $payableDue) {
+                    throw new \RuntimeException(
+                        'This is the last collection of the cycle, so everything still owed (GMD '.number_format($payableDue, 2).') must be paid in full.'
+                    );
+                }
+
+                /*
+                 * One payment, split automatically: the order's own balance
+                 * first, the rest to the cycle. Store credit is used up
+                 * first on each part, the same order the Terminal uses.
+                 * Each part goes through its own recorder (store-credit
+                 * ledger, cap checks, PaymentReceived), all inside this
+                 * transaction -- any failure rolls the whole collection back.
+                 */
+                $orderCredit = min($creditApplied, $orderDue);
+                $orderCash = min($amount, round($orderDue - $orderCredit, 2));
+                $cycleCredit = round($creditApplied - $orderCredit, 2);
+                $cycleCash = round($amount - $orderCash, 2);
+
+                $base = [
+                    'method' => $validated['method'] ?? null,
+                    'method_note' => $validated['method_note'] ?? null,
+                ];
+
+                if ($orderCredit + $orderCash > 0) {
+                    app(OrderPaymentRecorder::class)->record($order, [
+                        ...$base,
+                        'credit_applied' => $orderCredit,
+                        'amount' => $orderCash,
+                    ]);
+                }
+
+                if ($cycleCredit + $cycleCash > 0) {
+                    if (! $cycle) {
+                        throw new \RuntimeException('The payment cannot exceed the outstanding order balance.');
+                    }
+
+                    app(SubscriptionCyclePaymentRecorder::class)->record($cycle, [
+                        ...$base,
+                        'credit_applied' => $cycleCredit,
+                        'amount' => $cycleCash,
+                    ]);
                 }
             }
 

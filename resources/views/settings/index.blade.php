@@ -1,9 +1,21 @@
 <x-app-layout>
     <x-slot name="header">Settings</x-slot>
 
-    <div x-data="{ tab: 'general' }">
+    @php
+        $tabs = ['general' => 'General', 'laundry' => 'Laundry', 'subscription' => 'Subscription', 'payment' => 'Payment', 'notification' => 'Notification', 'order' => 'Order', 'receipt' => 'Receipt', 'backup' => 'Backup'];
+        // Security is Admin-only ($security is only built for Admins).
+        if ($security) {
+            $tabs['security'] = 'Security';
+        }
+        // ?tab= keeps Security open across its filters and pagination; a
+        // failed Security save reopens it too.
+        $initialTab = old('group') ?? request('tab', 'general');
+        $initialTab = array_key_exists($initialTab, $tabs) ? $initialTab : 'general';
+    @endphp
+
+    <div x-data="{ tab: @js($initialTab) }">
         <div class="flex gap-1 border-b border-line overflow-x-auto mb-6">
-            @foreach (['general' => 'General', 'laundry' => 'Laundry', 'subscription' => 'Subscription', 'payment' => 'Payment', 'notification' => 'Notification', 'order' => 'Order', 'receipt' => 'Receipt', 'backup' => 'Backup'] as $key => $label)
+            @foreach ($tabs as $key => $label)
                 <button
                     type="button"
                     @click="tab = '{{ $key }}'"
@@ -15,7 +27,7 @@
             @endforeach
         </div>
 
-        <div x-show="tab === 'general'" class="bg-surface border border-line rounded-2xl p-6 max-w-xl">
+        <div x-show="tab === 'general'" x-cloak class="bg-surface border border-line rounded-2xl p-6 max-w-xl">
             <form method="POST" action="{{ route('settings.update') }}" enctype="multipart/form-data" class="space-y-4">
                 @csrf
                 @method('PUT')
@@ -198,5 +210,11 @@
                 <x-primary-button>Save Backup settings</x-primary-button>
             </form>
         </div>
+
+        @if ($security)
+            <div x-show="tab === 'security'" x-cloak>
+                @include('settings._security', $security)
+            </div>
+        @endif
     </div>
 </x-app-layout>

@@ -15,6 +15,9 @@
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Roles</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Phone</th>
                     <th class="text-left font-mono text-xs uppercase tracking-wide text-ink-faint px-4 py-3">Status</th>
+                    @if ($isAdmin)
+                        <th class="px-4 py-3"><span class="sr-only">Actions</span></th>
+                    @endif
                 </tr>
             </thead>
             <tbody>
@@ -39,9 +42,19 @@
                                 {{ $user->is_active ? 'Active' : 'Inactive' }}
                             </span>
                         </td>
+                        @if ($isAdmin)
+                            <td class="px-4 py-3 text-right">
+                                {{-- Every row, the Admin's own included (that one asks for the current password). --}}
+                                {{-- Same label and fixed width on every row; the panel itself says "(you)" on your own. --}}
+                                <button type="button" @click="$dispatch('open-panel', 'user-password-{{ $user->id }}')" class="inline-flex w-40 items-center justify-center gap-1.5 rounded-lg border border-line-strong bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-muted hover:text-ink hover:border-accent transition-colors" title="{{ $user->id === auth()->id() ? 'Change your own password' : 'Change password for '.$user->name }}" aria-label="{{ $user->id === auth()->id() ? 'Change your own password' : 'Change password for '.$user->name }}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.03 5.91c-.56-.1-1.16.02-1.56.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.82c0-.6.24-1.17.66-1.59l6.41-6.41c.41-.4.53-1 .43-1.56A6 6 0 1 1 21.75 8.25Z" /></svg>
+                                    Change password
+                                </button>
+                            </td>
+                        @endif
                     </tr>
                 @empty
-                    <tr><td colspan="4" class="px-4 py-10 text-center text-ink-faint text-sm">No users yet.</td></tr>
+                    <tr><td colspan="6" class="px-4 py-10 text-center text-ink-faint text-sm">No users yet.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -49,7 +62,8 @@
 
     <div class="md:hidden space-y-3 mb-8">
         @forelse ($users as $user)
-            <a href="{{ route('users.show', $user) }}" class="block bg-surface border border-line rounded-2xl p-4">
+            <div class="bg-surface border border-line rounded-2xl">
+            <a href="{{ route('users.show', $user) }}" class="block p-4">
                 <div class="flex items-center justify-between mb-1">
                     <span class="font-medium text-ink">{{ $user->name }}</span>
                     <span class="font-mono text-xs font-semibold px-2 py-0.5 rounded-full {{ $user->is_active ? 'bg-success-soft text-success' : 'bg-pill-bg text-pill-ink' }}">
@@ -65,6 +79,15 @@
                     @endforelse
                 </div>
             </a>
+            @if ($isAdmin)
+                <div class="border-t border-line px-4 py-2.5">
+                    <button type="button" @click="$dispatch('open-panel', 'user-password-{{ $user->id }}')" class="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-muted hover:text-accent-ink">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.03 5.91c-.56-.1-1.16.02-1.56.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.82c0-.6.24-1.17.66-1.59l6.41-6.41c.41-.4.53-1 .43-1.56A6 6 0 1 1 21.75 8.25Z" /></svg>
+                        Change password
+                    </button>
+                </div>
+            @endif
+            </div>
         @empty
             <div class="bg-surface border border-line rounded-2xl p-10 text-center text-ink-faint text-sm">No users yet.</div>
         @endforelse
@@ -166,6 +189,65 @@
         @endif
     @endforeach
 
+    {{-- One "Change password" panel per user (Admin only). The Admin's own
+         asks for the current password, and the new one isn't temporary. --}}
+    @if ($isAdmin)
+        @foreach ($users as $user)
+            @php
+                $bag = $errors->getBag("setPassword{$user->id}");
+                $isSelf = $user->id === auth()->id();
+            @endphp
+            <x-slide-panel name="user-password-{{ $user->id }}" :title="$isSelf ? 'Change my password' : 'Change password'" :open="$bag->any()">
+                {{-- The policy is checked live: Change password stays disabled until
+                     every rule the browser can check passes and both entries match.
+                     UserController::setPassword() re-checks everything on save. --}}
+                <form method="POST" action="{{ route('users.setPassword', $user) }}" class="space-y-4" novalidate
+                    x-data="{ current: '', pw: '', confirm: '', policyOk: false, needsCurrent: @js($isSelf) }"
+                    x-on:password-validity="policyOk = $event.detail.ok">
+                    @csrf
+                    @method('PUT')
+                    <div class="rounded-xl bg-surface-2 px-3 py-2.5">
+                        <div class="text-sm font-medium text-ink">{{ $user->name }}{{ $isSelf ? ' (you)' : '' }}</div>
+                        <div class="text-xs text-ink-faint">{{ $user->email }}</div>
+                    </div>
+                    @if ($isSelf)
+                        <div>
+                            <x-input-label for="pw_{{ $user->id }}_current" value="Current password" />
+                            <x-password-input id="pw_{{ $user->id }}_current" name="current_password" autocomplete="current-password" required x-model="current" />
+                            <x-input-error :messages="$bag->get('current_password')" class="mt-1.5" />
+                        </div>
+                    @endif
+                    <div>
+                        <x-input-label for="pw_{{ $user->id }}" value="New password" />
+                        <x-password-input id="pw_{{ $user->id }}" name="password" autocomplete="new-password" required :requirements="true" x-model="pw" />
+                        <x-input-error :messages="$bag->get('password')" class="mt-1.5" />
+                    </div>
+                    <div>
+                        <x-input-label for="pw_{{ $user->id }}_confirmation" value="Confirm password" />
+                        <x-password-input id="pw_{{ $user->id }}_confirmation" name="password_confirmation" autocomplete="new-password" required x-model="confirm" />
+                        <p x-show="confirm !== '' && confirm !== pw" x-cloak class="mt-1.5 text-xs text-critical">The passwords don't match yet.</p>
+                        <p x-show="confirm !== '' && confirm === pw" x-cloak class="mt-1.5 text-xs text-emerald-600">Passwords match.</p>
+                    </div>
+                    <ul class="rounded-xl border border-line px-3 py-2.5 text-xs text-ink-muted space-y-1">
+                        @if ($isSelf)
+                            <li>• This becomes your password straight away. You stay signed in here.</li>
+                        @else
+                            <li>• This password is temporary: they'll choose their own at next login.</li>
+                            <li>• They'll be signed out of every device right away.</li>
+                        @endif
+                    </ul>
+                    <div class="flex items-center gap-3">
+                        <x-primary-button
+                            x-bind:disabled="! (policyOk && pw !== '' && pw === confirm && (! needsCurrent || current !== ''))"
+                            class="disabled:opacity-50 disabled:cursor-not-allowed">Change password</x-primary-button>
+                        <button type="button" @click="open = false" class="text-sm text-ink-muted hover:text-ink">Cancel</button>
+                    </div>
+                    <p x-show="! (policyOk && pw !== '' && pw === confirm)" class="text-xs text-ink-faint">Meet the password policy above and confirm the password to continue.</p>
+                </form>
+            </x-slide-panel>
+        @endforeach
+    @endif
+
     <x-slide-panel name="user-create" title="New User" :error-fields="['name', 'email', 'phone', 'password', 'roles']">
         <form method="POST" action="{{ route('users.store') }}" class="space-y-4">
             @csrf
@@ -185,14 +267,15 @@
                 <x-input-error :messages="$errors->get('phone')" class="mt-1.5" />
             </div>
             <div>
-                <x-input-label for="password" value="Password" />
-                <x-text-input id="password" name="password" type="password" class="block w-full" autocomplete="new-password" required />
+                <x-input-label for="password" value="Temporary password" />
+                <x-password-input id="password" name="password" autocomplete="new-password" required :requirements="true" />
                 <x-input-error :messages="$errors->get('password')" class="mt-1.5" />
             </div>
             <div>
                 <x-input-label for="password_confirmation" value="Confirm password" />
-                <x-text-input id="password_confirmation" name="password_confirmation" type="password" class="block w-full" autocomplete="new-password" required />
+                <x-password-input id="password_confirmation" name="password_confirmation" autocomplete="new-password" required />
             </div>
+            <p class="text-xs text-ink-faint">They'll be asked to choose their own password at first login.</p>
             <div>
                 <x-input-label value="Roles" />
                 <div class="flex flex-wrap gap-3 mt-1">

@@ -174,6 +174,139 @@ class CollectionPaymentTimingTest extends TestCase
         $this->assertSame('collection', $order->fresh()->status);
     }
 
+    /** A completed order on the next unused visit of $first's cycle. */
+    protected function nextVisitOrder(Order $first): Order
+    {
+        $collection = $first->collection->subscription->collections()->where('status', 'scheduled')->orderBy('id')->firstOrFail();
+        $collection->update(['status' => 'collected', 'collected_at' => now()]);
+
+        return $this->complete(Order::create([
+            'order_number' => Numbering::nextOrderNumber(),
+            'customer_id' => $first->customer_id,
+            'collection_id' => $collection->id,
+            'order_source' => 'subscription',
+            'subtotal' => 0,
+        ]));
+    }
+
+    // ---- Last collection of a cycle: order AND cycle ----------------------------
+
+    public function test_the_last_visit_with_an_overage_charge_must_also_pay_the_cycle(): void
+    {
+        $order = $this->subscriptionOrder(visits: 1, overage: 40);
+
+        // Only the 40 overage: refused -- the 500 cycle fee is still owed.
+        $this->collect($order, ['payment_timing' => 'now', 'amount' => 40, 'method' => 'cash'])
+            ->assertSessionHasErrors('amount');
+        $this->assertSame('completed', $order->fresh()->status);
+        $this->assertDatabaseCount('payments', 0);
+
+        // 540 covers both, split order first then cycle.
+        $this->collect($order, ['payment_timing' => 'now', 'amount' => 540, 'method' => 'cash'])
+            ->assertSessionHasNoErrors();
+
+        $order = $order->fresh();
+        $this->assertSame('collection', $order->status);
+        $this->assertEquals(0, $order->balanceDue());
+        $this->assertEquals(0, $order->subscriptionCycle()->balanceDue());
+        $this->assertEquals(40, (float) $order->payments()->sum('amount'));
+        $this->assertEquals(500, (float) $order->subscriptionCycle()->payments()->sum('amount'));
+    }
+
+    public function test_store_credit_is_split_order_first_then_cycle(): void
+    {
+        $order = $this->subscriptionOrder(visits: 1, overage: 40);
+        $order->customer->creditTransactions()->create(['type' => 'credit', 'amount' => 100, 'balance_after' => 100]);
+
+        $this->collect($order, ['payment_timing' => 'now', 'credit_applied' => 100, 'amount' => 440, 'method' => 'wave'])
+            ->assertSessionHasNoErrors();
+
+        $orderPayment = $order->payments()->firstOrFail();
+        $cyclePayment = $order->fresh()->subscriptionCycle()->payments()->firstOrFail();
+
+        $this->assertEquals(40, (float) $orderPayment->credit_applied, 'The order takes the credit first...');
+        $this->assertSame('store_credit', $orderPayment->method);
+        $this->assertEquals(60, (float) $cyclePayment->credit_applied, '...and the rest of the credit goes to the cycle.');
+        $this->assertEquals(500, (float) $cyclePayment->amount);
+        $this->assertSame('wave', $cyclePayment->method);
+        $this->assertEquals(0, (float) $order->customer->fresh()->store_credit_balance);
+    }
+
+    public function test_more_store_credit_than_the_customer_has_is_refused(): void
+    {
+        $order = $this->subscriptionOrder(visits: 1);
+
+        $this->collect($order, ['payment_timing' => 'now', 'credit_applied' => 500, 'amount' => 0])
+            ->assertSessionHasErrors('credit_applied');
+
+        $this->assertSame('completed', $order->fresh()->status);
+    }
+
+    public function test_a_non_final_visit_needs_only_its_own_charge_but_may_pay_toward_the_cycle(): void
+    {
+        $order = $this->subscriptionOrder(visits: 2, overage: 40);
+
+        // 140: 40 to the order, the other 100 toward the cycle.
+        $this->collect($order, ['payment_timing' => 'now', 'amount' => 140, 'method' => 'cash'])
+            ->assertSessionHasNoErrors();
+
+        $order = $order->fresh();
+        $this->assertSame('collection', $order->status);
+        $this->assertEquals(0, $order->balanceDue());
+        $this->assertEquals(400, $order->subscriptionCycle()->balanceDue());
+    }
+
+    public function test_paying_more_than_the_order_and_cycle_owe_is_refused(): void
+    {
+        $order = $this->subscriptionOrder(visits: 2, overage: 40);
+
+        $this->collect($order, ['payment_timing' => 'now', 'amount' => 600, 'method' => 'cash'])
+            ->assertSessionHasErrors('amount');
+
+        $this->assertSame('completed', $order->fresh()->status);
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_with_two_orders_waiting_only_the_second_pickup_is_the_last(): void
+    {
+        $first = $this->subscriptionOrder(visits: 2);
+        $second = $this->nextVisitOrder($first);
+
+        $this->collect($first, ['payment_timing' => 'later'])->assertSessionHasNoErrors();
+        $this->assertSame('collection', $first->fresh()->status);
+
+        $this->collect($second, ['payment_timing' => 'later'])->assertSessionHasErrors('payment_timing');
+        $this->assertSame('completed', $second->fresh()->status);
+    }
+
+    public function test_cancelled_remaining_visits_make_this_the_last_collection(): void
+    {
+        $order = $this->subscriptionOrder(visits: 3);
+        $order->collection->subscription->collections()->where('status', 'scheduled')
+            ->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+
+        $this->collect($order, ['payment_timing' => 'later'])->assertSessionHasErrors('payment_timing');
+    }
+
+    public function test_a_cancelled_subscription_makes_this_the_last_collection(): void
+    {
+        $order = $this->subscriptionOrder(visits: 3);
+        $this->post(route('subscriptions.cancel', $order->collection->subscription));
+
+        $this->collect($order, ['payment_timing' => 'later'])->assertSessionHasErrors('payment_timing');
+    }
+
+    public function test_the_panel_shows_both_amounts_on_the_last_visit(): void
+    {
+        $order = $this->subscriptionOrder(visits: 1, overage: 40);
+
+        $this->get(route('orders.show', $order))
+            ->assertOk()
+            ->assertSeeInOrder(['Order extra charge', 'GMD 40.00', 'Subscription cycle balance', 'GMD 500.00', 'Due to collect', 'GMD 540.00'])
+            ->assertSee('One payment is split automatically: the order first, then the cycle.')
+            ->assertSee('Last collection of this cycle, so everything still owed must be paid in full.');
+    }
+
     public function test_the_panel_greys_out_pay_later_only_when_payment_is_required(): void
     {
         $payLaterDisabled = fn (string $html) => (bool) preg_match('/value="later"[^>]*\sdisabled/', $html);

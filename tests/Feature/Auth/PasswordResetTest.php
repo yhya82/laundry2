@@ -59,8 +59,10 @@ class PasswordResetTest extends TestCase
             $response = $this->post('/reset-password', [
                 'token' => $notification->token,
                 'email' => $user->email,
-                'password' => 'password',
-                'password_confirmation' => 'password',
+                // Not the factory's 'password' -- reusing the current one is
+                // blocked by the password-history rule.
+                'password' => 'a-brand-new-password',
+                'password_confirmation' => 'a-brand-new-password',
             ]);
 
             $response

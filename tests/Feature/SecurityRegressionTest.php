@@ -183,14 +183,25 @@ class SecurityRegressionTest extends TestCase
         $response->assertSessionHasErrors('permissions');
         $this->assertFalse($anotherRole->fresh()->hasPermissionTo('users.manage'));
 
-        // Cannot reset an Admin's password.
+        // Cannot change ANY password -- that's Admin-role only now (Security
+        // Center), not just users.manage. Admins' and everyone else's alike.
         $admin = User::factory()->create();
         $admin->syncRoles(['Admin']);
-        $response = $this->put(route('users.setPassword', $admin), [
+        $adminHash = $admin->password;
+        $victimHash = $victim->fresh()->password;
+
+        $this->put(route('users.setPassword', $admin), [
             'password' => 'newpassword123',
             'password_confirmation' => 'newpassword123',
-        ]);
-        $response->assertSessionHasErrors('user');
+        ])->assertForbidden();
+
+        $this->put(route('users.setPassword', $victim), [
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertForbidden();
+
+        $this->assertSame($adminHash, $admin->fresh()->password);
+        $this->assertSame($victimHash, $victim->fresh()->password);
     }
 
     public function test_an_admin_can_still_do_all_of_the_above(): void
@@ -207,11 +218,19 @@ class SecurityRegressionTest extends TestCase
         $response->assertSessionDoesntHaveErrors();
         $this->assertTrue($victim->fresh()->hasRole('Admin'));
 
-        $response = $this->put(route('users.setPassword', $admin), [
+        // Another Admin's password: allowed.
+        $response = $this->put(route('users.setPassword', $victim), [
             'password' => 'newpassword123',
             'password_confirmation' => 'newpassword123',
         ]);
         $response->assertSessionDoesntHaveErrors();
+        $this->assertTrue($victim->fresh()->must_change_password);
+
+        // Their OWN password needs their current one, like Profile.
+        $this->put(route('users.setPassword', $admin), [
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertSessionHasErrorsIn("setPassword{$admin->id}", 'current_password');
     }
 
     /**

@@ -119,10 +119,11 @@
     |   Their own outstanding balance must be paid.
     |
     | Subscription orders:
-    |   Any order-specific balance must be paid.
-    |   The shared cycle fee is not required for non-final collections.
-    |   The shared cycle fee must be settled for the final scheduled
-    |   collection.
+    |   Any order-specific balance (e.g. an overage charge) must be paid.
+    |   The shared cycle fee is optional on non-final collections.
+    |   On the LAST collection of the cycle, the order's balance AND the
+    |   remaining cycle fee must both be paid (same rule as
+    |   OrderController::advanceToCollection()).
     |
     */
 
@@ -133,17 +134,10 @@
         && $collection !== null
         && $cycle->isLastScheduledCollection($collection);
 
-    $collectionPayableDue = 0;
+    $collectionCycleDue = $order->status !== 'cancelled' ? ($cycle?->balanceDue() ?? 0) : 0;
+    $collectionOrderDue = $order->status !== 'cancelled' ? $orderDue : 0;
 
-    if ($order->status !== 'cancelled') {
-        if ($orderDue > 0) {
-            // Order-specific debt must always be settled first.
-            $collectionPayableDue = $orderDue;
-        } elseif ($isFinalSubscriptionCollection) {
-            // The cycle fee is required only for the final collection.
-            $collectionPayableDue = $cycle->balanceDue();
-        }
-    }
+    $collectionPayableDue = round($collectionOrderDue + ($isFinalSubscriptionCollection ? $collectionCycleDue : 0), 2);
 
     /*
     |--------------------------------------------------------------------------
@@ -898,20 +892,45 @@
                             enforces the same rules server-side.
                         --}}
                         @php
-                            $collectDue = $order->status === 'cancelled' ? 0 : ($orderDue > 0 ? $orderDue : ($cycle?->balanceDue() ?? 0));
+                            // Everything that CAN be paid here (order + cycle); what MUST
+                            // be paid is $collectionPayableDue (order, plus the cycle on the last visit).
+                            $collectDue = round($collectionOrderDue + $collectionCycleDue, 2);
                             $mustPayAtCollection = $collectionPayableDue > 0;
-                            $mustPayReason = $orderDue > 0
-                                ? ($isSubscription ? 'This order has its own extra charge, so it must be paid in full to collect.' : 'Must be paid in full to collect.')
-                                : 'Last collection of this cycle, so it must be paid in full.';
+                            $mustPayReason = match (true) {
+                                $isFinalSubscriptionCollection => 'Last collection of this cycle, so everything still owed must be paid in full.',
+                                $isSubscription => 'This order has its own extra charge, so it must be paid in full to collect.',
+                                default => 'Must be paid in full to collect.',
+                            };
                             $initialTiming = $mustPayAtCollection ? 'now' : old('payment_timing', 'now');
                         @endphp
 
                         <div class="border-t border-line pt-4 space-y-4" x-data="{ timing: @js($initialTiming) }">
                             @if ($collectDue > 0)
-                                <p class="text-sm text-ink-muted">
-                                    {{ $orderDue > 0 ? 'Order balance due:' : 'Subscription cycle balance due:' }}
-                                    <span class="font-mono text-critical font-bold">GMD {{ number_format($collectDue, 2) }}</span>
-                                </p>
+                                {{-- What's owed, broken down when both the order and the cycle owe something. --}}
+                                <div class="rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm space-y-1">
+                                    @if ($collectionOrderDue > 0)
+                                        <div class="flex justify-between gap-3">
+                                            <span class="text-ink-muted">{{ $isSubscription ? 'Order extra charge' : 'Order balance' }}</span>
+                                            <span class="font-mono tabular-nums text-ink">GMD {{ number_format($collectionOrderDue, 2) }}</span>
+                                        </div>
+                                    @endif
+                                    @if ($collectionCycleDue > 0)
+                                        <div class="flex justify-between gap-3">
+                                            <span class="text-ink-muted">Subscription cycle balance{{ $isFinalSubscriptionCollection ? '' : ' (optional now)' }}</span>
+                                            <span class="font-mono tabular-nums text-ink">GMD {{ number_format($collectionCycleDue, 2) }}</span>
+                                        </div>
+                                    @endif
+                                    <div class="flex justify-between gap-3 border-t border-line pt-1.5 font-semibold">
+                                        <span class="text-ink">{{ $mustPayAtCollection ? 'Due to collect' : 'Owed' }}</span>
+                                        <span class="font-mono tabular-nums text-critical">GMD {{ number_format($mustPayAtCollection ? $collectionPayableDue : $collectDue, 2) }}</span>
+                                    </div>
+                                    @if ($mustPayAtCollection && $collectDue > $collectionPayableDue)
+                                        <p class="text-xs text-ink-faint">Up to GMD {{ number_format($collectDue, 2) }} can be paid now, including the rest of the cycle.</p>
+                                    @endif
+                                    @if ($collectionOrderDue > 0 && $collectionCycleDue > 0)
+                                        <p class="text-xs text-ink-faint">One payment is split automatically: the order first, then the cycle.</p>
+                                    @endif
+                                </div>
 
                                 <div>
                                     <x-input-label value="Payment" />

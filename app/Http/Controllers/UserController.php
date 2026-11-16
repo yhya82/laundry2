@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreUserRequest;
 use App\Models\ActivityLog;
+use App\Models\LoginEvent;
 use App\Models\User;
+use App\Rules\NotRecentlyUsedPassword;
 use App\Support\PhoneNumber;
+use App\Support\SessionRevoker;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -21,8 +24,10 @@ class UserController extends Controller
         $users = User::with('roles')->orderBy('name')->paginate(15);
         $roles = Role::with('permissions')->orderBy('name')->get();
         $permissionsByModule = Permission::orderBy('name')->get()->groupBy('module');
+        // Password changes are Admin-only, even if users.manage is delegated.
+        $isAdmin = auth()->user()->hasRole('Admin');
 
-        return view('users.index', compact('users', 'roles', 'permissionsByModule'));
+        return view('users.index', compact('users', 'roles', 'permissionsByModule', 'isAdmin'));
     }
 
     public function show(User $user): View
@@ -51,23 +56,60 @@ class UserController extends Controller
         return back()->with('status', 'User details updated.');
     }
 
+    /**
+     * Admin-only (the route also requires the Admin role, not just
+     * users.manage -- so even if users.manage is delegated to another role,
+     * only Admins can change passwords). Used from the Users list and the
+     * user's own page.
+     *
+     * The new password is TEMPORARY: the user must choose their own at next
+     * login. All their devices are signed out (including "Remember me"), and
+     * the change is logged in the Security Center. An Admin changes their
+     * OWN password on Profile, which asks for the current one.
+     */
     public function setPassword(Request $request, User $user): RedirectResponse
     {
-        // users.manage is currently Admin-only, so this is a no-op today --
-        // it's here so that if users.manage is ever delegated to a lesser
-        // role, that role still can't take over an Admin account by resetting
-        // its password.
-        if ($user->hasRole('Admin') && ! auth()->user()->hasRole('Admin')) {
-            return back()->withErrors(['user' => 'Only an Admin can reset another Admin\'s password.']);
+        abort_unless(auth()->user()->hasRole('Admin'), 403, 'Only an Admin can change passwords.');
+
+        // Their OWN password, from their own row: same safeguards as
+        // Profile -- the current password is required (so an unattended
+        // screen can't be used to take the account), and the new password
+        // is theirs, not temporary. This device stays signed in.
+        if ($user->id === auth()->id()) {
+            $validated = $request->validateWithBag("setPassword{$user->id}", [
+                'current_password' => ['required', 'current_password'],
+                'password' => ['required', 'confirmed', Password::defaults(), new NotRecentlyUsedPassword($user)],
+            ], [
+                'current_password.required' => 'Enter your current password.',
+                'current_password.current_password' => 'That isn\'t your current password.',
+            ]);
+
+            $user->forceFill([
+                'password' => $validated['password'],
+                'must_change_password' => false,
+            ])->save();
+
+            return back()->with('status', 'Your password was changed.');
         }
 
-        $validated = $request->validate([
-            'password' => ['required', 'confirmed', Password::defaults()],
+        $validated = $request->validateWithBag("setPassword{$user->id}", [
+            'password' => ['required', 'confirmed', Password::defaults(), new NotRecentlyUsedPassword($user)],
         ]);
 
-        $user->update(['password' => $validated['password']]);
+        $user->forceFill([
+            'password' => $validated['password'],
+            'must_change_password' => true,
+        ])->save();
 
-        return back()->with('status', "Password updated for {$user->name}.");
+        SessionRevoker::revokeUser($user);
+
+        LoginEvent::record('password_reset_by_admin', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'actor_id' => auth()->id(),
+        ]);
+
+        return back()->with('status', "Password changed for {$user->name}. They'll be asked to choose a new one at next login.");
     }
 
     /**
@@ -96,6 +138,10 @@ class UserController extends Controller
             'phone' => $validated['phone'],
             'password' => $validated['password'],
         ]);
+
+        // The Admin typed this password, so it's temporary: the new user
+        // chooses their own at first login (EnforcePasswordPolicy).
+        $user->forceFill(['must_change_password' => true])->saveQuietly();
 
         $user->syncRoles($validated['roles']);
 
