@@ -6,17 +6,19 @@ use App\Events\SubscriptionStatusChanged;
 use App\Http\Requests\StoreSubscriptionRequest;
 use App\Http\Requests\UpdateSubscriptionRequest;
 use App\Models\Customer;
-use App\Services\CustomerBalanceService;
 use App\Models\Setting;
 use App\Models\Subscription;
+use App\Models\SubscriptionCycle;
 use App\Models\SubscriptionPackage;
+use App\Services\CustomerBalanceService;
 use App\Support\CollectionScheduler;
 use Carbon\Carbon;
+use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class SubscriptionController extends Controller
@@ -44,158 +46,234 @@ class SubscriptionController extends Controller
         return view('subscriptions.create', compact('eligibleCustomers', 'packages', 'customerId'));
     }
 
-  
-    public function store( StoreSubscriptionRequest $request,CustomerBalanceService $balanceService): RedirectResponse {
-    if (Setting::get('subscription.allow_new_signups', 'true') !== 'true') {
-        return back()->withErrors([
-            'subscription' => 'New subscription sign-ups are currently disabled in Settings.',
-        ]);
-    }
-
-    try {
-        $subscription = DB::transaction(function () use (
-            $request,
-            $balanceService
-        ) {
-            // Lock the customer row before checking their balance.
-            $customer = Customer::query()
-                ->whereKey($request->validated('customer_id'))
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            // Check the customer's overall outstanding balance.
-            if ($balanceService->hasOutstandingBalance($customer)) {
-                return null;
-            }
-
-            // Create the subscription only after the balance check passes.
-            $subscription = Subscription::create(
-                $request->validated()
-            );
-
-            CollectionScheduler::scheduleFirstCycle($subscription);
-
-            return $subscription;
-        });
-    } catch (QueryException $e) {
-        return back()
-            ->withInput()
-            ->withErrors([
-                'customer_id' => 'Cancel the existing subscription before creating a new one.',
+    public function store(StoreSubscriptionRequest $request, CustomerBalanceService $balanceService): RedirectResponse
+    {
+        if (Setting::get('subscription.allow_new_signups', 'true') !== 'true') {
+            return back()->withErrors([
+                'subscription' => 'New subscription sign-ups are currently disabled in Settings.',
             ]);
-    }
+        }
 
-    // A null result means the customer has an outstanding balance.
-    if (! $subscription) {
-        return redirect()
-            ->route('customers.show', $request->validated('customer_id'))
-            ->withErrors([
-                'subscription' => 'This customer has an outstanding balance. Please settle it before creating a new subscription.',
-            ]);
-    }
+        try {
+            $subscription = DB::transaction(function () use ($request, $balanceService) {
+                // Lock the customer row before checking their balance.
+                $customer = Customer::query()
+                    ->whereKey($request->validated('customer_id'))
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-    // Return to the Terminal when the request originated there.
-    if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
+                if ($balanceService->hasOutstandingBalance($customer)) {
+                    return null;
+                }
+
+                $subscription = Subscription::create($request->validated());
+
+                // Also sets end_date for a scheduled subscription (its last
+                // collection date) -- see CollectionScheduler.
+                CollectionScheduler::scheduleFirstCycle($subscription);
+
+                return $subscription;
+            });
+        } catch (QueryException $e) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'customer_id' => 'Cancel the existing subscription before creating a new one.',
+                ]);
+        }
+
+        // A null result means the customer has an outstanding balance.
+        if (! $subscription) {
+            return redirect()
+                ->route('customers.show', $request->validated('customer_id'))
+                ->withErrors([
+                    'subscription' => 'This customer has an outstanding balance. Please settle it before creating a new subscription.',
+                ]);
+        }
+
+        // Return to the Terminal when the request originated there.
+        if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
+            return redirect()
+                ->route('orders.create', ['customer' => $redirectCustomerId])
+                ->with('status', 'Subscription created.');
+        }
+
+        if ($request->boolean('return_to_profile')) {
+            return redirect()
+                ->route('customers.show', $subscription->customer_id)
+                ->with('status', 'Subscription created.');
+        }
+
         return redirect()
-            ->route('orders.create', [
-                'customer' => $redirectCustomerId,
-            ])
+            ->route('subscriptions.show', $subscription)
             ->with('status', 'Subscription created.');
     }
-
-    if ($request->boolean('return_to_profile')) {
-        return redirect()
-            ->route('customers.show', $subscription->customer_id)
-            ->with('status', 'Subscription created.');
-    }
-
-    return redirect()
-        ->route('subscriptions.show', $subscription)
-        ->with('status', 'Subscription created.');
-}
-
-
 
     /**
-     * Only allowed while the current cycle has no collected visit yet.
-     * Covers package, end date, collections_per_month, collection_type and
-     * max_clothes_per_cycle -- this replaces the old standalone
-     * updateCollectionType() action entirely, folding collection-type
-     * changes into this same single edit instead of two separate places to
-     * change a subscription (same guard, same delete+regenerate approach
-     * that action used for collections).
+     * Only for an active subscription that has never had a visit collected,
+     * in any cycle (see Subscription::editBlockedReason()). After that, the
+     * plan only changes through Renew.
      *
-     * start_date is deliberately NOT editable here -- subscriptions.start_date
-     * is the historical anchor of the subscription's first cycle only; once
-     * it's renewed even once, the current cycle's own starts_on has already
-     * moved past that date, so there's no single "start date" left that's
-     * safe to edit through this form without silently drifting the two out
-     * of sync (a change to the current cycle's starts_on if it needed to be
-     * moved would belong on the cycle itself, not the subscription).
+     * Covers package, collections_per_month, collection_type and
+     * max_clothes_per_cycle. start_date and end_date are not editable:
+     * end_date follows the schedule for a scheduled subscription and is
+     * left untouched for a non-scheduled one.
      *
-     * Since nothing's been collected yet, the current cycle is still
-     * "fresh" -- rather than patching individual snapshot fields, a change
-     * to collections_per_month or collection_type regenerates the cycle's
-     * collections from scratch, anchored on the cycle's own existing
-     * starts_on (the cycle row itself is only ever UPDATEd, never
-     * deleted+recreated: the app's DB user has no DELETE privilege on
-     * subscription_cycles, only on collections). A change to just the
-     * package or max_clothes_per_cycle alone refreshes the cycle's
-     * snapshots in place, since there's no schedule to regenerate for those.
+     * Only a change to collections_per_month or collection_type rebuilds the
+     * current cycle's collections (anchored on its own starts_on). A package
+     * or clothes-cap change alone refreshes the cycle's snapshots in place
+     * and leaves its collections -- including any cancelled ones -- alone.
+     * The cycle row itself is only ever UPDATEd: the app's DB user has no
+     * DELETE privilege on subscription_cycles.
+     *
+     * A package change on a cycle that's already been paid: what was paid
+     * counts toward the new price, and anything paid beyond it is refunded
+     * to the customer's store credit (moveCycleOverpaymentToCredit()).
      */
     public function update(UpdateSubscriptionRequest $request, Subscription $subscription): RedirectResponse
     {
         $validated = $request->validated();
-        $currentCycle = $subscription->cycles()->latest('starts_on')->first();
 
-        if ($currentCycle && $currentCycle->collections()->where('status', 'collected')->exists()) {
-            return back()->withErrors(['subscription' => 'This subscription already has a collected visit,it can no longer be edited.']);
-        }
+        // Request input arrives as strings; cast before comparing against
+        // the model's integer casts, or every save looks like a change.
+        $collectionsPerMonth = (int) $validated['collections_per_month'];
+        $maxClothesPerCycle = (int) $validated['max_clothes_per_cycle'];
+        $collectionType = $validated['collection_type'];
 
-        $needsReschedule = $validated['collections_per_month'] !== $subscription->collections_per_month
-            || $validated['collection_type'] !== $subscription->collection_type;
+        $result = DB::transaction(function () use ($subscription, $validated, $collectionsPerMonth, $maxClothesPerCycle, $collectionType) {
+            // Locked so a collection recorded at the Terminal can't slip in
+            // between the edit check and the rebuild below.
+            $locked = Subscription::query()
+                ->whereKey($subscription->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        DB::transaction(function () use ($subscription, $currentCycle, $validated, $needsReschedule) {
-            $subscription->update($validated);
-
-            if (! $currentCycle) {
-                CollectionScheduler::scheduleCycle($subscription, Carbon::parse($subscription->start_date));
-
-                return;
+            if ($reason = $locked->editBlockedReason()) {
+                return ['error' => $reason];
             }
 
-            if ($needsReschedule) {
-                $startsOn = Carbon::parse($currentCycle->starts_on);
+            $currentCycle = $locked->cycles()->latest('id')->lockForUpdate()->first();
 
-                $currentCycle->collections()->delete();
+            $needsReschedule = $collectionsPerMonth !== (int) $locked->collections_per_month
+                || $collectionType !== $locked->collection_type;
 
-                $currentCycle->update([
-                    'ends_on' => null,
-                    'monthly_price_snapshot' => $subscription->subscriptionPackage->monthly_price,
-                    'max_clothes_snapshot' => $validated['max_clothes_per_cycle'],
-                ]);
+            $locked->update([
+                'subscription_package_id' => $validated['subscription_package_id'],
+                'collections_per_month' => $collectionsPerMonth,
+                'collection_type' => $collectionType,
+                'max_clothes_per_cycle' => $maxClothesPerCycle,
+            ]);
 
-                CollectionScheduler::generateCollections($subscription, $currentCycle, $subscription->collection_type, $startsOn, max(1, $validated['collections_per_month']));
+            $locked->refresh();
 
-                return;
+            if (! $currentCycle) {
+                CollectionScheduler::scheduleCycle($locked, Carbon::parse($locked->start_date));
+
+                return ['credited' => 0.0];
             }
 
             $currentCycle->update([
-                'monthly_price_snapshot' => $subscription->subscriptionPackage->monthly_price,
-                'max_clothes_snapshot' => $validated['max_clothes_per_cycle'],
+                'monthly_price_snapshot' => $locked->subscriptionPackage->monthly_price,
+                'max_clothes_snapshot' => $maxClothesPerCycle,
             ]);
+
+            if ($needsReschedule) {
+                // Safe: editBlockedReason() guarantees nothing in this
+                // subscription has been collected, so no collection here has
+                // an order attached.
+                $currentCycle->collections()->delete();
+
+                CollectionScheduler::generateCollections(
+                    $locked,
+                    $currentCycle,
+                    $collectionType,
+                    Carbon::parse($currentCycle->starts_on),
+                    max(1, $collectionsPerMonth)
+                );
+            }
+
+            return ['credited' => $this->moveCycleOverpaymentToCredit($currentCycle->fresh(), $locked->customer)];
         });
 
-        return back()->with('status', 'Subscription updated.');
+        if (isset($result['error'])) {
+            return back()->withErrors(['subscription' => $result['error']]);
+        }
+
+        $message = 'Subscription updated.';
+
+        if ($result['credited'] > 0) {
+            $message .= ' GMD '.number_format($result['credited'], 2).' paid above the new package price was moved to store credit.';
+        }
+
+        return back()->with('status', $message);
     }
 
-    public function show(Subscription $subscription): View
+    /**
+     * After a package change, a cycle can hold more money than its new
+     * price. The excess goes back to the customer as store credit: refunds
+     * are recorded against the cycle's payments (newest first) so the
+     * cycle's net paid amount drops to its new price, and one matching
+     * credit is added to the store-credit ledger. The refund and credit
+     * triggers keep payment status and the customer's balance in step.
+     */
+    protected function moveCycleOverpaymentToCredit(SubscriptionCycle $cycle, Customer $customer): float
+    {
+        $excess = round($cycle->amountPaid() - (float) $cycle->monthly_price_snapshot, 2);
+
+        if ($excess <= 0) {
+            return 0.0;
+        }
+
+        $remaining = $excess;
+
+        $payments = $cycle->payments()
+            ->where('status', '!=', 'refunded')
+            ->latest('id')
+            ->get();
+
+        foreach ($payments as $payment) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $refundAmount = round(min($remaining, $payment->remainingRefundable()), 2);
+
+            if ($refundAmount <= 0) {
+                continue;
+            }
+
+            $payment->refunds()->create([
+                'amount' => $refundAmount,
+                'reason' => 'Package changed: amount above the new price moved to store credit',
+                'refunded_by' => auth()->id(),
+            ]);
+
+            $remaining = round($remaining - $refundAmount, 2);
+        }
+
+        $credited = round($excess - $remaining, 2);
+
+        if ($credited > 0) {
+            $customer->creditTransactions()->create([
+                'type' => 'credit',
+                'amount' => $credited,
+                'reference_type' => 'subscription_cycle',
+                'reference_id' => $cycle->id,
+                'notes' => 'Package changed: overpayment on the cycle moved to store credit',
+                'created_by' => auth()->id(),
+            ]);
+        }
+
+        return $credited;
+    }
+
+    public function show(Subscription $subscription, CustomerBalanceService $balanceService): View
     {
         $subscription->load([
             'customer',
             'subscriptionPackage',
             'collections' => fn ($q) => $q->orderByDesc('scheduled_date'),
-            'cycles' => fn ($q) => $q->orderByDesc('starts_on'),
+            'cycles' => fn ($q) => $q->orderByDesc('id'),
         ]);
 
         $currentCycle = $subscription->cycles->first();
@@ -207,6 +285,14 @@ class SubscriptionController extends Controller
         $cycleCollectionsCompleted = $cycleCollections->where('status', 'collected')->count();
         $cycleCollectionsTotal = $cycleCollections->count();
         $packages = SubscriptionPackage::where('is_active', true)->orderBy('name')->get();
+        $canEdit = $subscription->isEditable();
+
+        // Renew is refused server-side while the customer owes anything
+        // (see renew()); checked here too so the page shows why up front
+        // instead of offering a Renew that will bounce.
+        $hasOutstandingBalance = $needsRenewal
+            && $subscription->customer
+            && $balanceService->hasOutstandingBalance($subscription->customer);
 
         return view('subscriptions.show', compact(
             'subscription',
@@ -215,6 +301,8 @@ class SubscriptionController extends Controller
             'cycleCollectionsCompleted',
             'cycleCollectionsTotal',
             'packages',
+            'canEdit',
+            'hasOutstandingBalance',
         ));
     }
 
@@ -232,35 +320,50 @@ class SubscriptionController extends Controller
     }
 
     /**
-     * Re-schedules the next collection if none is currently pending -- e.g.
-     * the subscription was paused right after its last collection completed,
-     * which left scheduleNext()'s status guard blocking a follow-up.
+     * Only reactivates the subscription. It never creates a cycle -- a new
+     * cycle only ever comes from Renew.
      */
     public function resume(Subscription $subscription): RedirectResponse
     {
-        if ($subscription->status !== 'paused') {
-            return back()->withErrors(['subscription' => 'Only a paused subscription can be resumed.']);
-        }
-
         try {
-            $subscription->update(['status' => 'active']);
+            DB::transaction(function () use ($subscription) {
+                // Lock the subscription to prevent concurrent resume operations.
+                $locked = Subscription::query()
+                    ->whereKey($subscription->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if ($locked->status !== 'paused') {
+                    throw ValidationException::withMessages([
+                        'subscription' => 'Only a paused subscription can be resumed.',
+                    ]);
+                }
+
+                $locked->update(['status' => 'active']);
+            }, 3);
         } catch (QueryException $e) {
-            return back()->withErrors(['subscription' => 'This customer has another subscription that\'s active or paused — cancel it before resuming this one.']);
+            // One active-or-paused subscription per customer is enforced by
+            // trg_subscriptions_one_active_guard_update, which raises
+            // SQLSTATE 45000 -- there's no unique index behind it.
+            if (($e->errorInfo[0] ?? null) === '45000' && str_contains($e->getMessage(), 'Cancel the existing subscription')) {
+                return back()->withErrors([
+                    'subscription' => 'This customer already has another active or paused subscription. Cancel it before resuming this one.',
+                ]);
+            }
+
+            throw $e;
         }
 
-        if (! $subscription->collections()->where('status', 'scheduled')->exists()) {
-            CollectionScheduler::scheduleNextCycle($subscription, now());
-        }
-
-        SubscriptionStatusChanged::dispatch($subscription);
+        // Notify listeners after the transaction has committed.
+        SubscriptionStatusChanged::dispatch($subscription->fresh());
 
         return back()->with('status', 'Subscription resumed.');
     }
 
     /**
-     * Terminal -- cancelling also skips any collection still pending since
-     * no further service is expected. Mirrors Order::cancel()'s one-way
-     * transition; a cancelled subscription cannot be resumed.
+     * Terminal -- cancelling also marks every collection still pending as
+     * subscription_cancelled, since no further service is expected. A
+     * cancelled subscription cannot be resumed.
      */
     public function cancel(Subscription $subscription): RedirectResponse
     {
@@ -280,103 +383,92 @@ class SubscriptionController extends Controller
     }
 
     /**
-     * Starts the next cycle -- the only way that happens now, for scheduled
-     * and non-scheduled subscriptions alike. Nothing auto-continues anymore
-     * once a cycle's collections are all resolved. The Renew modal lets
-     * staff change package/collection type/counts and pick the new cycle's
-     * start date, rather than just repeating the previous cycle unchanged.
+     * Starts the next cycle -- the only way that happens, for scheduled and
+     * non-scheduled subscriptions alike. Allowed only once the current cycle
+     * is exhausted. The new cycle always starts today, which may be the same
+     * day the previous one started. The Renew modal lets staff change
+     * package, collection type and counts.
      */
-
-public function renew(Request $request,Subscription $subscription,CustomerBalanceService $balanceService): RedirectResponse {
-    if ($subscription->status !== 'active') {
-        return back()->withErrors([
-            'subscription' => 'Only an active subscription can be renewed.',
-        ]);
-    }
-
-    $currentCycle = $subscription->cycles()
-        ->latest('starts_on')
-        ->first();
-
-    if ($currentCycle && ! $currentCycle->isExhausted()) {
-        return back()->withErrors([
-            'subscription' => 'This subscription still has open collections in its current cycle.',
-        ]);
-    }
-
-    $customer = $subscription->customer;
-
-    if (! $customer) {
-        return back()->withErrors([
-            'subscription' => 'The customer for this subscription could not be found.',
-        ]);
-    }
-
-    if ($balanceService->hasOutstandingBalance($customer)) {
-        return redirect()
-            ->route('customers.show', $customer->id)
-            ->withErrors([
-                'subscription' => 'This customer has an outstanding balance. Please settle it before renewing a subscription.',
-            ]);
-    }
-
-    $validated = $request->validate([
-        'subscription_package_id' => [
-            'required',
-            'exists:subscription_packages,id',
-        ],
-        'collection_type' => [
-            'required',
-            'in:scheduled,non_scheduled',
-        ],
-        'start_date' => [
-            'required',
-            'date',
-            Rule::unique('subscription_cycles', 'starts_on')
-                ->where('subscription_id', $subscription->id),
-        ],
-        'collections_per_month' => [
-            'required',
-            'integer',
-            'min:1',
-            'max:4',
-        ],
-        'max_clothes_per_cycle' => [
-            'required',
-            'integer',
-            'min:1',
-        ],
-    ], [
-        'start_date.unique' => 'This subscription already has a cycle starting on that date — pick a different date.',
-        'collections_per_month.min' => 'A subscription must have at least 1 collection per month.',
-        'collections_per_month.max' => 'A subscription cannot have more than 4 collections per month.',
-    ]);
-
-    DB::transaction(function () use ($subscription, $validated) {
-        $subscription->update([
-            'subscription_package_id' => $validated['subscription_package_id'],
-            'collection_type' => $validated['collection_type'],
-            'collections_per_month' => $validated['collections_per_month'],
-            'max_clothes_per_cycle' => $validated['max_clothes_per_cycle'],
+    public function renew(Request $request, Subscription $subscription, CustomerBalanceService $balanceService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'subscription_package_id' => ['required', 'exists:subscription_packages,id'],
+            'collection_type' => ['required', 'in:scheduled,non_scheduled'],
+            'collections_per_month' => ['required', 'integer', 'min:1', 'max:4'],
+            'max_clothes_per_cycle' => ['required', 'integer', 'min:1'],
+        ], [
+            'collections_per_month.min' => 'A subscription must have at least 1 collection per month.',
+            'collections_per_month.max' => 'A subscription cannot have more than 4 collections per month.',
         ]);
 
-        $subscription->refresh();
+        try {
+            $result = DB::transaction(function () use ($subscription, $validated, $balanceService) {
+                // Concurrent renewals of the same subscription serialize on
+                // this lock; the second one then finds the brand-new cycle
+                // not exhausted and is refused.
+                $locked = Subscription::query()
+                    ->whereKey($subscription->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-        CollectionScheduler::renew(
-            $subscription,
-            Carbon::parse($validated['start_date'])
-        );
-    });
+                if ($locked->status !== 'active') {
+                    throw new DomainException('Only an active subscription can be renewed.');
+                }
 
-    // Return to the Terminal when the request originated there.
-    if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
-        return redirect()
-            ->route('orders.create', [
-                'customer' => $redirectCustomerId,
-            ])
-            ->with('status', 'Subscription renewed for a new cycle.');
+                $currentCycle = $locked->cycles()->latest('id')->lockForUpdate()->first();
+
+                if ($currentCycle && ! $currentCycle->isExhausted()) {
+                    throw new DomainException('This subscription still has open collections in its current cycle.');
+                }
+
+                $customer = $locked->customer;
+
+                if (! $customer) {
+                    throw new DomainException('The customer for this subscription could not be found.');
+                }
+
+                if ($balanceService->hasOutstandingBalance($customer)) {
+                    return ['type' => 'balance', 'customer_id' => $customer->id];
+                }
+
+                $locked->update([
+                    'subscription_package_id' => $validated['subscription_package_id'],
+                    'collection_type' => $validated['collection_type'],
+                    'collections_per_month' => (int) $validated['collections_per_month'],
+                    'max_clothes_per_cycle' => (int) $validated['max_clothes_per_cycle'],
+                ]);
+
+                $locked->refresh();
+
+                // A renewal always starts today -- never a staff-picked
+                // date, so a cycle can't be dated ahead (or back). Any
+                // start_date sent with the form is ignored. renew() also
+                // re-checks status and exhaustion under the same lock, and
+                // sets end_date for a scheduled subscription.
+                CollectionScheduler::renew($locked, Carbon::today());
+
+                return ['type' => 'success'];
+            });
+        } catch (DomainException $exception) {
+            return back()
+                ->withInput()
+                ->withErrors(['subscription' => $exception->getMessage()]);
+        }
+
+        if ($result['type'] === 'balance') {
+            return redirect()
+                ->route('customers.show', $result['customer_id'])
+                ->withErrors([
+                    'subscription' => 'This customer has an outstanding balance. Please settle it before renewing a subscription.',
+                ]);
+        }
+
+        if ($redirectCustomerId = $request->integer('redirect_customer_id')) {
+            return redirect()
+                ->route('orders.create', ['customer' => $redirectCustomerId])
+                ->with('status', 'Subscription renewed for a new cycle.');
+        }
+
+        return back()->with('status', 'Subscription renewed for a new cycle.');
     }
-
-    return back()->with('status', 'Subscription renewed for a new cycle.');
-}
 }

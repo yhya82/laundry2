@@ -1,15 +1,9 @@
 @props(['subscription', 'packages', 'name' => null, 'redirectToTerminal' => false])
 
 @php
-    // Defaults to today, same as always -- but if this subscription's most
-    // recent cycle also started today (or later), that date is already
-    // taken (subscription_cycles has one row per subscription per
-    // starts_on), so the default skips ahead to the day after it instead of
-    // handing staff a guaranteed collision.
-    $latestCycleStart = $subscription->cycles()->max('starts_on');
-    $defaultStartDate = ($latestCycleStart && \Carbon\Carbon::parse($latestCycleStart)->gte(now()->startOfDay()))
-        ? \Carbon\Carbon::parse($latestCycleStart)->addDay()->format('Y-m-d')
-        : now()->format('Y-m-d');
+    // A renewal always starts today -- the server ignores any other date
+    // (see SubscriptionController::renew()), so this is display only.
+    $startDate = now()->format('M d, Y');
 
     // Overridable so a second trigger for the same subscription (e.g. the
     // Terminal's subscription-order-choice-modal) can open its own instance
@@ -74,15 +68,14 @@
                 </div>
 
                 <div>
-                    <x-input-label for="renew_start_date_{{ $subscription->id }}" value="Cycle start date" />
-                    <x-text-input id="renew_start_date_{{ $subscription->id }}" name="start_date" type="date" class="block w-full" value="{{ old('start_date', $defaultStartDate) }}" required />
-                    <x-input-error :messages="$errors->get('start_date')" class="mt-1.5" />
+                    <x-input-label value="Cycle start date" />
+                    <p class="mt-1 text-sm text-ink">Today, <span class="font-mono">{{ $startDate }}</span></p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <x-input-label for="renew_collections_{{ $subscription->id }}" value="Number of collections" />
-                        <x-text-input x-ref="collectionsPerMonth" id="renew_collections_{{ $subscription->id }}" name="collections_per_month" type="number" min="1" max="28" class="block w-full" value="{{ old('collections_per_month', $subscription->collections_per_month) }}" required />
+                        <x-text-input x-ref="collectionsPerMonth" id="renew_collections_{{ $subscription->id }}" name="collections_per_month" type="number" min="1" max="4" class="block w-full" value="{{ old('collections_per_month', $subscription->collections_per_month) }}" required />
                         <x-input-error :messages="$errors->get('collections_per_month')" class="mt-1.5" />
                     </div>
                     <div>

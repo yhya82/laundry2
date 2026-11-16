@@ -13,7 +13,7 @@
             <div class="flex items-center justify-between mb-4">
                 <div class="font-mono text-xs uppercase tracking-wide text-ink-faint">Subscription</div>
                 @can('subscriptions.manage')
-                    @if ($cycleCollectionsCompleted === 0)
+                    @if ($canEdit)
                         <button type="button" @click="$dispatch('open-panel', 'edit-subscription-{{ $subscription->id }}')" class="inline-flex items-center gap-1.5 bg-accent text-white hover:opacity-90 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition-opacity">
                             <x-nav-icon name="edit" class="w-3.5 h-3.5" />
                             Edit
@@ -52,7 +52,8 @@
                     <dt class="text-ink-muted">Start date</dt>
                     <dd class="font-mono text-xs text-ink">{{ $subscription->start_date->format('Y-m-d') }}</dd>
                 </div>
-                @if ($subscription->end_date)
+                {{-- end_date only applies to scheduled subscriptions; a non-scheduled one keeps any old value, hidden. --}}
+                @if ($subscription->collection_type === 'scheduled' && $subscription->end_date)
                     <div class="flex justify-between">
                         <dt class="text-ink-muted">End date</dt>
                         <dd class="font-mono text-xs text-ink">{{ $subscription->end_date->format('Y-m-d') }}</dd>
@@ -141,11 +142,15 @@
                                 <p class="text-sm text-accent-ink font-medium">This cycle's collections are all resolved.</p>
                                 <p class="text-xs text-ink-muted mt-0.5">Nothing continues automatically — renew to start the next cycle.</p>
                             </div>
-                            <button type="button" @click="$dispatch('open-panel', 'renew-cycle-{{ $subscription->id }}')" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
-                                <x-nav-icon name="repeat" class="w-3.5 h-3.5" />
-                                Renew
-                            </button>
-                            <x-renew-cycle-modal :subscription="$subscription" :packages="$packages" />
+                            @if ($hasOutstandingBalance)
+                                <x-renew-blocked-notice :customer="$subscription->customer" />
+                            @else
+                                <button type="button" @click="$dispatch('open-panel', 'renew-cycle-{{ $subscription->id }}')" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-accent text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity">
+                                    <x-nav-icon name="repeat" class="w-3.5 h-3.5" />
+                                    Renew
+                                </button>
+                                <x-renew-cycle-modal :subscription="$subscription" :packages="$packages" />
+                            @endif
                         </div>
                     @endif
                 @endcan
@@ -476,7 +481,7 @@
     @endcan
 
     @can('subscriptions.manage')
-        @if ($cycleCollectionsCompleted === 0 && $subscription->customer)
+        @if ($canEdit && $subscription->customer)
             <x-new-subscription-modal :customer="$subscription->customer" :packages="$packages" :subscription="$subscription" />
         @endif
     @endcan

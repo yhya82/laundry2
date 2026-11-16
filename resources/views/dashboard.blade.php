@@ -88,7 +88,7 @@
                             </div>
                         </div>
                         <div class="font-mono text-xs uppercase tracking-wide text-ink-faint truncate mb-1" x-text="period === 'day' ? 'Today\'s Revenue' : period === 'month' ? 'Revenue (Month)' : 'Revenue (Year)'"></div>
-                        <div class="text-2xl font-bold text-accent-ink tabular-nums" x-text="'GMD ' + parseFloat(period === 'day' ? todayRevenue : period === 'month' ? monthRevenue : yearRevenue).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
+                        <div class="text-2xl font-bold text-accent-ink tabular-nums" x-text="'GMD ' + parseFloat(period === 'day' ? todayRevenue : period === 'month' ? monthRevenue : yearRevenue).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})"></div>
                     </div>
                 @endif
                 @if ($activeSubs !== null)
@@ -115,7 +115,7 @@
                             <x-nav-icon name="receipt" class="w-4.5 h-4.5" />
                         </span>
                         <div class="font-mono text-xs uppercase tracking-wide text-ink-faint mb-1">Expenses (MTD)</div>
-                        <div class="text-2xl font-bold text-ink tabular-nums">GMD {{ number_format($monthExpenses, 2) }}</div>
+                        <div class="text-2xl font-bold text-ink tabular-nums">GMD {{ number_format($monthExpenses, 0) }}</div>
                     </div>
                 @endif
             </div>

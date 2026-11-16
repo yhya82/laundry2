@@ -12,8 +12,9 @@ class UpdateSubscriptionRequest extends FormRequest
     }
 
     /**
-     * Same field set as StoreSubscriptionRequest minus customer_id
-     * and start_date.
+     * Same field set as StoreSubscriptionRequest minus customer_id and
+     * start_date. end_date isn't editable: a scheduled subscription's comes
+     * from its schedule, and a non-scheduled one keeps whatever it had.
      *
      * collection_type is included in this form so subscription
      * settings can be updated in one place.
@@ -24,11 +25,6 @@ class UpdateSubscriptionRequest extends FormRequest
             'subscription_package_id' => [
                 'required',
                 'exists:subscription_packages,id',
-            ],
-
-            'end_date' => [
-                'nullable',
-                'date',
             ],
 
             'collections_per_month' => [

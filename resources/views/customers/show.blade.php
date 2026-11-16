@@ -164,7 +164,10 @@
                         <div class="text-xs text-ink-faint mb-2.5">{{ $subscription->collection_type === 'scheduled' ? 'Scheduled' : 'Non-scheduled' }}</div>
 
                         @can('subscriptions.manage')
-                            @if ($cycle->isExhausted())
+                            @if ($cycle->isExhausted() && $hasOutstandingBalance)
+                                {{-- Already on this customer's page, where the balance is settled -- no link needed. --}}
+                                <x-renew-blocked-notice :customer="$customer" :link="false" class="mb-2.5" />
+                            @elseif ($cycle->isExhausted())
                                 <button type="button" @click="$dispatch('open-panel', 'renew-cycle-{{ $subscription->id }}')" class="w-full mb-2.5 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity">
                                     <x-nav-icon name="repeat" class="w-3 h-3" />
                                     Renew
@@ -204,11 +207,8 @@
             @can('subscriptions.manage')
                 @php
                     $manageableSubscriptions = $subscriptions->whereIn('status', ['active', 'paused']);
-                    $editableManageableSubscription = $manageableSubscriptions->first(function ($s) {
-                        $cycle = $s->cycles->first();
-
-                        return ! $cycle || $s->collections->where('subscription_cycle_id', $cycle->id)->where('status', 'collected')->isEmpty();
-                    });
+                    // Same rule as the server: active, and never a visit collected in any cycle.
+                    $editableManageableSubscription = $manageableSubscriptions->first(fn ($s) => $s->isEditable());
                 @endphp
                 @if ($manageableSubscriptions->isNotEmpty())
                     <div class="bg-surface border border-line rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">

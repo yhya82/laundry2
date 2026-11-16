@@ -15,7 +15,7 @@ class CustomerBalanceService
         // Cancelled orders do not contribute their own balance.
         $hasUnpaidOrder = $customer->orders()
             ->where('status', '!=', 'cancelled')
-            ->get()
+            ->get() 
             ->contains(
                 fn (Order $order) => $order->balanceDue() > 0
             );

@@ -54,6 +54,52 @@ class Subscription extends Model
         return $this->hasMany(SubscriptionCycle::class);
     }
 
+    /**
+     * The most recently created cycle. Picked by id, not starts_on: a
+     * renewal may start on the same day as the previous cycle (or on an
+     * earlier date than a cycle staff dated ahead), so starts_on can tie
+     * or go backwards, while creation order can't.
+     */
+    public function currentCycle(): ?SubscriptionCycle
+    {
+        return $this->cycles()->latest('id')->first();
+    }
+
+    /**
+     * True once any collection in any cycle has been collected. Uses the
+     * loaded collections relation when there is one (customer page), so a
+     * list of subscriptions doesn't cost a query each.
+     */
+    public function hasCollectedVisit(): bool
+    {
+        if ($this->relationLoaded('collections')) {
+            return $this->collections->contains('status', 'collected');
+        }
+
+        return $this->collections()->where('status', 'collected')->exists();
+    }
+
+    /**
+     * Why this subscription can't be edited, or null if it can. Editing is
+     * only for an active subscription that has never had a visit collected,
+     * in any cycle -- after that, the plan only changes through Renew. A
+     * paused one has to be resumed first.
+     */
+    public function editBlockedReason(): ?string
+    {
+        return match (true) {
+            $this->status === 'cancelled' => 'A cancelled subscription can no longer be edited.',
+            $this->hasCollectedVisit() => 'This subscription already has a collected visit, so it can no longer be edited. Use Renew to change the plan.',
+            $this->status !== 'active' => 'Resume this subscription before editing it.',
+            default => null,
+        };
+    }
+
+    public function isEditable(): bool
+    {
+        return $this->editBlockedReason() === null;
+    }
+
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);

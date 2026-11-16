@@ -171,16 +171,14 @@ class CollectionsTest extends TestCase
         ]);
         CollectionScheduler::generateCollections($subscription, $cycle1, 'scheduled', $startsOn, 1);
 
-        // A second cycle (subscription_cycles has its own unique
-        // (subscription_id, starts_on) index, so this one starts a day
-        // later) generated with the SAME collection start date passed to
-        // generateCollections() -- the naive collection date would collide
-        // with the first cycle's (collections has a unique
+        // A second cycle starting the same day (allowed now) generated with
+        // the SAME collection start date -- the naive collection date would
+        // collide with the first cycle's (collections has a unique
         // (subscription_id, scheduled_date) index covering the
         // subscription's whole history, not just one cycle).
         $cycle2 = SubscriptionCycle::create([
             'subscription_id' => $subscription->id,
-            'starts_on' => $startsOn->copy()->addDay(),
+            'starts_on' => $startsOn,
             'monthly_price_snapshot' => 300,
             'max_clothes_snapshot' => 80,
         ]);

@@ -64,7 +64,7 @@ class CustomerController extends Controller
         ];
 
         $subscriptions = $customer->subscriptions()
-            ->with(['subscriptionPackage', 'cycles' => fn ($q) => $q->latest('starts_on')->limit(1), 'collections'])
+            ->with(['subscriptionPackage', 'cycles' => fn ($q) => $q->latest('id')->limit(1), 'collections'])
             ->latest('start_date')
             ->get();
 
@@ -127,8 +127,9 @@ class CustomerController extends Controller
         // showing "regardless of status" here the way a live one does.
         $liveSubscriptionIds = $customer->subscriptions()->where('status', '!=', 'cancelled')->pluck('id');
 
+        // By id, not starts_on -- see Subscription::currentCycle().
         $latestCycleIds = SubscriptionCycle::whereIn('subscription_id', $liveSubscriptionIds)
-            ->orderByDesc('starts_on')
+            ->orderByDesc('id')
             ->get()
             ->unique('subscription_id')
             ->pluck('id');
@@ -152,7 +153,7 @@ class CustomerController extends Controller
         // full history (that lives on the subscription's own page).
         $currentCycles = SubscriptionCycle::with('subscription.subscriptionPackage')
             ->whereIn('id', $latestCycleIds)
-            ->orderByDesc('starts_on')
+            ->orderByDesc('id')
             ->get();
 
         $damageRecords = $customer->damageRecords()->with(['damageType', 'order'])->latest()->get();

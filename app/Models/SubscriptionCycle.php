@@ -41,15 +41,24 @@ class SubscriptionCycle extends Model
     }
 
     /**
-     * Same '!= refunded' convention used everywhere else money is summed
-     * (Order::amountPaid(), Dashboard, reports). Memoized per instance --
-     * see Order::amountPaid()'s doc comment for why that's safe here too.
+     * Net money held against this cycle: fully refunded payments are left
+     * out (the usual '!= refunded' convention), and a partially refunded
+     * payment only counts for what wasn't refunded. That matters for a
+     * package change that moves an overpayment to store credit (see
+     * SubscriptionController::update()) -- the refunded part has gone back
+     * to the customer and must not keep counting toward this cycle's price.
+     * Memoized per instance -- see Order::amountPaid()'s doc comment for
+     * why that's safe here too.
      */
     protected ?float $amountPaidCache = null;
 
     public function amountPaid(): float
     {
-        return $this->amountPaidCache ??= (float) $this->payments()->where('status', '!=', 'refunded')->sum('amount');
+        return $this->amountPaidCache ??= round(
+            (float) $this->payments()->where('status', '!=', 'refunded')->sum('amount')
+                - (float) Refund::whereIn('payment_id', $this->payments()->where('status', 'partially_refunded')->select('id'))->sum('amount'),
+            2
+        );
     }
 
     public function balanceDue(): float
@@ -85,16 +94,24 @@ class SubscriptionCycle extends Model
         return max(0, $this->max_clothes_snapshot - $this->clothesCollected());
     }
 
-   
     /**
- * A cycle is exhausted when every collection has been collected or cancelled.
- */
+     * Collection statuses that close a slot for good. subscription_cancelled
+     * is what SubscriptionController::cancel() sets on every slot still
+     * pending, so it has to count as resolved, or a cancelled subscription's
+     * cycle never reads as exhausted (and a non-scheduled cycle never gets
+     * its ends_on).
+     */
+    public const RESOLVED_COLLECTION_STATUSES = ['collected', 'cancelled', 'subscription_cancelled'];
+
+    /**
+     * A cycle is exhausted when every collection in it is resolved.
+     */
     public function isExhausted(): bool
     {
-    return ! $this->collections()
-        ->whereNotIn('status', ['collected', 'cancelled'])
-        ->exists();
-}
+        return ! $this->collections()
+            ->whereNotIn('status', self::RESOLVED_COLLECTION_STATUSES)
+            ->exists();
+    }
 
     /**
      * Non-scheduled cycles are created with ends_on left null (see
@@ -134,8 +151,8 @@ public function isLastScheduledCollection(Collection $collection): bool
         return false;
     }
 
-    // Cancelled or already resolved collection slots cannot be the final pickup.
-    if (in_array($collection->status, ['cancelled'], true)) {
+    // Cancelled collection slots cannot be the final pickup.
+    if (in_array($collection->status, ['cancelled', 'subscription_cancelled'], true)) {
         return false;
     }
 
@@ -155,7 +172,7 @@ public function isLastScheduledCollection(Collection $collection): bool
             $query
                 // An unused, non-cancelled collection slot is still available.
                 ->whereDoesntHave('orders')
-                ->whereNotIn('status', ['cancelled']);
+                ->whereNotIn('status', ['cancelled', 'subscription_cancelled']);
         })
         ->exists()
         && ! $this->collections()

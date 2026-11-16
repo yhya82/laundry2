@@ -2,10 +2,9 @@
 
 @php
     // $subscription set => this instance edits an existing subscription
-    // instead of creating a new one. Collection type is deliberately left
-    // out of edit mode -- it already has its own dedicated form/endpoint
-    // (see subscriptions/show.blade.php's Current Cycle card), so editing
-    // here only covers the rest of the fields.
+    // instead of creating a new one. Start date isn't editable, and there's
+    // no End date field at all: a scheduled subscription's end_date comes
+    // from its schedule (last collection date), a non-scheduled one has none.
     $editing = $subscription !== null;
     $panelName = $editing ? 'edit-subscription-'.$subscription->id : 'new-subscription';
 @endphp
@@ -80,25 +79,18 @@
                     <x-input-error :messages="$errors->get('subscription_package_id')" class="mt-1.5" />
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                    @unless ($editing)
-                        <div>
-                            <x-input-label for="ns_start_date_{{ $panelName }}" value="Start date" />
-                            <x-text-input id="ns_start_date_{{ $panelName }}" name="start_date" type="date" class="block w-full" value="{{ old('start_date', now()->format('Y-m-d')) }}" required />
-                            <x-input-error :messages="$errors->get('start_date')" class="mt-1.5" />
-                        </div>
-                    @endunless
-                    <div class="{{ $editing ? 'col-span-2' : '' }}">
-                        <x-input-label for="ns_end_date_{{ $panelName }}" value="End date (optional)" />
-                        <x-text-input id="ns_end_date_{{ $panelName }}" name="end_date" type="date" class="block w-full" value="{{ old('end_date', $subscription?->end_date?->format('Y-m-d')) }}" />
-                        <x-input-error :messages="$errors->get('end_date')" class="mt-1.5" />
+                @unless ($editing)
+                    <div>
+                        <x-input-label for="ns_start_date_{{ $panelName }}" value="Start date" />
+                        <x-text-input id="ns_start_date_{{ $panelName }}" name="start_date" type="date" class="block w-full" value="{{ old('start_date', now()->format('Y-m-d')) }}" required />
+                        <x-input-error :messages="$errors->get('start_date')" class="mt-1.5" />
                     </div>
-                </div>
+                @endunless
 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <x-input-label for="ns_collections_per_month_{{ $panelName }}" value="Number of collections" />
-                        <x-text-input x-ref="collectionsPerMonth" id="ns_collections_per_month_{{ $panelName }}" name="collections_per_month" type="number" min="1" max="28" class="block w-full" value="{{ old('collections_per_month', $subscription?->collections_per_month) }}" required />
+                        <x-text-input x-ref="collectionsPerMonth" id="ns_collections_per_month_{{ $panelName }}" name="collections_per_month" type="number" min="1" max="4" class="block w-full" value="{{ old('collections_per_month', $subscription?->collections_per_month) }}" required />
                         <x-input-error :messages="$errors->get('collections_per_month')" class="mt-1.5" />
                     </div>
                     <div>
@@ -126,7 +118,7 @@
 
                 <p class="text-xs text-ink-faint">
                     @if ($editing)
-                        Changing the number of collections or collection type rebuilds this cycle's schedule from scratch, starting from {{ $subscription->cycles()->latest('starts_on')->first()?->starts_on?->format('M d, Y') }}.
+                        Changing the number of collections or collection type rebuilds this cycle's schedule from scratch, starting from {{ $subscription->currentCycle()?->starts_on?->format('M d, Y') }}.
                     @else
                         The first collection is scheduled automatically for the start date.
                     @endif

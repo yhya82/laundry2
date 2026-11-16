@@ -382,7 +382,7 @@ new class extends Component
     {
         $active = Subscription::where('customer_id', $this->selectedCustomer->id)
             ->where('status', 'active')
-            ->with(['cycles' => fn ($q) => $q->latest('starts_on')->limit(1)])
+            ->with(['cycles' => fn ($q) => $q->latest('id')->limit(1)])
             ->get();
 
         return match (true) {
@@ -408,6 +408,21 @@ new class extends Component
         return Subscription::where('customer_id', $this->selectedCustomer->id)
             ->where('status', 'active')
             ->first();
+    }
+
+    /**
+     * Whether the selected (saved) customer owes anything -- an unpaid order
+     * or subscription cycle. Used to hide Renew in the choice modal up front;
+     * SubscriptionController::renew() refuses it server-side regardless.
+     */
+    #[Computed]
+    public function selectedCustomerHasOutstandingBalance(): bool
+    {
+        $customer = $this->selectedCustomer;
+
+        return $customer?->exists
+            ? app(CustomerBalanceService::class)->hasOutstandingBalance($customer)
+            : false;
     }
 
     #[Computed]
@@ -584,11 +599,30 @@ public function selectCustomer(int $id): void
             return;
         }
 
-        $collection = $subscriptions->first()->collections()->where('status', 'scheduled')->orderBy('scheduled_date')->first();
+        $collection = $this->nextOpenCollection($subscriptions->first());
 
         if ($collection) {
             $this->collectionId = $collection->id;
         }
+    }
+
+    /**
+     * The next still-scheduled collection in the subscription's *current*
+     * cycle only -- so a visit is never charged against an older or newer
+     * cycle's clothes cap and balance. Dated collections first, earliest
+     * first; then undated (non-scheduled) ones in creation order. A legacy
+     * subscription with no cycles at all falls back to any of its own.
+     */
+    protected function nextOpenCollection(Subscription $subscription): ?Collection
+    {
+        $cycle = $subscription->currentCycle();
+
+        return $subscription->collections()
+            ->where('status', 'scheduled')
+            ->when($cycle, fn ($q) => $q->where('subscription_cycle_id', $cycle->id))
+            ->orderByRaw('scheduled_date IS NULL, scheduled_date')
+            ->orderBy('id')
+            ->first();
     }
 
     /**
@@ -610,7 +644,7 @@ public function selectCustomer(int $id): void
             return;
         }
 
-        $collection = $subscription->collections()->where('status', 'scheduled')->orderBy('scheduled_date')->first();
+        $collection = $this->nextOpenCollection($subscription);
 
         if ($collection) {
             $this->collectionId = $collection->id;
@@ -917,37 +951,6 @@ public function selectCustomer(int $id): void
         unset($this->subscriptionClothes[$index]);
         $this->subscriptionClothes = array_values($this->subscriptionClothes);
     }
-
-   
-protected function customerHasOutstandingBalance(Customer $customer): bool
-{
-    // Check balances belonging directly to orders.
-    // Cancelled orders do not contribute their own balance.
-    $hasUnpaidOrder = $customer->orders()
-        ->where('status', '!=', 'cancelled')
-        ->get()
-        ->contains(
-            fn (Order $order) => $order->balanceDue() > 0
-        );
-
-    if ($hasUnpaidOrder) {
-        return true;
-    }
-
-    // Check each subscription cycle exactly once.
-    // A cycle's monthly fee is shared across its collections.
-    $hasUnpaidCycle = $customer->subscriptions()
-        ->with('cycles')
-        ->get()
-        ->flatMap(fn (Subscription $subscription) => $subscription->cycles)
-        ->contains(
-            fn (SubscriptionCycle $cycle) => $cycle->balanceDue() > 0
-        );
-
-    return $hasUnpaidCycle;
-}
-
-
 
 
 public function submitOrder(CustomerBalanceService $balanceService)
@@ -1611,6 +1614,7 @@ if (! $collection || $collection->status !== 'scheduled') {
                                     :cycle-state="$this->subscriptionOrderState"
                                     :subscription="$this->activeSubscriptionForDecision"
                                     :packages="$this->subscriptionPackages"
+                                    :has-outstanding-balance="$this->subscriptionOrderState === 'exhausted' && $this->selectedCustomerHasOutstandingBalance"
                                     :live="true"
                                 />
                             @endif

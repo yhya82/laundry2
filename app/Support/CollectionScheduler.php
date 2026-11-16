@@ -2,74 +2,74 @@
 
 namespace App\Support;
 
-use App\Models\Collection;
 use App\Models\Subscription;
 use App\Models\SubscriptionCycle;
 use Carbon\Carbon;
+use DateTimeInterface;
+use DomainException;
 
 /**
- * Each subscription now carries its own collections_per_month, collection_type
- * and max_clothes_per_cycle (overridable from the package's defaults at
- * creation time -- see subscriptions.create), so a "cycle" is a month's worth
- * of that many collections, all sharing one flat monthly_price and one clothes
- * cap (see SubscriptionCycle). Cycles are generated one at a time, but never
- * automatically -- once a cycle is exhausted (every collection in it
- * resolved), nothing happens until staff explicitly call renew().
+ * Each subscription carries its own collections_per_month, collection_type
+ * and max_clothes_per_cycle, so a "cycle" is that many collections sharing
+ * one flat monthly_price and one clothes cap (see SubscriptionCycle).
+ * Cycles are never created automatically -- once a cycle is exhausted,
+ * nothing happens until staff explicitly renew.
+ *
+ * Non-scheduled cycles are a bundle of N visits: no dates and no expiry,
+ * finished only once every visit is used. subscriptions.end_date belongs to
+ * scheduled subscriptions only, and always equals the last scheduled
+ * collection date of the current cycle (see generateCollections()). It is
+ * never padded out by a month, and never touched for a non-scheduled one.
  */
 class CollectionScheduler
 {
-    public static function scheduleFirstCycle(Subscription $subscription): void
+    /**
+     * Create the first cycle for a subscription.
+     */
+    public static function scheduleFirstCycle(Subscription $subscription): SubscriptionCycle
     {
-        self::scheduleCycle($subscription, Carbon::parse($subscription->start_date));
+        return self::scheduleCycle($subscription, Carbon::parse($subscription->start_date));
     }
 
     /**
-     * Starts a fresh cycle beginning on $startsOn, provided the subscription
-     * is still active and hasn't run past its end date. Used to resume a
-     * paused subscription and by renew().
+     * Start the next cycle once the current one is exhausted -- the only way
+     * a subscription gets a new cycle. The new cycle may start on the same
+     * day as the previous one; the exhausted check is what stops a renewal
+     * while visits are still open.
+     *
+     * The caller should run this inside a database transaction.
+     *
+     * @throws DomainException when the renewal isn't allowed
      */
-    public static function scheduleNextCycle(Subscription $subscription, \DateTimeInterface $startsOn): void
+    public static function renew(Subscription $subscription, ?DateTimeInterface $startsOn = null): SubscriptionCycle
     {
         if ($subscription->status !== 'active') {
-            return;
+            throw new DomainException('Only an active subscription can be renewed.');
         }
 
-        $startsOn = Carbon::instance($startsOn);
-
-        if ($subscription->end_date && $startsOn->greaterThanOrEqualTo($subscription->end_date)) {
-            return;
-        }
-
-        self::scheduleCycle($subscription, $startsOn);
-    }
-
-    /**
-     * The Renew action -- the only way a subscription gets its next cycle
-     * now, for scheduled and non-scheduled alike. Refuses to double-renew a
-     * cycle that still has open collections in it. $startsOn lets the Renew
-     * modal override the default of "right after the previous cycle ended"
-     * with a staff-chosen date.
-     */
-    public static function renew(Subscription $subscription, ?\DateTimeInterface $startsOn = null): void
-    {
-        $currentCycle = $subscription->cycles()->latest('starts_on')->first();
+        $currentCycle = $subscription->cycles()
+            ->latest('id')
+            ->lockForUpdate()
+            ->first();
 
         if ($currentCycle && ! $currentCycle->isExhausted()) {
-            return;
+            throw new DomainException('This subscription still has open collections in its current cycle.');
         }
 
-        self::scheduleNextCycle($subscription, $startsOn ?? $currentCycle?->ends_on ?? now());
+        $startsOn = $startsOn
+            ? Carbon::parse($startsOn->format('Y-m-d'))->startOfDay()
+            : Carbon::today();
+
+        return self::scheduleCycle($subscription, $startsOn);
     }
 
     /**
-     * Creates the cycle record and hands off to generateCollections() for
-     * its whole batch of collections. Public (not protected) so
-     * SubscriptionController::update() can also call it directly, to
-     * rebuild a not-yet-started cycle from scratch after an edit that
-     * changes start_date or collections_per_month.
+     * Create a cycle and generate its collections.
      */
-    public static function scheduleCycle(Subscription $subscription, Carbon $startsOn): void
+    public static function scheduleCycle(Subscription $subscription, Carbon $startsOn): SubscriptionCycle
     {
+        $startsOn = $startsOn->copy()->startOfDay();
+
         $cycle = $subscription->cycles()->create([
             'starts_on' => $startsOn->toDateString(),
             'ends_on' => null,
@@ -77,22 +77,29 @@ class CollectionScheduler
             'max_clothes_snapshot' => $subscription->max_clothes_per_cycle,
         ]);
 
-        self::generateCollections($subscription, $cycle, $subscription->collection_type, $startsOn, max(1, $subscription->collections_per_month));
+        self::generateCollections(
+            $subscription,
+            $cycle,
+            $subscription->collection_type,
+            $startsOn,
+            max(1, $subscription->collections_per_month)
+        );
+
+        return $cycle->fresh();
     }
 
     /**
-     * Creates $count fresh collections against an existing cycle and sets
-     * the cycle's ends_on to match -- shared by scheduleCycle() (a brand
-     * new cycle) and SubscriptionController::updateCollectionType() (an
-     * untouched cycle whose type changed mid-cycle, regenerating just its
-     * still-open slots). Non-scheduled has no fixed dates at all -- the
-     * customer can use any of them whenever, so ends_on is left null and
-     * only gets backfilled once the cycle actually finishes (see
-     * SubscriptionCycle::closeIfExhausted()). Scheduled spaces the cards
-     * evenly across one calendar month from $startsOn, and ends_on is set
-     * to wherever the LAST card actually lands -- not an artificial fixed
-     * +1 month cap the cards get squeezed into regardless of whether they
-     * fill it.
+     * Create $count collections for $cycle. Used for a brand-new cycle, and
+     * by SubscriptionController::update() to rebuild a cycle nothing has
+     * been collected from yet.
+     *
+     * Scheduled: collections are spread evenly over one calendar month from
+     * $startsOn. The cycle's ends_on and the subscription's end_date both
+     * become the last collection date.
+     *
+     * Non-scheduled: no dates and ends_on stays null until the bundle is
+     * used up (SubscriptionCycle::closeIfExhausted()). end_date is left
+     * exactly as it was -- kept, but not used or shown.
      */
     public static function generateCollections(Subscription $subscription, SubscriptionCycle $cycle, string $collectionType, Carbon $startsOn, int $count): void
     {
@@ -110,23 +117,20 @@ class CollectionScheduler
             return;
         }
 
-        // A flat calendar month is still used as the spacing cadence (so a
-        // 4-collection/month plan lands roughly weekly), but only to derive
-        // the interval -- not as the cycle's actual end date.
+        // A calendar month sets the spacing (so 4 collections land roughly
+        // weekly) -- it is not the cycle's end date.
         $monthSpan = $startsOn->copy()->addMonthNoOverflow();
-        $intervalDays = max(1, intdiv($startsOn->diffInDays($monthSpan), $count));
+
+        $intervalDays = max(1, intdiv((int) $startsOn->diffInDays($monthSpan), $count));
 
         // collections has a unique (subscription_id, scheduled_date) index
-        // covering every collection this subscription has ever had,
-        // cancelled/collected ones included -- not just this cycle's. A
-        // naive i*intervalDays date can land on one already taken (e.g.
-        // re-generating a cycle mid-flight after an earlier date got used
-        // by a since-cancelled collection), so each date is nudged forward
-        // day by day until it's actually free.
+        // covering every collection this subscription has ever had, so a
+        // date already taken (e.g. by the previous cycle's last collection,
+        // when renewing on the same day) is nudged forward until it's free.
         $takenDates = $subscription->collections()
             ->whereNotNull('scheduled_date')
             ->pluck('scheduled_date')
-            ->map(fn ($date) => $date->toDateString())
+            ->map(fn ($date) => Carbon::parse($date)->toDateString())
             ->all();
 
         $assignedDates = [];
@@ -138,16 +142,21 @@ class CollectionScheduler
                 $date->addDay();
             }
 
-            $takenDates[] = $date->toDateString();
-            $assignedDates[] = $date->toDateString();
+            $dateString = $date->toDateString();
+
+            $takenDates[] = $dateString;
+            $assignedDates[] = $dateString;
 
             $subscription->collections()->create([
                 'subscription_cycle_id' => $cycle->id,
-                'scheduled_date' => $date->toDateString(),
+                'scheduled_date' => $dateString,
                 'status' => 'scheduled',
             ]);
         }
 
-        $cycle->update(['ends_on' => max($assignedDates)]);
+        $lastDate = max($assignedDates);
+
+        $cycle->update(['ends_on' => $lastDate]);
+        $subscription->update(['end_date' => $lastDate]);
     }
 }

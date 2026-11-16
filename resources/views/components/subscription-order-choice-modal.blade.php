@@ -1,4 +1,10 @@
-@props(['customer', 'cycleState', 'live' => false, 'subscription' => null, 'packages' => null])
+@props(['customer', 'cycleState', 'live' => false, 'subscription' => null, 'packages' => null, 'hasOutstandingBalance' => false])
+
+@php
+    // Renew is only offered when the customer owes nothing -- renew()
+    // refuses it server-side otherwise.
+    $canRenew = $cycleState === 'exhausted' && $subscription && ! $hasOutstandingBalance && Auth::user()->can('subscriptions.manage');
+@endphp
 
 <div
     x-data="{ open: {{ $live ? 'true' : 'false' }} }"
@@ -39,7 +45,9 @@
                             </span>
                         </a>
                     @endif
-                @elseif (Auth::user()->can('subscriptions.manage'))
+                @elseif ($hasOutstandingBalance && Auth::user()->can('subscriptions.manage'))
+                    <x-renew-blocked-notice :customer="$customer" />
+                @elseif ($canRenew)
                     <button type="button" @click="open = false; $dispatch('open-panel', 'renew-cycle-choice-{{ $subscription->id }}')" class="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-line-strong text-sm font-medium text-ink hover:border-accent hover:bg-accent-soft transition-colors w-full text-left">
                         <span class="w-8 h-8 rounded-lg bg-success-soft text-success flex items-center justify-center flex-none"><x-nav-icon name="repeat" class="w-4 h-4" /></span>
                         <span class="flex-1">
@@ -71,7 +79,7 @@
     </div>
 </div>
 
-@if ($cycleState === 'exhausted' && $subscription && Auth::user()->can('subscriptions.manage'))
+@if ($canRenew)
     {{-- Deliberately a sibling of (not nested inside) the choice modal above --
          nested inside it, the Renew button's "open = false" (closing the
          choice modal) would apply display:none to that whole subtree and hide
