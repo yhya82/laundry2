@@ -535,6 +535,102 @@ class SecurityCenterTest extends TestCase
         $this->assertSame(2, LoginEvent::where('event', 'sessions_revoked')->where('actor_id', $this->admin->id)->count());
     }
 
+    public function test_people_shows_who_is_signed_in_and_how_others_signed_out(): void
+    {
+        $event = fn (User $u, string $event, int $minutesAgo) => LoginEvent::create([
+            'user_id' => $u->id, 'email' => $u->email, 'event' => $event, 'created_at' => now()->subMinutes($minutesAgo),
+        ]);
+        $session = function (User $u, string $id, int $minutesAgo) {
+            $this->addSession($u, $id);
+            DB::table('sessions')->where('id', $id)->update(['last_activity' => now()->subMinutes($minutesAgo)->getTimestamp()]);
+        };
+
+        $online = User::factory()->create(['name' => 'Olive Online']);
+        $event($online, 'login', 30);
+        $session($online, 'olive-1', 1);
+        $session($online, 'olive-2', 3);
+
+        $idle = User::factory()->create(['name' => 'Ida Idle']);
+        $event($idle, 'login', 60);
+        $session($idle, 'ida-1', 20);
+
+        $loggedOut = User::factory()->create(['name' => 'Leo Loggedout']);
+        $event($loggedOut, 'login', 90);
+        $event($loggedOut, 'logout', 45);
+
+        $byAdmin = User::factory()->create(['name' => 'Abe Byadmin']);
+        $event($byAdmin, 'login', 90);
+        LoginEvent::create(['user_id' => $byAdmin->id, 'event' => 'sessions_revoked', 'actor_id' => $this->admin->id, 'created_at' => now()->subMinutes(10)]);
+
+        $expired = User::factory()->create(['name' => 'Eve Expired']);
+        $event($expired, 'login', 300);
+
+        User::factory()->create(['name' => 'Nora Never']);
+
+        $html = $this->actingAs($this->admin)->get(route('settings.index', ['tab' => 'security', 'sec_tab' => 'people']))
+            ->assertOk()
+            ->getContent();
+
+        $row = function (string $name) use ($html) {
+            $start = strpos($html, '>'.$name.'</a>');
+            $this->assertNotFalse($start, "{$name} should be listed.");
+
+            return substr($html, strrpos(substr($html, 0, $start), '<tr'), strpos($html, '</tr>', $start) - strrpos(substr($html, 0, $start), '<tr'));
+        };
+
+        $this->assertStringContainsString('data-person-status="online"', $row('Olive Online'));
+        $this->assertStringContainsString('2', strip_tags($row('Olive Online')), 'Two devices.');
+        $this->assertStringContainsString('data-person-status="idle"', $row('Ida Idle'));
+        $this->assertStringContainsString('Logged out', $row('Leo Loggedout'));
+        $this->assertStringContainsString('Signed out by an admin', $row('Abe Byadmin'));
+        $this->assertStringContainsString('Session expired', $row('Eve Expired'));
+        $this->assertStringContainsString('Never signed in', $row('Nora Never'));
+
+        // Signed-in people come first.
+        $this->assertLessThan(strpos($html, '>Leo Loggedout</a>'), strpos($html, '>Olive Online</a>'));
+        $this->assertLessThan(strpos($html, '>Leo Loggedout</a>'), strpos($html, '>Ida Idle</a>'));
+    }
+
+    public function test_people_can_be_filtered_by_status_and_searched(): void
+    {
+        $online = User::factory()->create(['name' => 'Olive Online']);
+        $this->addSession($online, 'olive-1');
+        User::factory()->create(['name' => 'Sam Signedout']);
+
+        $this->actingAs($this->admin);
+
+        // Only the People section -- signed-in people also appear under Devices.
+        $people = function (array $params) {
+            $html = $this->get(route('settings.index', ['tab' => 'security', 'sec_tab' => 'people', ...$params]))->getContent();
+            $start = strpos($html, 'id="sec-people"');
+
+            return substr($html, $start, strpos($html, 'id="sec-devices"') - $start);
+        };
+
+        $signedIn = $people(['people_status' => 'signed_in']);
+        $this->assertStringContainsString('>Olive Online</a>', $signedIn);
+        $this->assertStringNotContainsString('>Sam Signedout</a>', $signedIn);
+
+        $signedOut = $people(['people_status' => 'signed_out']);
+        $this->assertStringNotContainsString('>Olive Online</a>', $signedOut);
+        $this->assertStringContainsString('>Sam Signedout</a>', $signedOut);
+
+        $search = $people(['people_q' => 'sam']);
+        $this->assertStringContainsString('>Sam Signedout</a>', $search);
+        $this->assertStringNotContainsString('>Olive Online</a>', $search);
+    }
+
+    public function test_people_is_admin_only(): void
+    {
+        $manager = User::factory()->create();
+        Role::create(['name' => 'Manager', 'guard_name' => 'web'])->givePermissionTo('settings.manage');
+        $manager->syncRoles(['Manager']);
+
+        $this->actingAs($manager)->get(route('settings.index', ['tab' => 'security', 'sec_tab' => 'people']))
+            ->assertOk()
+            ->assertDontSee('data-person-status', false);
+    }
+
     public function test_device_sign_outs_are_admin_only(): void
     {
         $staff = User::factory()->create();

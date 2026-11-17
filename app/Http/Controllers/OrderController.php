@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\WashingMachine;
 use App\Services\NotificationDispatcher;
 use App\Support\OrderPaymentRecorder;
+use App\Support\PhoneNumber;
 use App\Support\SubscriptionCyclePaymentRecorder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -262,6 +263,12 @@ class OrderController extends Controller
     |--------------------------------------------------------------------------
     */
 
+    // Same phone rules as everywhere else (PhoneNumber): a 7-digit number
+    // is saved in its 9-digit form.
+    if ($request->filled('collected_by_phone')) {
+        $request->merge(['collected_by_phone' => PhoneNumber::normalize($request->input('collected_by_phone'))]);
+    }
+
     $validated = $request->validate([
         'collected_by_type' => [
             'required',
@@ -279,7 +286,7 @@ class OrderController extends Controller
             'required_if:collected_by_type,other',
             'nullable',
             'string',
-            'regex:/^[+0-9][0-9 ()\-]{6,19}$/',
+            'regex:'.PhoneNumber::VALID_PATTERN,
         ],
 
         // Checked up front: the payment recorders would otherwise quietly
@@ -334,6 +341,8 @@ class OrderController extends Controller
             'string',
             'max:255',
         ],
+    ], [
+        'collected_by_phone.regex' => PhoneNumber::INVALID_MESSAGE,
     ]);
 
     /*

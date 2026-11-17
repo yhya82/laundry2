@@ -27,21 +27,21 @@ class SettingsTest extends TestCase
         $response = $this->put(route('settings.update'), [
             'group' => 'general',
             'business_name' => 'ABC Laundry',
-            'phone' => '700000000',
+            'phone' => '870000000',
             'email' => 'hello@abclaundry.test',
             'address' => 'Serrekunda',
         ]);
         $response->assertSessionDoesntHaveErrors();
 
         $this->assertSame('ABC Laundry', Setting::get('branding.business_name'));
-        $this->assertSame('+220700000000', Setting::get('branding.phone'));
+        $this->assertSame('+220870000000', Setting::get('branding.phone'));
         $this->assertSame('hello@abclaundry.test', Setting::get('branding.email'));
         $this->assertSame('Serrekunda', Setting::get('branding.address'));
     }
 
     public function test_general_tab_requires_a_business_name(): void
     {
-        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => '', 'phone' => '700000000']);
+        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => '', 'phone' => '870000000']);
         $response->assertSessionHasErrors('business_name');
     }
 
@@ -53,7 +53,7 @@ class SettingsTest extends TestCase
 
     public function test_general_tab_rejects_a_phone_number_thats_not_7_or_9_digits(): void
     {
-        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => 'ABC Laundry', 'phone' => '70000000']);
+        $response = $this->put(route('settings.update'), ['group' => 'general', 'business_name' => 'ABC Laundry', 'phone' => '87000000']);
         $response->assertSessionHasErrors('phone');
     }
 

@@ -105,6 +105,8 @@ class SettingsController extends Controller
             'devices' => $devices->count(),
         ];
 
+        $people = $this->peopleStatus($request, $lifetime);
+
         $failedLast24h = LoginEvent::where('event', 'failed')->where('created_at', '>=', now()->subDay())->count();
         $lockoutsLast24h = LoginEvent::where('event', 'lockout')->where('created_at', '>=', now()->subDay())->count();
 
@@ -115,6 +117,8 @@ class SettingsController extends Controller
             'alertLevel' => $overview['locked'] > 0 ? 'critical' : ($failedLast24h > 0 ? 'warning' : 'ok'),
             'failedLast24h' => $failedLast24h,
             'overview' => $overview,
+            'people' => $people['rows'],
+            'peopleCounts' => $people['counts'],
             'devices' => $devices,
             'deviceUsers' => User::orderBy('name')->get(['id', 'name']),
             'events' => $events,
@@ -122,6 +126,101 @@ class SettingsController extends Controller
             'topIps' => $topIps,
             'topEmails' => $topEmails,
         ];
+    }
+
+    /**
+     * Who's signed in right now and who's signed out, per staff account
+     * (the Security tab's People view). Built from two sources:
+     *  - the `sessions` table: a live session (within the idle timeout)
+     *    means signed in -- "online" if active in the last 5 minutes,
+     *    otherwise "idle";
+     *  - the login log: the latest sign-in, log-out and admin sign-out say
+     *    HOW someone without a live session left -- logged out themselves,
+     *    signed out by an Admin, or the session simply expired.
+     *
+     * @return array{rows: \Illuminate\Support\Collection, counts: array<string, int>}
+     */
+    protected function peopleStatus(Request $request, int $lifetime): array
+    {
+        $latest = fn (array $events) => LoginEvent::select('created_at')
+            ->whereColumn('user_id', 'users.id')
+            ->whereIn('event', $events)
+            ->latest('id')
+            ->limit(1);
+
+        $users = User::with('roles')
+            ->select('users.*')
+            ->addSelect([
+                'last_login_at' => $latest(['login']),
+                'last_logout_at' => $latest(['logout']),
+                'last_revoked_at' => $latest(['sessions_revoked', 'password_reset_by_admin']),
+            ])
+            ->orderBy('name')
+            ->get();
+
+        $sessions = DB::table('sessions')
+            ->whereNotNull('user_id')
+            ->where('last_activity', '>=', now()->subMinutes($lifetime)->getTimestamp())
+            ->selectRaw('user_id, COUNT(*) as devices, MAX(last_activity) as last_activity')
+            ->groupBy('user_id')
+            ->get()
+            ->keyBy('user_id');
+
+        $onlineCutoff = now()->subMinutes(5)->getTimestamp();
+
+        $rows = $users->map(function (User $user) use ($sessions, $onlineCutoff) {
+            $session = $sessions->get($user->id);
+            $login = $user->last_login_at ? Carbon::parse($user->last_login_at) : null;
+            $logout = $user->last_logout_at ? Carbon::parse($user->last_logout_at) : null;
+            $revoked = $user->last_revoked_at ? Carbon::parse($user->last_revoked_at) : null;
+
+            if ($session) {
+                $status = $session->last_activity >= $onlineCutoff ? 'online' : 'idle';
+                $how = null;
+                $signedOutAt = null;
+            } else {
+                $status = 'signed_out';
+                // The most recent way out that came after the last sign-in.
+                [$how, $signedOutAt] = match (true) {
+                    ! $login => ['never', null],
+                    $revoked && $revoked->gte($login) && (! $logout || $revoked->gte($logout)) => ['admin', $revoked],
+                    $logout && $logout->gte($login) => ['logout', $logout],
+                    default => ['expired', null],
+                };
+            }
+
+            return (object) [
+                'user' => $user,
+                'status' => $status,
+                'how' => $how,
+                'devices' => (int) ($session->devices ?? 0),
+                'last_active' => $session ? Carbon::createFromTimestamp($session->last_activity) : null,
+                'signed_in_at' => $login,
+                'signed_out_at' => $signedOutAt,
+            ];
+        });
+
+        $counts = [
+            'online' => $rows->where('status', 'online')->count(),
+            'idle' => $rows->where('status', 'idle')->count(),
+            'signed_out' => $rows->where('status', 'signed_out')->count(),
+        ];
+
+        // Signed-in people first (online, then idle), most recent first.
+        $filter = $request->input('people_status');
+        $search = trim((string) $request->input('people_q'));
+
+        $rows = $rows
+            ->when($filter === 'signed_in', fn ($c) => $c->whereIn('status', ['online', 'idle']))
+            ->when($filter === 'signed_out', fn ($c) => $c->where('status', 'signed_out'))
+            ->when($search !== '', fn ($c) => $c->filter(fn ($r) => str_contains(strtolower($r->user->name.' '.$r->user->email), strtolower($search))))
+            ->sortBy([
+                fn ($a, $b) => ['online' => 0, 'idle' => 1, 'signed_out' => 2][$a->status] <=> ['online' => 0, 'idle' => 1, 'signed_out' => 2][$b->status],
+                fn ($a, $b) => ($b->last_active ?? $b->signed_out_at ?? $b->signed_in_at)?->getTimestamp() <=> ($a->last_active ?? $a->signed_out_at ?? $a->signed_in_at)?->getTimestamp(),
+            ])
+            ->values();
+
+        return ['rows' => $rows, 'counts' => $counts];
     }
 
     public function update(Request $request): RedirectResponse
@@ -194,11 +293,11 @@ class SettingsController extends Controller
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:255'],
             'logo' => ['nullable', 'image', 'max:2048'],
-            'phone' => ['required', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/'],
+            'phone' => ['required', 'string', 'regex:'.PhoneNumber::VALID_PATTERN],
             'email' => ['nullable', 'email', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
         ], [
-            'phone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
+            'phone.regex' => PhoneNumber::INVALID_MESSAGE,
         ]);
 
         // Uploaded first, before any of the other fields are saved -- store()

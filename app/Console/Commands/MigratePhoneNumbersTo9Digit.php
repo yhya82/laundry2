@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Customer;
 use App\Models\User;
+use App\Support\PhoneNumber;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -32,11 +33,7 @@ class MigratePhoneNumbersTo9Digit extends Command
      * deliberately absent — any row with an unmapped leading digit is
      * skipped and reported, not guessed at.
      */
-    private const PREFIX_MAP = [
-        '3' => '83', '5' => '83',
-        '6' => '86', '8' => '86',
-        '2' => '87', '7' => '87', '4' => '87',
-    ];
+    private const PREFIX_MAP = PhoneNumber::PREFIX_MAP; // the one shared table
 
     /** @var array<class-string<Model>, string> */
     private const TARGETS = [

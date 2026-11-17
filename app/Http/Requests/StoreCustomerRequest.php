@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\UniquePhone;
 use App\Support\PhoneNumber;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -29,11 +30,13 @@ class StoreCustomerRequest extends FormRequest
 
         return [
             'full_name' => ['required', 'string', 'max:255'],
+            // PhoneNumber rules: 7-digit numbers were converted to 9 digits by
+            // normalize() above; the old 7-digit form counts as the same line.
             'phone' => [
                 'required',
                 'string',
-                'regex:/^\+220([0-9]{7}|[0-9]{9})$/',
-                Rule::unique('customers', 'phone')->ignore($customerId),
+                'regex:'.PhoneNumber::VALID_PATTERN,
+                new UniquePhone('customers', $customerId, 'A customer with this phone number already exists.'),
             ],
             'email' => ['nullable', 'email', 'max:255'],
             'customer_type' => ['required', Rule::in(['walk_in', 'subscription'])],
@@ -45,7 +48,7 @@ class StoreCustomerRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'phone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
+            'phone.regex' => PhoneNumber::INVALID_MESSAGE,
         ];
     }
 }

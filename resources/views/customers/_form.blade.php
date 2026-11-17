@@ -9,7 +9,7 @@
 
     <div>
         <x-input-label for="phone" value="Phone" />
-        <x-text-input id="phone" name="phone" type="text" class="block w-full" value="{{ Str::replaceFirst('+220', '', old('phone', $customer->phone ?? '')) }}" placeholder="555123456" required />
+        <x-text-input id="phone" name="phone" type="text" class="block w-full" value="{{ Str::replaceFirst('+220', '', old('phone', $customer->phone ?? '')) }}" placeholder="835190199" required />
         <x-input-error :messages="$errors->get('phone')" class="mt-1.5" />
     </div>
 

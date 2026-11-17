@@ -14,6 +14,7 @@ use App\Models\Subscription;
 use App\Models\SubscriptionCycle;
 use App\Models\SubscriptionPackage;
 use App\Support\Numbering;
+use App\Rules\UniquePhone;
 use App\Support\PhoneNumber;
 use App\Services\CustomerBalanceService;
 use App\Services\SubscriptionCreationException;
@@ -348,8 +349,12 @@ new class extends Component
 
         $term = '%'.$this->customerSearch.'%';
 
-        return Customer::where('full_name', 'like', $term)
-            ->orWhere('phone', 'like', $term)
+        // A phone matches in either form: 5190199 also finds 835190199, and
+        // 835190199 finds a customer still stored as 5190199.
+        return Customer::where(function ($q) use ($term) {
+            $q->where('full_name', 'like', $term)->orWhere('phone', 'like', $term);
+            PhoneNumber::whereMatches($q, 'phone', $this->customerSearch);
+        })
             ->orderBy('full_name')
             ->limit(8)
             ->get();
@@ -792,7 +797,7 @@ public function selectCustomer(int $id): void
     {
         return [
             'newCustomerName' => ['required', 'string', 'max:255'],
-            'newCustomerPhone' => ['required', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:customers,phone'],
+            'newCustomerPhone' => ['required', 'string', 'regex:'.PhoneNumber::VALID_PATTERN, new UniquePhone('customers', null, 'A customer with this phone number already exists.')],
         ];
     }
 
@@ -801,8 +806,7 @@ public function selectCustomer(int $id): void
         return [
             'newCustomerName.required' => 'Enter the customer\'s name.',
             'newCustomerPhone.required' => 'Enter a phone number.',
-            'newCustomerPhone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
-            'newCustomerPhone.unique' => 'A customer with this phone number already exists.',
+            'newCustomerPhone.regex' => PhoneNumber::INVALID_MESSAGE,
         ];
     }
 
@@ -1267,7 +1271,9 @@ public function submitOrder(CustomerBalanceService $balanceService)
         // changed in the meantime (another order creating the same
         // number), and this is the actual point of commitment.
         'newCustomerName' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'max:255'],
-        'newCustomerPhone' => [$this->usingPendingCustomer ? 'required' : 'nullable', 'string', 'regex:/^\+220([0-9]{7}|[0-9]{9})$/', 'unique:customers,phone'],
+        'newCustomerPhone' => $this->usingPendingCustomer
+            ? ['required', 'string', 'regex:'.PhoneNumber::VALID_PATTERN, new UniquePhone('customers', null, 'A customer with this phone number already exists.')]
+            : ['nullable'],
 
         'discountReason' => [$this->discount > 0 ? 'required' : 'nullable', 'string', 'max:255'],
 
@@ -1305,7 +1311,7 @@ public function submitOrder(CustomerBalanceService $balanceService)
         'customerId.required' => 'Select or add a customer first.',
         'newCustomerName.required' => 'Enter a name for the new customer.',
         'newCustomerPhone.required' => 'Enter a phone number for the new customer.',
-        'newCustomerPhone.regex' => 'Enter a valid 7 or 9-digit phone number (e.g. 5551234 or 555123456).',
+        'newCustomerPhone.regex' => PhoneNumber::INVALID_MESSAGE,
         'discountReason.required' => 'A discount needs a reason.',
         'walkInExtraChargeReason.required' => 'An extra charge needs a reason.',
         'creditToApply.max' => 'Cannot apply more than the available store credit (or the order total).',
@@ -1827,11 +1833,11 @@ if (! $collection || $collection->status !== 'scheduled') {
                         @error('newCustomerName') <p class="text-critical text-xs mt-1">{{ $message }}</p> @enderror
                     </div>
                     <div>
-                        <input type="tel" inputmode="tel" wire:model.blur="newCustomerPhone" placeholder="555123456" autocomplete="off" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md @error('newCustomerPhone') border-critical @enderror">
+                        <input type="tel" inputmode="tel" wire:model.blur="newCustomerPhone" placeholder="835190199" autocomplete="off" class="w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm transition-shadow focus:shadow-md @error('newCustomerPhone') border-critical @enderror">
                         @error('newCustomerPhone')
                             <p class="text-critical text-xs mt-1">{{ $message }}</p>
                         @else
-                            <p class="text-ink-faint text-xs mt-1">7 or 9 digits. +220 is added for you.</p>
+                            <p class="text-ink-faint text-xs mt-1">{{ \App\Support\PhoneNumber::HINT }}</p>
                         @enderror
                     </div>
                     {{-- No submit button: choosing the type is the action (see updatedNewCustomerType()). --}}
@@ -1895,11 +1901,11 @@ if (! $collection || $collection->status !== 'scheduled') {
                                     </div>
                                     <div>
                                         <x-input-label for="sp_phone" value="Phone" />
-                                        <input id="sp_phone" type="tel" inputmode="tel" wire:model.blur="newCustomerPhone" placeholder="555123456" autocomplete="off" class="mt-1 w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm @error('newCustomerPhone') border-critical @enderror">
+                                        <input id="sp_phone" type="tel" inputmode="tel" wire:model.blur="newCustomerPhone" placeholder="835190199" autocomplete="off" class="mt-1 w-full bg-surface border-line-strong rounded-lg shadow-sm text-sm @error('newCustomerPhone') border-critical @enderror">
                                         @error('newCustomerPhone')
                                             <p class="text-critical text-xs mt-1">{{ $message }}</p>
                                         @else
-                                            <p class="text-ink-faint text-xs mt-1">7 or 9 digits. +220 is added for you.</p>
+                                            <p class="text-ink-faint text-xs mt-1">{{ \App\Support\PhoneNumber::HINT }}</p>
                                         @enderror
                                     </div>
                                 </div>

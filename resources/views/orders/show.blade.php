@@ -873,7 +873,7 @@
                             </div>
                             <div>
                                 <x-input-label for="collected_by_phone" value="Phone number" />
-                                <x-text-input id="collected_by_phone" name="collected_by_phone" type="text" class="block w-full" value="{{ old('collected_by_phone') }}" placeholder="+220 555 1234" x-bind:required="collectedByType === 'other'" />
+                                <x-text-input id="collected_by_phone" name="collected_by_phone" type="text" class="block w-full" value="{{ old('collected_by_phone') }}" placeholder="835190199" x-bind:required="collectedByType === 'other'" />
                                 <x-input-error :messages="$errors->get('collected_by_phone')" class="mt-1.5" />
                             </div>
                         </div>

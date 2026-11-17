@@ -18,8 +18,10 @@
         old('group') === 'security' => 'policy',
         request()->hasAny(['ev_event', 'ev_email', 'ev_ip', 'ev_reason', 'ev_from', 'ev_to', 'events_page']) && ! request()->filled('sec_tab') => 'activity',
         request()->hasAny(['sess_user', 'sess_device', 'sess_recent']) && ! request()->filled('sec_tab') => 'devices',
+        request()->hasAny(['people_status', 'people_q']) && ! request()->filled('sec_tab') => 'people',
         default => request('sec_tab', 'overview'),
     };
+    $peopleIcon = 'M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z';
     $secUrl = fn (array $params = []) => route('settings.index', ['tab' => 'security', ...$params]);
 
     // Colours per tone (default Tailwind palette -- opacity works there,
@@ -55,6 +57,8 @@
     $tabs = [
         'overview' => ['Overview', $icons['overview'], null],
         'policy' => ['Policy', $icons['lock'], null],
+        // Badge: how many people are signed in right now.
+        'people' => ['People', $peopleIcon, ($peopleCounts['online'] + $peopleCounts['idle']) ?: null],
         'devices' => ['Devices', $icons['devices'], $overview['devices']],
         'activity' => ['Login activity', $icons['activity'], $overview['failed_today'] ?: null],
         'threats' => ['Threats', $icons['threats'], ($topIps->count() ?: null)],
@@ -382,6 +386,129 @@
                     </ul>
                 </section>
             @endforeach
+        </div>
+    </div>
+
+    {{-- ============ People: who's signed in now, and who's signed out ============ --}}
+    @php
+        $statusStyles = [
+            'online' => ['Online', 'bg-emerald-500/10 text-emerald-600', 'bg-emerald-500'],
+            'idle' => ['Idle', 'bg-amber-500/10 text-amber-600', 'bg-amber-400'],
+            'signed_out' => ['Signed out', 'bg-slate-500/10 text-slate-500', 'bg-slate-400'],
+        ];
+        $howLabels = [
+            'logout' => 'Logged out',
+            'admin' => 'Signed out by an admin',
+            'expired' => 'Session expired',
+            'never' => 'Never signed in',
+        ];
+    @endphp
+    <div x-show="secTab === 'people'" x-cloak id="sec-people" data-sec-swap class="space-y-4 transition-opacity" :class="swapping && 'opacity-60 pointer-events-none'">
+        {{-- Counts, each one a quick filter --}}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            @foreach ([
+                ['signed_in', 'Signed in now', $peopleCounts['online'] + $peopleCounts['idle'], 'bg-emerald-500/10 text-emerald-600', $peopleCounts['online'].' online · '.$peopleCounts['idle'].' idle'],
+                ['signed_out', 'Signed out', $peopleCounts['signed_out'], 'bg-slate-500/10 text-slate-500', 'Not signed in on any device'],
+                ['', 'Everyone', $peopleCounts['online'] + $peopleCounts['idle'] + $peopleCounts['signed_out'], 'bg-sky-500/10 text-sky-600', 'All staff accounts'],
+            ] as [$value, $title, $count, $tone, $sub])
+                <a href="{{ $secUrl(['sec_tab' => 'people', 'people_status' => $value ?: null]) }}"
+                   class="{{ $card }} flex items-center gap-3 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md {{ request('people_status', '') === $value ? 'ring-2 ring-red-500' : '' }}">
+                    <span class="flex h-10 w-10 flex-none items-center justify-center rounded-xl {{ $tone }}">{!! $svg($peopleIcon, 'w-5 h-5', '1.9') !!}</span>
+                    <span class="min-w-0">
+                        <span class="block text-2xl font-bold tabular-nums text-ink">{{ $count }}</span>
+                        <span class="block text-sm font-medium text-ink">{{ $title }}</span>
+                        <span class="block text-xs text-ink-faint truncate">{{ $sub }}</span>
+                    </span>
+                </a>
+            @endforeach
+        </div>
+
+        <div class="{{ $card }} shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-line">
+                <div>
+                    <h3 class="font-semibold text-ink">People</h3>
+                    <p class="text-xs text-ink-muted mt-0.5">Online = active in the last 5 minutes. Idle = still signed in, but inactive. Signed-out people show how they left.</p>
+                </div>
+                <form method="GET" action="{{ route('settings.index') }}" class="flex items-center gap-2">
+                    <input type="hidden" name="tab" value="security">
+                    <input type="hidden" name="sec_tab" value="people">
+                    @if (request('people_status'))
+                        <input type="hidden" name="people_status" value="{{ request('people_status') }}">
+                    @endif
+                    <input type="search" name="people_q" value="{{ request('people_q') }}" placeholder="Search name or email" class="bg-surface border-line-strong rounded-lg shadow-sm text-sm">
+                    <button type="submit" class="rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700">Search</button>
+                </form>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left">
+                            <th class="{{ $label }} px-5 py-3">Person</th>
+                            <th class="{{ $label }} px-5 py-3">Status</th>
+                            <th class="{{ $label }} px-5 py-3">Devices</th>
+                            <th class="{{ $label }} px-5 py-3">Last signed in</th>
+                            <th class="{{ $label }} px-5 py-3">Last active / signed out</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse ($people as $person)
+                            @php [$statusText, $statusPill, $dot] = $statusStyles[$person->status]; @endphp
+                            <tr class="border-t border-line align-middle hover:bg-surface-2" data-person-status="{{ $person->status }}">
+                                <td class="px-5 py-3">
+                                    <div class="flex items-center gap-3">
+                                        <span class="relative flex h-9 w-9 flex-none items-center justify-center rounded-full bg-surface-2 text-sm font-bold text-ink-muted">
+                                            {{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($person->user->name, 0, 1)) }}
+                                            <span class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-surface {{ $dot }} {{ $person->status === 'online' ? 'animate-pulse' : '' }}" aria-hidden="true"></span>
+                                        </span>
+                                        <div class="min-w-0">
+                                            <a href="{{ route('users.show', $person->user) }}" class="font-medium text-ink hover:text-accent-ink hover:underline">{{ $person->user->name }}</a>
+                                            <div class="text-xs text-ink-faint truncate">{{ $person->user->email }} · {{ $person->user->roles->pluck('name')->join(', ') ?: 'No role' }}{{ $person->user->is_active ? '' : ' · Deactivated' }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-5 py-3">
+                                    <span class="font-mono text-[11px] font-semibold px-2 py-0.5 rounded-full {{ $statusPill }}">{{ $statusText }}</span>
+                                    @if ($person->how)
+                                        <div class="text-xs text-ink-muted mt-1">{{ $howLabels[$person->how] }}</div>
+                                    @endif
+                                </td>
+                                <td class="px-5 py-3">
+                                    @if ($person->devices)
+                                        <a href="{{ $secUrl(['sec_tab' => 'devices', 'sess_user' => $person->user->id]) }}" class="inline-flex items-center gap-1.5 text-ink hover:text-accent-ink hover:underline">
+                                            {!! $svg($icons['devices'], 'w-4 h-4') !!}
+                                            {{ $person->devices }}
+                                        </a>
+                                    @else
+                                        <span class="text-ink-faint">—</span>
+                                    @endif
+                                </td>
+                                <td class="px-5 py-3 whitespace-nowrap">
+                                    @if ($person->signed_in_at)
+                                        <div class="text-ink" title="{{ $person->signed_in_at->format('Y-m-d H:i:s') }}">{{ $person->signed_in_at->diffForHumans() }}</div>
+                                        <div class="font-mono text-[11px] text-ink-faint">{{ $person->signed_in_at->format('Y-m-d H:i') }}</div>
+                                    @else
+                                        <span class="text-ink-faint">Never</span>
+                                    @endif
+                                </td>
+                                <td class="px-5 py-3 whitespace-nowrap">
+                                    @if ($person->last_active)
+                                        <div class="text-ink">Active {{ $person->last_active->diffForHumans() }}</div>
+                                        <div class="font-mono text-[11px] text-ink-faint">{{ $person->last_active->format('Y-m-d H:i') }}</div>
+                                    @elseif ($person->signed_out_at)
+                                        <div class="text-ink">Signed out {{ $person->signed_out_at->diffForHumans() }}</div>
+                                        <div class="font-mono text-[11px] text-ink-faint">{{ $person->signed_out_at->format('Y-m-d H:i') }}</div>
+                                    @else
+                                        <span class="text-ink-faint">—</span>
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="5" class="px-5 py-10 text-center text-sm text-ink-faint">Nobody matches.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 

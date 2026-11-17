@@ -7,6 +7,7 @@ use App\Models\Collection;
 use App\Models\Customer;
 use App\Models\SubscriptionCycle;
 use App\Models\SubscriptionPackage;
+use App\Support\PhoneNumber;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,11 @@ class CustomerController extends Controller
         $customers = Customer::query()
             ->when($request->filled('q'), function ($query) use ($request) {
                 $term = '%'.$request->get('q').'%';
-                $query->where(fn ($q) => $q->where('full_name', 'like', $term)->orWhere('phone', 'like', $term));
+                // A phone matches in either form (5190199 <-> 835190199).
+                $query->where(function ($q) use ($term, $request) {
+                    $q->where('full_name', 'like', $term)->orWhere('phone', 'like', $term);
+                    PhoneNumber::whereMatches($q, 'phone', (string) $request->get('q'));
+                });
             })
             ->orderBy($sort, $direction)
             ->paginate(15)

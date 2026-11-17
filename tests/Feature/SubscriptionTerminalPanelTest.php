@@ -46,7 +46,7 @@ class SubscriptionTerminalPanelTest extends TestCase
         parent::tearDown();
     }
 
-    protected function openPanelForNewCustomer(string $phone = '+220700333001')
+    protected function openPanelForNewCustomer(string $phone = '+220870333001')
     {
         return Livewire::test('laundry-terminal')
             ->set('showNewCustomerForm', true)
@@ -66,7 +66,7 @@ class SubscriptionTerminalPanelTest extends TestCase
             ->call('createSubscription')
             ->assertHasNoErrors();
 
-        $customer = Customer::where('phone', '+220700333001')->first();
+        $customer = Customer::where('phone', '+220870333001')->first();
         $this->assertNotNull($customer);
         $this->assertSame('subscription', $customer->customer_type);
 
@@ -95,7 +95,7 @@ class SubscriptionTerminalPanelTest extends TestCase
             ->assertSet('newCustomerName', 'Panel Customer')
             ->assertDontSee('New Subscription Customer');
 
-        $this->assertDatabaseMissing('customers', ['phone' => '+220700333001']);
+        $this->assertDatabaseMissing('customers', ['phone' => '+220870333001']);
     }
 
     public function test_choosing_walk_in_adds_and_selects_the_customer_without_a_button(): void
@@ -103,16 +103,16 @@ class SubscriptionTerminalPanelTest extends TestCase
         Livewire::test('laundry-terminal')
             ->set('showNewCustomerForm', true)
             ->set('newCustomerName', 'Walk-in Customer')
-            ->set('newCustomerPhone', '700333002')
+            ->set('newCustomerPhone', '870333002')
             ->set('newCustomerType', 'walk_in')
             ->assertHasNoErrors()
             ->assertSet('usingPendingCustomer', true)
             ->assertSet('showNewCustomerForm', false)
-            ->assertSet('newCustomerPhone', '+220700333002')
+            ->assertSet('newCustomerPhone', '+220870333002')
             ->assertDontSee('Add &amp; select', false);
 
         // Still staged, not saved -- written with the order, as before.
-        $this->assertDatabaseMissing('customers', ['phone' => '+220700333002']);
+        $this->assertDatabaseMissing('customers', ['phone' => '+220870333002']);
     }
 
     public function test_choosing_walk_in_with_invalid_details_shows_errors_and_clears_the_choice(): void
@@ -222,7 +222,7 @@ class SubscriptionTerminalPanelTest extends TestCase
             ->assertHasErrors('plan')
             ->assertSet('creatingSubscriptionCustomer', true);
 
-        $this->assertDatabaseMissing('customers', ['phone' => '+220700333001']);
+        $this->assertDatabaseMissing('customers', ['phone' => '+220870333001']);
     }
 
     public function test_a_failure_after_the_customer_and_subscription_rows_exist_rolls_back_everything(): void
@@ -249,7 +249,7 @@ class SubscriptionTerminalPanelTest extends TestCase
             ->assertSet('creatingSubscriptionCustomer', true)
             ->assertSet('customerId', null);
 
-        $this->assertDatabaseMissing('customers', ['phone' => '+220700333001']);
+        $this->assertDatabaseMissing('customers', ['phone' => '+220870333001']);
         $this->assertDatabaseCount('subscriptions', 0);
         $this->assertDatabaseCount('subscription_cycles', 0);
         $this->assertDatabaseCount('collections', 0);
@@ -257,15 +257,15 @@ class SubscriptionTerminalPanelTest extends TestCase
 
     public function test_a_phone_number_already_in_use_stops_the_panel_from_opening(): void
     {
-        Customer::factory()->create(['phone' => '+220700333001']);
+        Customer::factory()->create(['phone' => '+220870333001']);
 
-        $this->openPanelForNewCustomer('700333001')
+        $this->openPanelForNewCustomer('870333001')
             ->assertHasErrors('newCustomerPhone')
             ->assertSet('creatingSubscriptionCustomer', false)
             ->assertSet('newCustomerType', '')
             ->assertSet('showNewCustomerForm', true);
 
-        $this->assertSame(1, Customer::where('phone', '+220700333001')->count());
+        $this->assertSame(1, Customer::where('phone', '+220870333001')->count());
     }
 
     public function test_a_phone_number_taken_while_the_panel_is_open_is_still_rejected_on_create(): void
@@ -273,14 +273,14 @@ class SubscriptionTerminalPanelTest extends TestCase
         $component = $this->openPanelForNewCustomer()->assertSet('creatingSubscriptionCustomer', true);
 
         // Someone else saves the same number in the meantime.
-        Customer::factory()->create(['phone' => '+220700333001']);
+        Customer::factory()->create(['phone' => '+220870333001']);
 
         $component
             ->set('planPackageId', (string) $this->package->id)
             ->call('createSubscription')
             ->assertHasErrors('newCustomerPhone');
 
-        $this->assertSame(1, Customer::where('phone', '+220700333001')->count());
+        $this->assertSame(1, Customer::where('phone', '+220870333001')->count());
     }
 
     public function test_picking_subscription_with_an_invalid_phone_shows_the_error_and_stays_in_the_pop_up(): void
@@ -300,11 +300,13 @@ class SubscriptionTerminalPanelTest extends TestCase
     {
         $component = Livewire::test('laundry-terminal')->set('showNewCustomerForm', true);
 
-        foreach (['55512345', '5551234567', '12'] as $badNumber) {
+        // 8 or 10 digits, too short, and 9 digits with an unknown prefix (55).
+        foreach (['55512345', '5551234567', '12', '555123456'] as $badNumber) {
             $component->set('newCustomerPhone', $badNumber)->assertHasErrors(['newCustomerPhone' => 'regex']);
         }
 
-        foreach (['5551234' => '+2205551234', '555 123 456' => '+220555123456', '+220 555-1234' => '+2205551234'] as $typed => $stored) {
+        // 7 digits are saved in their 9-digit form; 9 starting with 83/86/87/9 as typed.
+        foreach (['5551234' => '+220835551234', '835 123 456' => '+220835123456', '+220 555-1234' => '+220835551234', '9123456' => '+2209123456'] as $typed => $stored) {
             $component->set('newCustomerPhone', $typed)
                 ->assertHasNoErrors('newCustomerPhone')
                 ->assertSet('newCustomerPhone', $stored);
@@ -332,7 +334,7 @@ class SubscriptionTerminalPanelTest extends TestCase
             ->call('createSubscription')
             ->assertHasNoErrors();
 
-        $this->assertNotNull(Customer::where('phone', '+220700333001')->first()?->subscriptions()->first());
+        $this->assertNotNull(Customer::where('phone', '+220870333001')->first()?->subscriptions()->first());
     }
 
     public function test_create_is_disabled_until_a_package_is_picked(): void
@@ -353,7 +355,7 @@ class SubscriptionTerminalPanelTest extends TestCase
             ->call('createSubscription')
             ->assertHasErrors('planPackageId');
 
-        $this->assertDatabaseMissing('customers', ['phone' => '+220700333001']);
+        $this->assertDatabaseMissing('customers', ['phone' => '+220870333001']);
     }
 
     public function test_the_subscriptions_page_always_starts_a_new_subscription_today(): void

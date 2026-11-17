@@ -22,7 +22,9 @@
     pass(rule) {
         const v = this.value;
         switch (rule.check) {
-            case 'min': return v.length >= rule.min;
+            // Count characters, not UTF-16 units -- matches PHP's mb_strlen,
+            // so an emoji counts once here too.
+            case 'min': return [...v].length >= rule.min;
             case 'mixed': return /\p{Lu}/u.test(v) && /\p{Ll}/u.test(v);
             case 'number': return /\p{N}/u.test(v);
             case 'symbol': return /[\p{Z}\p{S}\p{P}]/u.test(v);
